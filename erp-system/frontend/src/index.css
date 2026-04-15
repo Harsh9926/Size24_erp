@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+/* ── SIZE24 Brand Tokens ───────────────────────── */
+:root {
+  --brand-primary: #FF6B00;
+  --brand-primary-dark: #e55e00;
+  --brand-primary-light: #fff3eb;
+  --brand-secondary: #1E1E2F;
+  --brand-secondary-light: #2a2a42;
+
+  --bg-primary: #f5f6fa;
+  --bg-surface: #ffffff;
+  --bg-sidebar: #1E1E2F;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --border-color: #e5e7eb;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] {
+  --bg-primary: #0f0f1a;
+  --bg-surface: #1a1a2e;
+  --bg-sidebar: #111120;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --border-color: #2d2d45;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Brand button utility */
+.btn-brand {
+  background-color: var(--brand-primary);
+  color: white;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-brand:hover {
+  background-color: var(--brand-primary-dark);
+  box-shadow: 0 4px 16px rgba(255, 107, 0, 0.35);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #3d3d5c;
+}
