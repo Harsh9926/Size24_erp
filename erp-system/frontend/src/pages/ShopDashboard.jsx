@@ -5,7 +5,7 @@ import { AuthContext } from '../context/AuthContext';
 import {
     Send, RefreshCw, LogOut, IndianRupee, Store, Lock, Camera,
     MapPin, AlertCircle, FileSpreadsheet, X, CheckCircle2, XCircle,
-    Loader2, Calendar,
+    Loader2, Calendar, Pencil,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -148,6 +148,8 @@ const ShopDashboard = () => {
         date: new Date().toISOString().split('T')[0],
         total_sale: '', cash: '', paytm: '', expense: '',
     });
+    const [editId, setEditId] = useState(null);       // null = new, number = editing existing
+    const [editLocked, setEditLocked] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
     /* ── Excel state ─────────────────────────────────────────────── */
@@ -297,25 +299,69 @@ const ShopDashboard = () => {
         return (sale - sum).toFixed(2);
     }, [form.total_sale, form.cash, form.paytm, form.expense]);
 
+    // Lock state: when editing an existing entry, use that entry's lock; otherwise today's lock
+    const isFormLocked = editId !== null ? editLocked : todayLocked;
+
+    const loadEntryForEdit = useCallback((entry) => {
+        const unlockActive =
+            entry.edit_enabled_till && new Date() < new Date(entry.edit_enabled_till);
+        setEditId(entry.id);
+        setEditLocked(entry.locked && !unlockActive);
+        setExcelDrivenTotal(false);
+        setForm({
+            date:       normDate(entry.date) || new Date().toISOString().split('T')[0],
+            total_sale: String(entry.total_sale ?? ''),
+            cash:       String(entry.cash ?? ''),
+            paytm:      String((+(entry.paytm || 0) + +(entry.razorpay || 0))),
+            expense:    String(entry.expense ?? ''),
+        });
+    }, []);
+
+    const resetForm = useCallback(() => {
+        setEditId(null);
+        setEditLocked(false);
+        setExcelDrivenTotal(false);
+        setPhotoFile(null);
+        setPhotoPreview('');
+        setActiveRowIdx(null);
+        setForm({
+            date: new Date().toISOString().split('T')[0],
+            total_sale: '', cash: '', paytm: '', expense: '',
+        });
+    }, []);
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (diff !== '0.00') return alert('Difference must be ₹0 before submitting');
-        if (data.shop?.latitude && gpsStatus !== 'ok')
+        if (data.shop?.latitude && gpsStatus !== 'ok' && gpsStatus !== 'no_coords')
             return alert('GPS check required. Click "Check Location" first.');
         setSubmitting(true);
         try {
             let url = null;
             if (photoFile) url = await uploadPhoto();
-            await api.post('/entries', { shop_id: user?.shopId, ...form, razorpay: 0, photo_url: url });
-            alert('Entry submitted!');
-            setForm({
-                date: new Date().toISOString().split('T')[0],
-                total_sale: '', cash: '', paytm: '', expense: '',
-            });
-            setExcelDrivenTotal(false);
-            setPhotoFile(null);
-            setPhotoPreview('');
-            setActiveRowIdx(null);
+
+            if (editId !== null) {
+                // Update existing entry
+                await api.put(`/entries/${editId}`, { ...form, razorpay: 0, photo_url: url });
+                alert('Entry updated!');
+            } else {
+                // Create new entry
+                try {
+                    await api.post('/entries', { shop_id: user?.shopId, ...form, razorpay: 0, photo_url: url });
+                    alert('Entry submitted!');
+                } catch (postErr) {
+                    if (postErr.response?.status === 409 && postErr.response?.data?.existing) {
+                        // Auto-load existing entry into edit mode
+                        loadEntryForEdit(postErr.response.data.existing);
+                        alert('An entry for this date already exists — loaded it for editing.');
+                        setSubmitting(false);
+                        return;
+                    }
+                    throw postErr;
+                }
+            }
+
+            resetForm();
             fetchData();
         } catch (err) {
             alert(err.response?.data?.error || 'Submit failed');
@@ -406,17 +452,11 @@ const ShopDashboard = () => {
 
     const handleRowClick = (entry, idx) => {
         setActiveRowIdx(idx);
-        fillFormFromRow(
-            entry._excel
-                ? entry._raw
-                : {
-                    date:    normDate(entry.date),
-                    sale:    entry.total_sale,
-                    cash:    entry.cash,
-                    paytm:   +(entry.paytm || 0) + +(entry.razorpay || 0),
-                    expense: entry.expense,
-                },
-        );
+        if (entry._excel) {
+            fillFormFromRow(entry._raw);
+        } else {
+            loadEntryForEdit(entry);
+        }
     };
 
     /* ── Style helper ────────────────────────────────────────────── */
@@ -501,8 +541,18 @@ const ShopDashboard = () => {
                             style={{ color: 'var(--text-primary)', borderColor: 'var(--border-color)' }}
                         >
                             <IndianRupee className="h-4 w-4 text-teal-600" />
-                            New Daily Entry
-                            {activeRowIdx !== null && (
+                            {editId !== null ? `Edit Entry — ${fmtDate(form.date)}` : 'New Daily Entry'}
+                            {editId !== null && (
+                                <button
+                                    type="button"
+                                    onClick={resetForm}
+                                    title="Cancel editing"
+                                    className="ml-auto text-xs font-normal px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                            )}
+                            {editId === null && activeRowIdx !== null && (
                                 <span className="ml-auto text-xs font-normal px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
                                     Row filled ✓
                                 </span>
@@ -510,11 +560,13 @@ const ShopDashboard = () => {
                         </h3>
 
                         {/* Locked warning */}
-                        {todayLocked && (
+                        {isFormLocked && (
                             <div className="my-4 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
                                 <Lock className="h-4 w-4 flex-shrink-0" />
                                 <div>
-                                    <p className="text-sm font-semibold">Today's entry is locked</p>
+                                    <p className="text-sm font-semibold">
+                                        {editId !== null ? 'This entry is locked' : "Today's entry is locked"}
+                                    </p>
                                     <p className="text-xs mt-0.5">Contact admin to unlock.</p>
                                 </div>
                             </div>
@@ -526,10 +578,10 @@ const ShopDashboard = () => {
                                 <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Date</label>
                                 <input
                                     type="date"
-                                    className={inputCls(todayLocked)}
+                                    className={inputCls(isFormLocked || editId !== null)}
                                     value={form.date}
                                     onChange={(e) => setForm({ ...form, date: e.target.value })}
-                                    disabled={todayLocked}
+                                    disabled={isFormLocked || editId !== null}
                                     required
                                 />
                             </div>
@@ -539,11 +591,11 @@ const ShopDashboard = () => {
                                 <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Total Sale (₹)</label>
                                 <input
                                     type="number"
-                                    className={inputCls(todayLocked || excelDrivenTotal) + ' font-bold'}
+                                    className={inputCls(isFormLocked || excelDrivenTotal) + ' font-bold'}
                                     value={form.total_sale}
                                     onChange={(e) => !excelDrivenTotal && setForm({ ...form, total_sale: e.target.value })}
                                     placeholder="0.00"
-                                    disabled={todayLocked}
+                                    disabled={isFormLocked}
                                     required
                                 />
                                 {excelDrivenTotal && (
@@ -561,11 +613,11 @@ const ShopDashboard = () => {
                                         <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>{l}</label>
                                         <input
                                             type="number"
-                                            className={inputCls(todayLocked)}
+                                            className={inputCls(isFormLocked)}
                                             value={form[f]}
                                             onChange={(e) => setForm({ ...form, [f]: e.target.value })}
                                             placeholder="0"
-                                            disabled={todayLocked}
+                                            disabled={isFormLocked}
                                             required
                                         />
                                     </div>
@@ -577,17 +629,17 @@ const ShopDashboard = () => {
                                 <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>QR / CARD / BANK</label>
                                 <input
                                     type="number"
-                                    className={inputCls(todayLocked)}
+                                    className={inputCls(isFormLocked)}
                                     value={form.paytm}
                                     onChange={(e) => setForm({ ...form, paytm: e.target.value })}
                                     placeholder="0"
-                                    disabled={todayLocked}
+                                    disabled={isFormLocked}
                                     required
                                 />
                             </div>
 
                             {/* Difference indicator */}
-                            {!todayLocked && (
+                            {!isFormLocked && (
                                 <div className={`p-3 rounded-lg border ${diff === '0.00' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
                                     <div className="flex justify-between">
                                         <span className="text-xs font-semibold text-gray-600">Difference:</span>
@@ -602,7 +654,7 @@ const ShopDashboard = () => {
                             )}
 
                             {/* GPS check */}
-                            {!todayLocked && data.shop?.latitude && (
+                            {!isFormLocked && data.shop?.latitude && (
                                 <div className="space-y-1">
                                     <button
                                         type="button"
@@ -628,7 +680,7 @@ const ShopDashboard = () => {
                             )}
 
                             {/* Photo upload */}
-                            {!todayLocked && (
+                            {!isFormLocked && (
                                 <div>
                                     <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
                                         Photo Proof (optional)
@@ -654,18 +706,24 @@ const ShopDashboard = () => {
                             <button
                                 type="submit"
                                 disabled={
-                                    submitting || todayLocked || diff !== '0.00' ||
+                                    submitting || isFormLocked || diff !== '0.00' ||
                                     (data.shop?.latitude && gpsStatus !== 'ok' && gpsStatus !== 'no_coords')
                                 }
                                 className={`w-full py-2.5 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2 transition-all ${
-                                    submitting || todayLocked || diff !== '0.00' ||
+                                    submitting || isFormLocked || diff !== '0.00' ||
                                     (data.shop?.latitude && gpsStatus !== 'ok' && gpsStatus !== 'no_coords')
                                         ? 'bg-gray-300 cursor-not-allowed'
                                         : 'bg-teal-600 hover:bg-teal-700'
                                 }`}
                             >
                                 <Send className="h-4 w-4" />
-                                {submitting ? 'Submitting...' : todayLocked ? 'Entry Locked' : 'Submit Entry'}
+                                {submitting
+                                    ? (editId !== null ? 'Updating...' : 'Submitting...')
+                                    : isFormLocked
+                                    ? 'Entry Locked'
+                                    : editId !== null
+                                    ? 'Update Entry'
+                                    : 'Submit Entry'}
                             </button>
                         </form>
                     </div>
@@ -784,7 +842,7 @@ const ShopDashboard = () => {
                             <table className="min-w-full divide-y" style={{ borderColor: 'var(--border-color)' }}>
                                 <thead style={{ background: 'var(--bg-primary)' }}>
                                     <tr>
-                                        {['Date', 'Sale', 'Cash', 'Online', 'Expense', 'Photo', 'Status'].map((h) => (
+                                        {['Date', 'Sale', 'Cash', 'Online', 'Expense', 'Photo', 'Status', ''].map((h) => (
                                             <th
                                                 key={h}
                                                 className="px-4 py-3 text-left text-xs font-semibold uppercase"
@@ -870,13 +928,27 @@ const ShopDashboard = () => {
                                                     {e.locked ? 'Locked' : 'Open'}
                                                 </span>
                                             </td>
+
+                                            {/* Edit */}
+                                            <td className="px-4 py-3">
+                                                {!e._excel && (
+                                                    <button
+                                                        type="button"
+                                                        title="Edit this entry"
+                                                        onClick={(ev) => { ev.stopPropagation(); loadEntryForEdit(e); }}
+                                                        className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
+                                                    >
+                                                        <Pencil className="h-3.5 w-3.5" />
+                                                    </button>
+                                                )}
+                                            </td>
                                         </tr>
                                     ))}
 
                                     {/* Empty state */}
                                     {displayEntries.length === 0 && (
                                         <tr>
-                                            <td colSpan="7" className="text-center py-12 text-gray-400 text-sm">
+                                            <td colSpan="8" className="text-center py-12 text-gray-400 text-sm">
                                                 {dateFilter
                                                     ? `No entries found for ${fmtDate(dateFilter)}`
                                                     : 'No entries yet'}

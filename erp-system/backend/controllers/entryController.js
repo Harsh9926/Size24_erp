@@ -20,7 +20,15 @@ exports.createEntry = async (req, res) => {
         res.status(201).json(result.rows[0]);
     } catch (err) {
         if (err.constraint === 'daily_entries_shop_id_date_key') {
-            return res.status(400).json({ error: 'Entry for this date already exists. Please edit instead.' });
+            // Return existing entry so the client can switch to edit mode automatically
+            const existing = await db.query(
+                'SELECT * FROM daily_entries WHERE shop_id = $1 AND date = $2',
+                [req.body.shop_id, req.body.date]
+            );
+            return res.status(409).json({
+                error: 'Entry for this date already exists.',
+                existing: existing.rows[0] || null,
+            });
         }
         res.status(500).json({ error: err.message });
     }

@@ -1,10 +1,13 @@
--- erp-system/backend/schema.sql
+-- erp-system/backend/db/schema.sql
+-- Run once to create the base schema. Use init_db.js for automated setup.
 
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     mobile VARCHAR(15) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL CHECK (role IN ('admin', 'shop_user')),
+    role VARCHAR(50) NOT NULL CHECK (role IN ('admin', 'manager', 'shop_user')),
+    name VARCHAR(100),
+    is_approved BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -34,6 +37,8 @@ CREATE TABLE IF NOT EXISTS shops (
     document_type VARCHAR(50) CHECK (document_type IN ('aadhaar', 'pan', 'voter')),
     document_number VARCHAR(50),
     user_id INT REFERENCES users(id) ON DELETE SET NULL,
+    latitude DECIMAL(10,7),
+    longitude DECIMAL(10,7),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -49,6 +54,9 @@ CREATE TABLE IF NOT EXISTS daily_entries (
     difference DECIMAL(12, 2) DEFAULT 0,
     locked BOOLEAN DEFAULT false,
     edit_enabled_till TIMESTAMP,
+    photo_url TEXT,
+    submitted_lat DECIMAL(10,7),
+    submitted_lng DECIMAL(10,7),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(shop_id, date)
 );
@@ -74,7 +82,30 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Indexes for performance
-CREATE INDEX idx_shops_user_id ON shops(user_id);
-CREATE INDEX idx_daily_entries_shop_date ON daily_entries(shop_id, date);
-CREATE INDEX idx_cash_flows_shop_date ON cash_flows(shop_id, date);
+CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    type VARCHAR(50) NOT NULL,
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS excel_uploads (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    shop_id INTEGER REFERENCES shops(id) ON DELETE SET NULL,
+    filename TEXT NOT NULL,
+    upload_date DATE NOT NULL,
+    total_sale NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    row_data JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_shops_user_id ON shops(user_id);
+CREATE INDEX IF NOT EXISTS idx_daily_entries_shop_date ON daily_entries(shop_id, date);
+CREATE INDEX IF NOT EXISTS idx_cash_flows_shop_date ON cash_flows(shop_id, date);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_excel_uploads_user ON excel_uploads(user_id);
+CREATE INDEX IF NOT EXISTS idx_excel_uploads_date ON excel_uploads(upload_date DESC);

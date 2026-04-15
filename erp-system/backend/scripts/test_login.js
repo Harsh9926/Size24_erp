@@ -1,3 +1,7 @@
+/**
+ * Utility: Quick smoke-test of the login API endpoint.
+ * Run: node scripts/test_login.js
+ */
 const http = require('http');
 
 function testLogin(mobile, password) {

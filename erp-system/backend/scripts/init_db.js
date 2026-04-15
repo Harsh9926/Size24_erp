@@ -1,20 +1,23 @@
+/**
+ * Utility: Create the erp_db database and initialize the schema.
+ * Run: node scripts/init_db.js
+ */
 const { Client } = require('pg');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 async function init() {
     const defaultClient = new Client({
         user: process.env.DB_USER || 'postgres',
         host: process.env.DB_HOST || 'localhost',
-        database: 'postgres', // Connect to default postgres DB first
+        database: 'postgres',
         password: process.env.DB_PASSWORD || 'admin',
         port: process.env.DB_PORT || 5432,
     });
 
     try {
         await defaultClient.connect();
-        // Check if database exists
         const res = await defaultClient.query("SELECT 1 FROM pg_database WHERE datname='erp_db'");
         if (res.rowCount === 0) {
             await defaultClient.query('CREATE DATABASE erp_db');
@@ -38,9 +41,8 @@ async function init() {
 
     try {
         await erpClient.connect();
-        const schemaPath = path.join(__dirname, 'schema.sql');
-        const schema = fs.readFileSync(schemaPath, 'utf8');
-        await erpClient.query(schema);
+        const sql = fs.readFileSync(path.join(__dirname, '../db/schema.sql'), 'utf8');
+        await erpClient.query(sql);
         console.log("Schema initialized successfully.");
     } catch (err) {
         console.error("Error initializing schema:", err.message);

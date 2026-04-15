@@ -1,6 +1,10 @@
+/**
+ * Utility: Reset all passwords to defaults (admin@123 for admins, user@123 for others).
+ * Run: node scripts/reset_password.js
+ */
 const { Client } = require('pg');
 const bcrypt = require('bcrypt');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 
 async function resetPasswords() {
     const client = new Client({
@@ -15,12 +19,10 @@ async function resetPasswords() {
         await client.connect();
         console.log('Connected to database.\n');
 
-        // List all users
         const usersResult = await client.query('SELECT id, name, mobile, role, is_approved FROM users ORDER BY role, id');
         console.log('=== ALL USERS IN DATABASE ===');
         console.table(usersResult.rows);
 
-        // Reset admin password to: admin@123
         const adminHash = await bcrypt.hash('admin@123', 10);
         const adminUpdate = await client.query(
             "UPDATE users SET password_hash = $1 WHERE role = 'admin' RETURNING id, name, mobile, role",
@@ -30,7 +32,6 @@ async function resetPasswords() {
         console.log('New password: admin@123');
         console.table(adminUpdate.rows);
 
-        // Reset all shop_user / user passwords to: user@123
         const userHash = await bcrypt.hash('user@123', 10);
         const userUpdate = await client.query(
             "UPDATE users SET password_hash = $1 WHERE role != 'admin' RETURNING id, name, mobile, role",
@@ -40,7 +41,7 @@ async function resetPasswords() {
         console.log('New password: user@123');
         console.table(userUpdate.rows);
 
-        console.log('\n✅ Done! Use the mobile number shown above + the new password to login.');
+        console.log('\nDone! Use the mobile number shown above + the new password to login.');
     } catch (err) {
         console.error('Error:', err.message);
     } finally {

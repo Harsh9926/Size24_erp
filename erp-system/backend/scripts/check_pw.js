@@ -1,6 +1,10 @@
+/**
+ * Utility: Check which test passwords match existing user accounts.
+ * Run: node scripts/check_pw.js
+ */
 const { Client } = require('pg');
 const bcrypt = require('bcrypt');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 
 async function check() {
     const c = new Client({

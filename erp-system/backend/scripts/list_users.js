@@ -1,5 +1,9 @@
+/**
+ * Utility: Print all users in the database.
+ * Run: node scripts/list_users.js
+ */
 const { Client } = require('pg');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 
 async function list() {
     const c = new Client({
