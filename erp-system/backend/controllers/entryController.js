@@ -1,29 +1,65 @@
 const db = require('../config/db');
 
+/*
+ * FIELD CONTRACT
+ * ─────────────────────────────────────────────────────────────────
+ * excel_total_sale  — locked from Excel; NEVER editable by shop user
+ * total_sale        — equals excel_total_sale (kept for analytics joins)
+ * cash              — user-entered
+ * online            — QR / Card / Bank (user-entered)
+ * razorpay          — user-entered
+ * approval_status   — PENDING | APPROVED | REJECTED
+ *
+ * Breakdown validation:  cash + online + razorpay  must == excel_total_sale
+ */
+
+const getTodayUTC = () => new Date().toISOString().split('T')[0];
+
+// ─────────────────────────────────────────────────────────────────
+// CREATE  (shop_user submits; entry lands as PENDING)
+// ─────────────────────────────────────────────────────────────────
 exports.createEntry = async (req, res) => {
     try {
-        const { shop_id, date, total_sale, cash, paytm, razorpay, expense } = req.body;
+        const { shop_id, date, excel_total_sale, cash, online, razorpay } = req.body;
 
-        // Validation: Total Sale = Cash + QR/Card/Bank + Expense
-        const difference = parseFloat(total_sale) - (parseFloat(cash) + parseFloat(paytm || 0) + parseFloat(razorpay || 0) + parseFloat(expense));
-        if (Math.abs(difference) > 0.01) {
-            return res.status(400).json({ error: 'Difference must be 0. Total Sale must equal Cash + QR/Card/Bank + Expense' });
+        // ── Date rule: today only ────────────────────────────────
+        const today      = getTodayUTC();
+        const entryDate  = date ? String(date).split('T')[0] : null;
+        if (!entryDate || entryDate !== today) {
+            return res.status(400).json({
+                error: 'Only today\'s data is allowed. Past or future dates are rejected.',
+            });
+        }
+
+        // ── Breakdown validation ─────────────────────────────────
+        const excelTotal  = parseFloat(excel_total_sale || 0);
+        const breakdownSum = (
+            parseFloat(cash     || 0) +
+            parseFloat(online   || 0) +
+            parseFloat(razorpay || 0)
+        );
+
+        if (Math.abs(excelTotal - breakdownSum) > 0.01) {
+            return res.status(400).json({
+                error: `Breakdown (₹${breakdownSum.toFixed(2)}) does not match Total Sale (₹${excelTotal.toFixed(2)}). Fix before submitting.`,
+            });
         }
 
         const result = await db.query(
-            `INSERT INTO daily_entries (
-        shop_id, date, total_sale, cash, paytm, razorpay, expense, difference
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-            [shop_id, date, total_sale, cash, paytm, razorpay, expense, difference]
+            `INSERT INTO daily_entries
+                (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay,
+                 approval_status)
+             VALUES ($1, $2, $3, $3, $4, $5, $6, 'PENDING')
+             RETURNING *`,
+            [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0],
         );
 
         res.status(201).json(result.rows[0]);
     } catch (err) {
         if (err.constraint === 'daily_entries_shop_id_date_key') {
-            // Return existing entry so the client can switch to edit mode automatically
             const existing = await db.query(
                 'SELECT * FROM daily_entries WHERE shop_id = $1 AND date = $2',
-                [req.body.shop_id, req.body.date]
+                [req.body.shop_id, req.body.date?.split('T')[0]],
             );
             return res.status(409).json({
                 error: 'Entry for this date already exists.',
@@ -34,50 +70,73 @@ exports.createEntry = async (req, res) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────
+// UPDATE  (shop_user updates breakdown while status is still PENDING)
+// ─────────────────────────────────────────────────────────────────
 exports.updateEntry = async (req, res) => {
     try {
-        const { id } = req.params;
-        const { total_sale, cash, paytm, razorpay, expense } = req.body;
+        const { id }               = req.params;
+        const { cash, online, razorpay } = req.body;
 
-        // Check if entry exists and its lock status
-        const entryResult = await db.query('SELECT * FROM daily_entries WHERE id = $1', [id]);
-        if (entryResult.rows.length === 0) return res.status(404).json({ error: 'Entry not found' });
+        const entryResult = await db.query(
+            'SELECT * FROM daily_entries WHERE id = $1', [id],
+        );
+        if (entryResult.rows.length === 0)
+            return res.status(404).json({ error: 'Entry not found' });
 
         const entry = entryResult.rows[0];
 
-        // Authorization: User must be admin, or the shop must belong to the user
-        // In production, you'd join with shops to verify shop.user_id = req.user.id
-        if (req.user.role === 'shop_user') {
-            if (entry.shop_id !== req.user.shopId) {
-                return res.status(403).json({ error: 'Deny: this entry does not belong to your shop' });
-            }
+        // ── Role check ───────────────────────────────────────────
+        if (req.user.role === 'shop_user' && entry.shop_id !== req.user.shopId) {
+            return res.status(403).json({ error: 'This entry does not belong to your shop.' });
         }
 
-        // Lock check
+        // ── Approved entries are immutable ───────────────────────
+        if (entry.approval_status === 'APPROVED') {
+            return res.status(403).json({
+                error: 'Approved entries cannot be edited.',
+            });
+        }
+
+        // ── Lock check ───────────────────────────────────────────
         if (entry.locked) {
-            // Allow if unlocked and current time < edit_enabled_till
-            if (!entry.edit_enabled_till || new Date() > new Date(entry.edit_enabled_till)) {
-                return res.status(403).json({ error: 'Entry is locked and cannot be edited. Request admin to unlock.' });
+            const unlockActive =
+                entry.edit_enabled_till && new Date() < new Date(entry.edit_enabled_till);
+            if (!unlockActive) {
+                return res.status(403).json({
+                    error: 'Entry is locked. Request admin to unlock.',
+                });
             }
         }
 
-        const difference = parseFloat(total_sale) - (parseFloat(cash) + parseFloat(paytm || 0) + parseFloat(razorpay || 0) + parseFloat(expense));
-        if (Math.abs(difference) > 0.01) {
-            return res.status(400).json({ error: 'Difference must be 0. Total Sale must equal Cash + QR/Card/Bank + Expense' });
+        // ── Breakdown validation ─────────────────────────────────
+        const excelTotal   = parseFloat(entry.excel_total_sale || entry.total_sale || 0);
+        const breakdownSum = (
+            parseFloat(cash     || 0) +
+            parseFloat(online   || 0) +
+            parseFloat(razorpay || 0)
+        );
+
+        if (Math.abs(excelTotal - breakdownSum) > 0.01) {
+            return res.status(400).json({
+                error: `Breakdown (₹${breakdownSum.toFixed(2)}) does not match Total Sale (₹${excelTotal.toFixed(2)}).`,
+            });
         }
 
-        // Insert an audit log (fire & forget for simplicity, or await)
+        // ── Audit log ────────────────────────────────────────────
         await db.query(
-            `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by) 
-       VALUES ($1, $2, $3, $4, $5)`,
-            ['daily_entries', id, entry, req.body, req.user.id]
+            `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
+             VALUES ($1, $2, $3, $4, $5)`,
+            ['daily_entries', id, entry, req.body, req.user.id],
         );
 
         const result = await db.query(
-            `UPDATE daily_entries SET 
-        total_sale = $1, cash = $2, paytm = $3, razorpay = $4, expense = $5, difference = $6
-       WHERE id = $7 RETURNING *`,
-            [total_sale, cash, paytm, razorpay, expense, difference, id]
+            `UPDATE daily_entries
+             SET cash = $1, online = $2, razorpay = $3,
+                 approval_status = 'PENDING'
+             WHERE id = $4
+             RETURNING *`,
+            [cash || 0, online || 0, razorpay || 0, id],
         );
 
         res.json(result.rows[0]);
@@ -86,17 +145,40 @@ exports.updateEntry = async (req, res) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────
+// GET ALL  (role-aware + status filtering)
+// ─────────────────────────────────────────────────────────────────
 exports.getEntries = async (req, res) => {
     try {
-        let query = 'SELECT e.*, s.shop_name FROM daily_entries e JOIN shops s ON e.shop_id = s.id';
-        let params = [];
+        const { status } = req.query; // optional filter: PENDING|APPROVED|REJECTED
 
+        let query  = `
+            SELECT e.*, s.shop_name, s.shop_address,
+                   c.name AS city_name,
+                   u.name AS approved_by_name
+            FROM daily_entries e
+            JOIN shops s ON e.shop_id = s.id
+            LEFT JOIN cities c ON s.city_id = c.id
+            LEFT JOIN users u  ON e.approved_by = u.id
+        `;
+        const params  = [];
+        const clauses = [];
+
+        // shop_user only sees their own entries (all statuses so they know if rejected)
         if (req.user.role === 'shop_user') {
-            query += ' WHERE e.shop_id = $1';
+            clauses.push(`e.shop_id = $${params.length + 1}`);
             params.push(req.user.shopId);
         }
 
-        query += ' ORDER BY e.date DESC';
+        // optional status filter (admin/manager)
+        if (status && req.user.role !== 'shop_user') {
+            clauses.push(`e.approval_status = $${params.length + 1}`);
+            params.push(status.toUpperCase());
+        }
+
+        if (clauses.length) query += ` WHERE ${clauses.join(' AND ')}`;
+        query += ' ORDER BY e.created_at DESC';
+
         const result = await db.query(query, params);
         res.json(result.rows);
     } catch (err) {
@@ -104,20 +186,130 @@ exports.getEntries = async (req, res) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────
+// GET PENDING  (admin convenience endpoint)
+// ─────────────────────────────────────────────────────────────────
+exports.getPendingEntries = async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT e.*, s.shop_name, s.shop_address,
+                    c.name AS city_name,
+                    u.name AS submitted_by_name, u.mobile AS submitted_by_mobile
+             FROM daily_entries e
+             JOIN shops s ON e.shop_id = s.id
+             LEFT JOIN cities c ON s.city_id = c.id
+             LEFT JOIN users u  ON s.user_id  = u.id
+             WHERE e.approval_status = 'PENDING'
+             ORDER BY e.created_at ASC`,
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────
+// APPROVE  (admin only)
+// ─────────────────────────────────────────────────────────────────
+exports.approveEntry = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const entryResult = await db.query(
+            'SELECT * FROM daily_entries WHERE id = $1', [id],
+        );
+        if (entryResult.rows.length === 0)
+            return res.status(404).json({ error: 'Entry not found' });
+
+        if (entryResult.rows[0].approval_status === 'APPROVED')
+            return res.status(400).json({ error: 'Entry is already approved.' });
+
+        const result = await db.query(
+            `UPDATE daily_entries
+             SET approval_status = 'APPROVED',
+                 approved_by     = $1,
+                 approved_at     = NOW(),
+                 rejection_note  = NULL,
+                 locked          = true
+             WHERE id = $2
+             RETURNING *`,
+            [req.user.id, id],
+        );
+
+        // Audit
+        await db.query(
+            `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
+             VALUES ('daily_entries', $1, $2, $3, $4)`,
+            [id, entryResult.rows[0], result.rows[0], req.user.id],
+        );
+
+        res.json({ message: 'Entry approved successfully.', entry: result.rows[0] });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────
+// REJECT  (admin only)
+// ─────────────────────────────────────────────────────────────────
+exports.rejectEntry = async (req, res) => {
+    try {
+        const { id }            = req.params;
+        const { rejection_note } = req.body;
+
+        const entryResult = await db.query(
+            'SELECT * FROM daily_entries WHERE id = $1', [id],
+        );
+        if (entryResult.rows.length === 0)
+            return res.status(404).json({ error: 'Entry not found' });
+
+        if (entryResult.rows[0].approval_status === 'REJECTED')
+            return res.status(400).json({ error: 'Entry is already rejected.' });
+
+        const result = await db.query(
+            `UPDATE daily_entries
+             SET approval_status = 'REJECTED',
+                 approved_by     = $1,
+                 approved_at     = NOW(),
+                 rejection_note  = $2
+             WHERE id = $3
+             RETURNING *`,
+            [req.user.id, rejection_note || null, id],
+        );
+
+        // Audit
+        await db.query(
+            `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
+             VALUES ('daily_entries', $1, $2, $3, $4)`,
+            [id, entryResult.rows[0], result.rows[0], req.user.id],
+        );
+
+        res.json({ message: 'Entry rejected.', entry: result.rows[0] });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────
+// UNLOCK  (admin only — re-opens a locked/approved entry briefly)
+// ─────────────────────────────────────────────────────────────────
 exports.unlockEntry = async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Unlock for 10 minutes
         const unlockTill = new Date();
         unlockTill.setMinutes(unlockTill.getMinutes() + 10);
 
         const result = await db.query(
-            'UPDATE daily_entries SET locked = true, edit_enabled_till = $1 WHERE id = $2 RETURNING *',
-            [unlockTill, id]
+            `UPDATE daily_entries
+             SET locked = true, edit_enabled_till = $1
+             WHERE id = $2
+             RETURNING *`,
+            [unlockTill, id],
         );
 
-        if (result.rows.length === 0) return res.status(404).json({ error: 'Entry not found' });
+        if (result.rows.length === 0)
+            return res.status(404).json({ error: 'Entry not found' });
 
         res.json({ message: 'Entry unlocked for 10 minutes', entry: result.rows[0] });
     } catch (err) {

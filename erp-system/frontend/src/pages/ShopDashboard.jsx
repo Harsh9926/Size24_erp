@@ -3,35 +3,94 @@ import * as XLSX from 'xlsx';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
 import {
-    Send, RefreshCw, LogOut, IndianRupee, Store, Lock, Camera,
-    MapPin, AlertCircle, FileSpreadsheet, X, CheckCircle2, XCircle,
-    Loader2, Calendar, Pencil,
+    Send, RefreshCw, LogOut, IndianRupee, Store, Lock,
+    Camera, MapPin, AlertCircle, FileSpreadsheet, X,
+    CheckCircle2, XCircle, Loader2, Calendar, Pencil,
+    Info, Clock, ShieldCheck, ShieldX,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const BACKEND_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
 
 /* ── Geo helpers ─────────────────────────────────────────────────── */
-const toRad = (v) => (v * Math.PI) / 180;
-const getDistance = (lat1, lng1, lat2, lng2) => {
-    const R = 6371000;
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+const toRad  = (v) => (v * Math.PI) / 180;
+const getDist = (lat1, lng1, lat2, lng2) => {
+    const R = 6371000, dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 };
 
-/* ── Date helpers ────────────────────────────────────────────────── */
-const normDate = (d) => (d ? String(d).split('T')[0] : null);
-const fmtDate = (d) => {
+/* ── Date helpers ───────────────────────────────────────────────── */
+const normDate  = (d) => (d ? String(d).split('T')[0] : null);
+const fmtDate   = (d) => {
     if (!d) return '—';
-    const s = normDate(d);
-    if (!s) return '—';
+    const s = normDate(d); if (!s) return '—';
     const [y, mo, day] = s.split('-').map(Number);
     return new Date(y, mo - 1, day).toLocaleDateString('en-IN');
 };
+const getTodayISO = () => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
+};
 
-/* ── Client-side Excel parser ────────────────────────────────────── */
+/* ── Status badge helper ─────────────────────────────────────────── */
+const StatusBadge = ({ status }) => {
+    const map = {
+        PENDING:  { cls: 'bg-amber-100 text-amber-700 border-amber-200',  icon: Clock,        label: 'Pending' },
+        APPROVED: { cls: 'bg-green-100 text-green-700 border-green-200',  icon: ShieldCheck,  label: 'Approved' },
+        REJECTED: { cls: 'bg-red-100   text-red-700   border-red-200',    icon: ShieldX,      label: 'Rejected' },
+    };
+    const { cls, icon: Icon, label } = map[status] || map.PENDING;
+    return (
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full border ${cls}`}>
+            <Icon className="h-3 w-3" />{label}
+        </span>
+    );
+};
+
+/* ── Empty form ──────────────────────────────────────────────────── */
+const EMPTY_FORM = () => ({
+    date:             getTodayISO(),
+    excel_total_sale: '',   // locked from Excel
+    cash:             '',
+    online:           '',   // QR / Card / Bank
+    razorpay:         '',
+});
+
+/* ══════════════════════════════════════════════════════════════════
+   EXCEL PARSER
+   Rule: totalSale = SUM("Received Amount" column) ONLY
+   - Ignores: Total Amount, Paid Amount, Balance Amount
+   - Skips: Total/summary rows, empty rows, header row
+   - Handles currency: "₹ 2555.00", "2,232.00", 0.00, plain numbers
+══════════════════════════════════════════════════════════════════ */
+
+// Normalise column header for comparison (trim + collapse internal spaces + lowercase)
+const normalKey = (k) => String(k).trim().replace(/\s+/g, ' ').toLowerCase();
+
+// Parse currency string OR plain number → float
+// Handles: "₹ 2555.00", "₹2,232.00", "0.00", 2555 (number), "2555.00"
+const parseCurrency = (v) => {
+    if (v == null || v === '') return null; // null = cell is truly empty
+    if (typeof v === 'number') return v;    // xlsx already gave us a number
+    const cleaned = String(v)
+        .replace(/₹/g, '')     // remove rupee symbol
+        .replace(/,/g, '')     // remove thousand separators
+        .trim();               // strip surrounding whitespace
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? null : n;
+};
+
+// A "Total" summary row: any cell whose trimmed value is exactly
+// "total", "grand total", or starts with "total:" (case-insensitive).
+// This is the row Excel/POS systems add at the bottom with summed values.
+const isSummaryRow = (row) =>
+    Object.values(row).some((v) => {
+        if (typeof v !== 'string') return false;
+        const t = v.trim().toLowerCase();
+        return t === 'total' || t === 'grand total' || t === 'total:' || t === 'totals';
+    });
+
 function parseExcelFile(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -39,76 +98,106 @@ function parseExcelFile(file) {
             try {
                 const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
                 const ws = wb.Sheets[wb.SheetNames[0]];
-
-                // Dynamic header detection: scan every row for "Received Amount"
                 const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+                // ── Step 1: find the header row that has "Received Amount" ──
                 const headerIdx = rawRows.findIndex(
-                    (row) =>
-                        Array.isArray(row) &&
+                    (row) => Array.isArray(row) &&
                         row.some(
-                            (c) =>
-                                typeof c === 'string' &&
-                                c.trim().toLowerCase() === 'received amount',
+                            (c) => typeof c === 'string' &&
+                                normalKey(c) === 'received amount',
                         ),
                 );
-
                 if (headerIdx === -1) {
-                    reject(new Error("Invalid Excel format. 'Received Amount' column not found."));
+                    reject(new Error(
+                        "Invalid Excel format. 'Received Amount' column not found. " +
+                        'Check that the column header is exactly "Received Amount".',
+                    ));
                     return;
                 }
 
+                // ── Step 2: parse rows starting from the header ──────────
+                // sheet_to_json uses the header row as keys automatically
                 const rows = XLSX.utils.sheet_to_json(ws, { range: headerIdx, defval: null });
+                if (rows.length === 0) {
+                    reject(new Error('No data rows found after the header row.'));
+                    return;
+                }
 
-                // Column finder (case-insensitive, trims spaces)
-                const find = (row, names) => {
-                    const k = Object.keys(row).find((k) =>
-                        names.includes(k.trim().toLowerCase()),
-                    );
-                    return k !== undefined ? row[k] : null;
-                };
+                // ── Step 3: find the exact "Received Amount" key ─────────
+                // (key preserves original casing from Excel)
+                const raKey = Object.keys(rows[0] ?? {}).find(
+                    (k) => normalKey(k) === 'received amount',
+                );
+                if (!raKey) {
+                    reject(new Error("'Received Amount' column key could not be resolved."));
+                    return;
+                }
 
-                // Safe number conversion (strips ₹, commas, spaces)
-                const toNum = (v) => {
-                    if (v == null || v === '') return 0;
-                    return parseFloat(String(v).replace(/[₹,\s]/g, '')) || 0;
-                };
+                // ── Step 4: find the "Date" key (optional) ───────────────
+                const dateKey = Object.keys(rows[0] ?? {}).find(
+                    (k) => normalKey(k) === 'date',
+                );
 
-                // Date normalizer
                 const parseDate = (v) => {
                     if (!v) return null;
                     if (v instanceof Date) return v.toISOString().split('T')[0];
                     const s = String(v).trim();
-                    // DD/MM/YYYY or DD-MM-YYYY
+                    // dd/mm/yyyy or dd-mm-yyyy
                     const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-                    if (m) {
-                        return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
-                    }
+                    if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
                     const d = new Date(s);
                     return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
                 };
 
-                const mapped = rows
-                    .map((row) => {
-                        const date = parseDate(find(row, ['date']));
-                        const sale = toNum(
-                            find(row, ['received amount', 'sale', 'total sale', 'total_sale']),
-                        );
-                        const cash = toNum(find(row, ['cash']));
-                        const paytm =
-                            toNum(find(row, ['paytm', 'upi', 'qr', 'card', 'bank', 'digital', 'qr/card/bank'])) +
-                            toNum(find(row, ['razorpay', 'online']));
-                        const expense = toNum(find(row, ['expense']));
-                        if (!sale && !cash && !paytm && !expense && !date) return null;
-                        return { date, sale, cash, paytm, expense };
-                    })
-                    .filter(Boolean);
+                // ── Step 5: iterate rows, skip summary/empty rows ────────
+                const today    = getTodayISO();
+                let totalSale  = 0;
+                let excelDate  = null;
+                const previewRows = [];
 
-                if (mapped.length === 0) {
-                    reject(new Error('No valid data rows found in the Excel file.'));
+                for (const row of rows) {
+                    // Skip Total/Grand Total summary rows
+                    if (isSummaryRow(row)) continue;
+
+                    const rawVal = row[raKey];
+
+                    // Skip rows where "Received Amount" cell is empty
+                    if (rawVal == null || rawVal === '') continue;
+
+                    const amt = parseCurrency(rawVal);
+
+                    // Skip rows where value couldn't be parsed as a number
+                    if (amt === null) continue;
+
+                    // Extract date (take first non-null date found)
+                    if (dateKey && !excelDate) {
+                        excelDate = parseDate(row[dateKey]);
+                    }
+
+                    // ✅ Only accumulate from "Received Amount" column
+                    totalSale += amt;
+                    previewRows.push({ date: excelDate, receivedAmount: amt });
+                }
+
+                if (previewRows.length === 0) {
+                    reject(new Error(
+                        "No valid rows found in 'Received Amount' column. " +
+                        'Ensure the column has numeric values and no merge cells.',
+                    ));
                     return;
                 }
 
-                resolve({ mapped });
+                // Validate date — only if Excel has an explicit date column
+                if (excelDate && excelDate !== today) {
+                    reject(new Error(
+                        `Excel date (${excelDate}) is not today (${today}). ` +
+                        "Only today's data is allowed.",
+                    ));
+                    return;
+                }
+
+                resolve({ date: excelDate || today, totalSale, previewRows });
             } catch (err) {
                 reject(new Error('Failed to parse Excel file. ' + err.message));
             }
@@ -124,243 +213,167 @@ function parseExcelFile(file) {
 const ShopDashboard = () => {
     const { logout, user } = useContext(AuthContext);
     const navigate = useNavigate();
-    const fileRef = useRef(null);
-    const xlRef = useRef(null);
+    const fileRef  = useRef(null);
+    const xlRef    = useRef(null);
 
-    /* ── Dashboard data ──────────────────────────────────────────── */
-    const [data, setData] = useState({ summary: {}, latestEntries: [], shop: null });
-    const [loading, setLoading] = useState(true);
-    const [todayLocked, setTodayLocked] = useState(false);
-
-    /* ── GPS ─────────────────────────────────────────────────────── */
-    const [gpsStatus, setGpsStatus] = useState('idle'); // idle|checking|ok|fail|no_coords
-    const [gpsError, setGpsError] = useState('');
-
-    /* ── Photo ───────────────────────────────────────────────────── */
-    const [photoFile, setPhotoFile] = useState(null);
-    const [photoPreview, setPhotoPreview] = useState('');
-
-    /* ── Countdown ───────────────────────────────────────────────── */
-    const [countdown, setCountdown] = useState('');
-
-    /* ── Entry form ──────────────────────────────────────────────── */
-    const [form, setForm] = useState({
-        date: new Date().toISOString().split('T')[0],
-        total_sale: '', cash: '', paytm: '', expense: '',
-    });
-    const [editId, setEditId] = useState(null);       // null = new, number = editing existing
+    /* ── state ───────────────────────────────────────────────────── */
+    const [data,       setData]       = useState({ summary: {}, latestEntries: [], shop: null });
+    const [loading,    setLoading]    = useState(true);
+    const [form,       setForm]       = useState(EMPTY_FORM());
+    const [editId,     setEditId]     = useState(null);
     const [editLocked, setEditLocked] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
-    /* ── Excel state ─────────────────────────────────────────────── */
-    const [xlLoading, setXlLoading]           = useState(false);
-    const [xlError, setXlError]               = useState('');
-    const [xlSuccess, setXlSuccess]           = useState('');
-    const [showPreview, setShowPreview]       = useState(false);
-    const [previewData, setPreviewData]       = useState({ mapped: [] });
-    const [excelRows, setExcelRows]           = useState([]);
-    const [replaceMode, setReplaceMode]       = useState(true);
-    const [excelDrivenTotal, setExcelDrivenTotal] = useState(false);
+    const [gpsStatus, setGpsStatus] = useState('idle');
+    const [gpsError,  setGpsError]  = useState('');
 
-    /* ── Entries view ────────────────────────────────────────────── */
-    const [dateFilter, setDateFilter]   = useState('');
+    const [photoFile,    setPhotoFile]    = useState(null);
+    const [photoPreview, setPhotoPreview] = useState('');
+
+    const [countdown, setCountdown] = useState('');
+
+    const [xlLoading,   setXlLoading]   = useState(false);
+    const [xlError,     setXlError]     = useState('');
+    const [xlSuccess,   setXlSuccess]   = useState('');
+    const [showPreview, setShowPreview] = useState(false);
+    const [previewData, setPreviewData] = useState({ date: '', totalSale: 0, previewRows: [] });
+    const [excelLoaded, setExcelLoaded] = useState(false);
+
+    const [dateFilter,   setDateFilter]   = useState('');
     const [activeRowIdx, setActiveRowIdx] = useState(null);
 
-    /* ── Effects ─────────────────────────────────────────────────── */
+    /* ── effects ─────────────────────────────────────────────────── */
     useEffect(() => { fetchData(); }, []);
-
-    // Auto-dismiss success toast
     useEffect(() => {
         if (!xlSuccess) return;
-        const t = setTimeout(() => setXlSuccess(''), 4000);
+        const t = setTimeout(() => setXlSuccess(''), 5000);
         return () => clearTimeout(t);
     }, [xlSuccess]);
-
-    // Countdown to midnight
     useEffect(() => {
         const tick = () => {
-            const now = new Date();
-            const midnight = new Date();
-            midnight.setHours(24, 0, 0, 0);
-            const diff = Math.max(0, midnight - now);
-            const h = Math.floor(diff / 3600000);
-            const m = Math.floor((diff % 3600000) / 60000);
-            const s = Math.floor((diff % 60000) / 1000);
+            const now = new Date(), mid = new Date();
+            mid.setHours(24,0,0,0);
+            const d = Math.max(0, mid - now);
             setCountdown(
-                `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`,
+                `${String(Math.floor(d/3600000)).padStart(2,'0')}:` +
+                `${String(Math.floor((d%3600000)/60000)).padStart(2,'0')}:` +
+                `${String(Math.floor((d%60000)/1000)).padStart(2,'0')}`,
             );
         };
-        tick();
-        const iv = setInterval(tick, 1000);
-        return () => clearInterval(iv);
+        tick(); const iv = setInterval(tick, 1000); return () => clearInterval(iv);
     }, []);
 
-    // When date filter changes and Excel rows exist, sync form to that date's data
+    /* ── Auto-calculate Total Sale from breakdown ─────────────────── */
     useEffect(() => {
-        if (excelRows.length === 0) return;
-        if (dateFilter) {
-            const row = excelRows.find((r) => r.date === dateFilter);
-            if (row) {
-                setActiveRowIdx(null);
-                setExcelDrivenTotal(false);
-                setForm({
-                    date:       row.date,
-                    total_sale: String(row.sale || ''),
-                    cash:       String(row.cash || ''),
-                    paytm:      String(row.paytm || ''),
-                    expense:    String(row.expense || ''),
-                });
-            }
-        } else {
-            const total = excelRows.reduce((s, r) => s + (r.sale || 0), 0);
-            setForm((prev) => ({ ...prev, total_sale: String(total) }));
-            setExcelDrivenTotal(true);
-        }
-    }, [dateFilter, excelRows]);
+        if (!excelLoaded) return; // Only enforce when Excel locked
+        // total sale stays fixed as excel_total_sale; we don't auto-update it here
+    }, [form.cash, form.online, form.razorpay, excelLoaded]);
 
-    /* ── API ─────────────────────────────────────────────────────── */
+    /* ── Computed validation ──────────────────────────────────────── */
+    const excelTotal   = parseFloat(form.excel_total_sale || 0);
+    const breakdownSum = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0);
+    const difference   = (breakdownSum - excelTotal).toFixed(2);
+    const isMatch      = Math.abs(breakdownSum - excelTotal) <= 0.01;
+
+    /* ── API ──────────────────────────────────────────────────────── */
     const fetchData = async () => {
         try {
             const res = await api.get('/dashboard/shop');
             setData(res.data);
-            const today = new Date().toISOString().split('T')[0];
-            const todayEntry = res.data.latestEntries?.find(
-                (e) => e.date?.split('T')[0] === today,
-            );
-            if (todayEntry) {
-                const unlockActive =
-                    todayEntry.edit_enabled_till &&
-                    new Date() < new Date(todayEntry.edit_enabled_till);
-                setTodayLocked(todayEntry.locked && !unlockActive);
-            } else {
-                setTodayLocked(false);
-            }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
-        }
+        } catch (e) { console.error(e); }
+        finally { setLoading(false); }
     };
 
-    /* ── GPS ─────────────────────────────────────────────────────── */
+    /* ── GPS ──────────────────────────────────────────────────────── */
     const checkGPS = () => {
-        setGpsStatus('checking');
-        setGpsError('');
-        if (!navigator.geolocation) {
-            setGpsStatus('fail');
-            setGpsError('GPS not supported on this browser.');
-            return;
-        }
+        setGpsStatus('checking'); setGpsError('');
+        if (!navigator.geolocation) { setGpsStatus('fail'); setGpsError('GPS not supported.'); return; }
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 const { latitude, longitude } = pos.coords;
                 const shop = data.shop;
-                if (!shop?.latitude || !shop?.longitude) {
-                    setGpsStatus('no_coords');
-                    return;
-                }
-                const dist = getDistance(
-                    latitude, longitude,
-                    parseFloat(shop.latitude), parseFloat(shop.longitude),
-                );
-                if (dist <= 100) {
-                    setGpsStatus('ok');
-                } else {
-                    setGpsStatus('fail');
-                    setGpsError(`You are ${Math.round(dist)}m away. Must be within 100m.`);
-                }
+                if (!shop?.latitude || !shop?.longitude) { setGpsStatus('no_coords'); return; }
+                const dist = getDist(latitude, longitude, +shop.latitude, +shop.longitude);
+                dist <= 100 ? setGpsStatus('ok') : (setGpsStatus('fail'), setGpsError(`${Math.round(dist)}m away. Must be within 100m.`));
             },
-            () => { setGpsStatus('fail'); setGpsError('Location permission denied. Enable GPS.'); },
+            () => { setGpsStatus('fail'); setGpsError('Location permission denied.'); },
         );
     };
 
-    /* ── Photo ───────────────────────────────────────────────────── */
+    /* ── Photo ────────────────────────────────────────────────────── */
     const handlePhotoChange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        setPhotoFile(file);
-        setPhotoPreview(URL.createObjectURL(file));
+        const f = e.target.files[0]; if (!f) return;
+        setPhotoFile(f); setPhotoPreview(URL.createObjectURL(f));
     };
-
     const uploadPhoto = async () => {
         if (!photoFile) return null;
-        const fd = new FormData();
-        fd.append('photo', photoFile);
-        const res = await api.post('/upload', fd, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        const fd = new FormData(); fd.append('photo', photoFile);
+        const res = await api.post('/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
         return res.data.url;
     };
 
-    /* ── Form ────────────────────────────────────────────────────── */
-    const diff = useMemo(() => {
-        const sale = parseFloat(form.total_sale || 0);
-        const sum = parseFloat(form.cash || 0) + parseFloat(form.paytm || 0) + parseFloat(form.expense || 0);
-        return (sale - sum).toFixed(2);
-    }, [form.total_sale, form.cash, form.paytm, form.expense]);
-
-    // Lock state: when editing an existing entry, use that entry's lock; otherwise today's lock
-    const isFormLocked = editId !== null ? editLocked : todayLocked;
+    /* ── Form helpers ─────────────────────────────────────────────── */
+    const isFormLocked = editId !== null ? editLocked : false;
 
     const loadEntryForEdit = useCallback((entry) => {
-        const unlockActive =
-            entry.edit_enabled_till && new Date() < new Date(entry.edit_enabled_till);
+        const unlockActive = entry.edit_enabled_till && new Date() < new Date(entry.edit_enabled_till);
         setEditId(entry.id);
-        setEditLocked(entry.locked && !unlockActive);
-        setExcelDrivenTotal(false);
+        setEditLocked((entry.locked && !unlockActive) || entry.approval_status === 'APPROVED');
+        setExcelLoaded(true);
         setForm({
-            date:       normDate(entry.date) || new Date().toISOString().split('T')[0],
-            total_sale: String(entry.total_sale ?? ''),
-            cash:       String(entry.cash ?? ''),
-            paytm:      String((+(entry.paytm || 0) + +(entry.razorpay || 0))),
-            expense:    String(entry.expense ?? ''),
+            date:             normDate(entry.date) || getTodayISO(),
+            excel_total_sale: String(entry.excel_total_sale ?? entry.total_sale ?? ''),
+            cash:             String(entry.cash      ?? ''),
+            online:           String(entry.online    ?? entry.paytm ?? ''),
+            razorpay:         String(entry.razorpay  ?? ''),
         });
     }, []);
 
     const resetForm = useCallback(() => {
-        setEditId(null);
-        setEditLocked(false);
-        setExcelDrivenTotal(false);
-        setPhotoFile(null);
-        setPhotoPreview('');
-        setActiveRowIdx(null);
-        setForm({
-            date: new Date().toISOString().split('T')[0],
-            total_sale: '', cash: '', paytm: '', expense: '',
-        });
+        setEditId(null); setEditLocked(false); setExcelLoaded(false);
+        setPhotoFile(null); setPhotoPreview(''); setActiveRowIdx(null);
+        setForm(EMPTY_FORM());
     }, []);
 
+    /* ── Submit ───────────────────────────────────────────────────── */
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (diff !== '0.00') return alert('Difference must be ₹0 before submitting');
+        if (!isMatch) return alert('Breakdown must match Total Sale before submitting.');
+        if (excelTotal <= 0) return alert('Please upload an Excel file first to set Total Sale.');
         if (data.shop?.latitude && gpsStatus !== 'ok' && gpsStatus !== 'no_coords')
             return alert('GPS check required. Click "Check Location" first.');
+
         setSubmitting(true);
         try {
-            let url = null;
-            if (photoFile) url = await uploadPhoto();
+            let photoUrl = null;
+            if (photoFile) photoUrl = await uploadPhoto();
+
+            const payload = {
+                date:             form.date,
+                excel_total_sale: form.excel_total_sale,
+                cash:             form.cash     || '0',
+                online:           form.online   || '0',
+                razorpay:         form.razorpay || '0',
+                photo_url:        photoUrl,
+            };
 
             if (editId !== null) {
-                // Update existing entry
-                await api.put(`/entries/${editId}`, { ...form, razorpay: 0, photo_url: url });
-                alert('Entry updated!');
+                await api.put(`/entries/${editId}`, payload);
+                alert('Entry updated and re-submitted for approval!');
             } else {
-                // Create new entry
                 try {
-                    await api.post('/entries', { shop_id: user?.shopId, ...form, razorpay: 0, photo_url: url });
-                    alert('Entry submitted!');
+                    await api.post('/entries', { shop_id: user?.shopId, ...payload });
+                    alert('Entry submitted for admin approval! ✅');
                 } catch (postErr) {
                     if (postErr.response?.status === 409 && postErr.response?.data?.existing) {
-                        // Auto-load existing entry into edit mode
                         loadEntryForEdit(postErr.response.data.existing);
-                        alert('An entry for this date already exists — loaded it for editing.');
+                        alert('An entry for this date already exists — loaded for editing.');
                         setSubmitting(false);
                         return;
                     }
                     throw postErr;
                 }
             }
-
             resetForm();
             fetchData();
         } catch (err) {
@@ -370,23 +383,10 @@ const ShopDashboard = () => {
         }
     };
 
-    /* ── Excel ───────────────────────────────────────────────────── */
-    const fillFormFromRow = useCallback((row) => {
-        setExcelDrivenTotal(false);
-        setForm({
-            date:       normDate(row.date) || new Date().toISOString().split('T')[0],
-            total_sale: String(row.sale ?? row.total_sale ?? ''),
-            cash:       String(row.cash ?? ''),
-            paytm:      String(row.paytm ?? ''),
-            expense:    String(row.expense ?? ''),
-        });
-    }, []);
-
+    /* ── Excel ────────────────────────────────────────────────────── */
     const handleExcelFile = async (file) => {
         if (!file) return;
-        setXlLoading(true);
-        setXlError('');
-        setXlSuccess('');
+        setXlLoading(true); setXlError(''); setXlSuccess('');
         try {
             const result = await parseExcelFile(file);
             setPreviewData(result);
@@ -399,67 +399,31 @@ const ShopDashboard = () => {
         }
     };
 
+    // Confirms Excel preview — sets ONLY date + totalSale; breakdown is filled manually
     const confirmExcel = () => {
-        const mapped = previewData.mapped;
-        const total = mapped.reduce((s, r) => s + (r.sale || 0), 0);
-        setExcelRows(mapped);
+        const { date, totalSale, previewRows } = previewData;
         setShowPreview(false);
-        setActiveRowIdx(null);
-        setForm((prev) => ({ ...prev, total_sale: String(total), cash: '', paytm: '', expense: '' }));
-        setExcelDrivenTotal(true);
-        setXlSuccess(`Excel loaded — ${mapped.length} rows · Total Sale ₹${total.toLocaleString('en-IN')}`);
-    };
-
-    const clearExcel = () => {
-        setExcelRows([]);
-        setActiveRowIdx(null);
-        setXlError('');
-        setXlSuccess('');
-        setExcelDrivenTotal(false);
-    };
-
-    /* ── Combined + filtered entries ─────────────────────────────── */
-    const combinedEntries = useMemo(() => {
-        const apiEntries = data.latestEntries || [];
-        if (excelRows.length === 0) return apiEntries;
-
-        const toXlEntry = (r, i) => ({
-            id: `xl-${i}`, date: r.date, total_sale: r.sale,
-            cash: r.cash, paytm: r.paytm, razorpay: 0, expense: r.expense,
-            locked: false, photo_url: null, _excel: true, _raw: r,
+        setExcelLoaded(true);
+        setForm({
+            date:             date || getTodayISO(),
+            excel_total_sale: String(totalSale.toFixed(2)),
+            cash:             '',
+            online:           '',
+            razorpay:         '',
         });
+        setXlSuccess(
+            `✓ Excel loaded — ${previewRows.length} row(s) · Total Sale ₹${totalSale.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,
+        );
+    };
 
-        if (replaceMode) return excelRows.map(toXlEntry);
-
-        // Merge: add Excel rows only for dates not already in API
-        const result = [...apiEntries];
-        for (let i = 0; i < excelRows.length; i++) {
-            const xr = excelRows[i];
-            if (!apiEntries.some((e) => normDate(e.date) === normDate(xr.date))) {
-                result.push(toXlEntry(xr, i));
-            }
-        }
-        return result.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-    }, [data.latestEntries, excelRows, replaceMode]);
-
+    /* ── Entries display ──────────────────────────────────────────── */
+    const entries = data.latestEntries || [];
     const displayEntries = useMemo(
-        () =>
-            dateFilter
-                ? combinedEntries.filter((e) => normDate(e.date) === dateFilter)
-                : combinedEntries,
-        [combinedEntries, dateFilter],
+        () => dateFilter ? entries.filter((e) => normDate(e.date) === dateFilter) : entries,
+        [entries, dateFilter],
     );
 
-    const handleRowClick = (entry, idx) => {
-        setActiveRowIdx(idx);
-        if (entry._excel) {
-            fillFormFromRow(entry._raw);
-        } else {
-            loadEntryForEdit(entry);
-        }
-    };
-
-    /* ── Style helper ────────────────────────────────────────────── */
+    /* ── Input style helper ───────────────────────────────────────── */
     const inputCls = (disabled) =>
         `w-full px-3 py-2.5 border rounded-lg text-sm outline-none transition-colors ${
             disabled
@@ -467,9 +431,9 @@ const ShopDashboard = () => {
                 : 'border-gray-200 focus:ring-2 focus:ring-teal-500 bg-white'
         }`;
 
-    /* ── Loading screen ──────────────────────────────────────────── */
-    if (loading)
-        return <div className="p-8 text-center text-gray-400 animate-pulse">Loading...</div>;
+    const fmtAmt = (v) => `₹${parseFloat(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+
+    if (loading) return <div className="p-8 text-center text-gray-400 animate-pulse">Loading...</div>;
 
     /* ══════════════════════════════════════════════════════════════
        RENDER
@@ -477,23 +441,19 @@ const ShopDashboard = () => {
     return (
         <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
 
-            {/* ── Navbar ──────────────────────────────────────────── */}
+            {/* Navbar */}
             <nav className="bg-teal-700 px-8 py-4 flex items-center justify-between shadow-md">
                 <div>
                     <h1 className="text-white text-lg font-bold tracking-wide">Shop Dashboard</h1>
                     <p className="text-teal-200 text-xs mt-0.5 flex items-center gap-1.5">
                         {user?.name || user?.mobile}
-                        {user?.shopName && (
-                            <><span>·</span><Store className="h-3 w-3" />{user.shopName}</>
-                        )}
+                        {user?.shopName && <><span>·</span><Store className="h-3 w-3" />{user.shopName}</>}
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
                     <div className="text-center">
                         <p className="text-teal-300 text-xs">Locks in</p>
-                        <p className={`font-mono font-bold text-sm ${countdown < '00:30:00' ? 'text-red-300' : 'text-white'}`}>
-                            {countdown}
-                        </p>
+                        <p className={`font-mono font-bold text-sm ${countdown < '00:30:00' ? 'text-red-300' : 'text-white'}`}>{countdown}</p>
                     </div>
                     <button
                         onClick={() => { logout(); navigate('/login'); }}
@@ -506,149 +466,151 @@ const ShopDashboard = () => {
 
             <div className="max-w-7xl mx-auto px-4 py-8">
 
-                {/* ── Summary Cards ───────────────────────────────── */}
+                {/* Summary Cards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                     {[
-                        ['Sales',   data.summary?.total_sales,   'text-teal-600'],
-                        ['Cash',    data.summary?.total_cash,    'text-blue-600'],
-                        ['Online',  data.summary?.total_online,  'text-purple-600'],
-                        ['Expense', data.summary?.total_expense, 'text-red-500'],
-                    ].map(([label, val, cls]) => (
-                        <div
-                            key={label}
-                            className="rounded-xl p-4 shadow-sm border"
-                            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}
-                        >
-                            <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
-                                {label} (this month)
-                            </p>
-                            <p className={`text-xl font-bold ${cls}`}>
-                                ₹{Number(val || 0).toLocaleString('en-IN')}
-                            </p>
+                        ['Sales',     data.summary?.total_sales,    'text-teal-600'],
+                        ['Cash',      data.summary?.total_cash,     'text-blue-600'],
+                        ['Online',    data.summary?.total_online,   'text-purple-600'],
+                        ['RazorPay',  data.summary?.total_razorpay, 'text-orange-500'],
+                    ].map(([l, v, c]) => (
+                        <div key={l} className="rounded-xl p-4 shadow-sm border"
+                            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                            <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>{l} (this month)</p>
+                            <p className={`text-xl font-bold ${c}`}>₹{Number(v || 0).toLocaleString('en-IN')}</p>
                         </div>
                     ))}
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
-                    {/* ── Entry Form ──────────────────────────────── */}
-                    <div
-                        className="lg:col-span-2 rounded-xl shadow-sm border p-6"
-                        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}
-                    >
-                        <h3
-                            className="text-base font-bold mb-1 flex items-center gap-2 pb-3 border-b"
-                            style={{ color: 'var(--text-primary)', borderColor: 'var(--border-color)' }}
-                        >
+                    {/* ── ENTRY FORM ─────────────────────────────────── */}
+                    <div className="lg:col-span-2 rounded-xl shadow-sm border p-6"
+                        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+
+                        <h3 className="text-base font-bold mb-1 flex items-center gap-2 pb-3 border-b"
+                            style={{ color: 'var(--text-primary)', borderColor: 'var(--border-color)' }}>
                             <IndianRupee className="h-4 w-4 text-teal-600" />
                             {editId !== null ? `Edit Entry — ${fmtDate(form.date)}` : 'New Daily Entry'}
                             {editId !== null && (
-                                <button
-                                    type="button"
-                                    onClick={resetForm}
-                                    title="Cancel editing"
-                                    className="ml-auto text-xs font-normal px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
-                                >
+                                <button type="button" onClick={resetForm}
+                                    className="ml-auto text-xs font-normal px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200 hover:bg-red-50 hover:text-red-600 transition-colors">
                                     Cancel
                                 </button>
                             )}
-                            {editId === null && activeRowIdx !== null && (
-                                <span className="ml-auto text-xs font-normal px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
-                                    Row filled ✓
-                                </span>
-                            )}
                         </h3>
 
-                        {/* Locked warning */}
+                        {/* Locked / approved warning */}
                         {isFormLocked && (
                             <div className="my-4 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
                                 <Lock className="h-4 w-4 flex-shrink-0" />
                                 <div>
-                                    <p className="text-sm font-semibold">
-                                        {editId !== null ? 'This entry is locked' : "Today's entry is locked"}
-                                    </p>
-                                    <p className="text-xs mt-0.5">Contact admin to unlock.</p>
+                                    <p className="text-sm font-semibold">This entry is approved and locked</p>
+                                    <p className="text-xs mt-0.5">Contact admin to make changes.</p>
                                 </div>
                             </div>
                         )}
 
                         <form onSubmit={handleSubmit} className="space-y-3 mt-4">
-                            {/* Date */}
+
+                            {/* ── Date (read-only, from Excel) ───────── */}
                             <div>
-                                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Date</label>
-                                <input
-                                    type="date"
-                                    className={inputCls(isFormLocked || editId !== null)}
-                                    value={form.date}
-                                    onChange={(e) => setForm({ ...form, date: e.target.value })}
-                                    disabled={isFormLocked || editId !== null}
-                                    required
-                                />
+                                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                                    Date
+                                    <span className="ml-1 text-[10px] font-normal text-amber-600">(from Excel · read-only)</span>
+                                </label>
+                                <div className="relative">
+                                    <input id="field-date" type="date"
+                                        className={inputCls(true) + ' pr-8'}
+                                        value={form.date} disabled readOnly />
+                                    <Lock className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                                </div>
                             </div>
 
-                            {/* Total Sale */}
+                            {/* ── Total Sale (locked from Excel) ─────── */}
                             <div>
-                                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Total Sale (₹)</label>
-                                <input
-                                    type="number"
-                                    className={inputCls(isFormLocked || excelDrivenTotal) + ' font-bold'}
-                                    value={form.total_sale}
-                                    onChange={(e) => !excelDrivenTotal && setForm({ ...form, total_sale: e.target.value })}
-                                    placeholder="0.00"
-                                    disabled={isFormLocked}
-                                    required
-                                />
-                                {excelDrivenTotal && (
-                                    <p className="mt-1 flex items-center gap-1 text-xs text-green-600">
+                                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                                    Total Sale (₹)
+                                    <span className="ml-1 text-[10px] font-normal text-teal-600">(locked from Excel)</span>
+                                </label>
+                                <div className="relative">
+                                    <input id="field-total-sale" type="text"
+                                        className={inputCls(true) + ' font-bold text-teal-700 pr-8'}
+                                        value={excelLoaded ? `₹ ${fmtAmt(form.excel_total_sale).replace('₹','').trim()}` : 'Upload Excel to set Total Sale'}
+                                        disabled readOnly
+                                        aria-label="Total Sale (locked from Excel)" />
+                                    <Lock className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                                </div>
+                                {!excelLoaded && (
+                                    <p className="mt-1 text-[11px] text-amber-600 flex items-center gap-1">
+                                        <Info className="h-3 w-3" />
+                                        Upload Excel first — Total Sale will be automatically set.
+                                    </p>
+                                )}
+                                {excelLoaded && (
+                                    <p className="mt-1 text-[11px] text-teal-600 flex items-center gap-1">
                                         <CheckCircle2 className="h-3 w-3" />
-                                        Auto-calculated from uploaded Excel
+                                        Total Sale is locked from Excel. Upload again to change it.
                                     </p>
                                 )}
                             </div>
 
-                            {/* Cash / Expense */}
-                            <div className="grid grid-cols-2 gap-2">
-                                {[['cash', 'Cash'], ['expense', 'Expense']].map(([f, l]) => (
-                                    <div key={f}>
-                                        <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>{l}</label>
-                                        <input
-                                            type="number"
-                                            className={inputCls(isFormLocked)}
-                                            value={form[f]}
-                                            onChange={(e) => setForm({ ...form, [f]: e.target.value })}
-                                            placeholder="0"
-                                            disabled={isFormLocked}
-                                            required
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* QR / CARD / BANK */}
+                            {/* ── Cash ──────────────────────────────── */}
                             <div>
-                                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>QR / CARD / BANK</label>
-                                <input
-                                    type="number"
-                                    className={inputCls(isFormLocked)}
-                                    value={form.paytm}
-                                    onChange={(e) => setForm({ ...form, paytm: e.target.value })}
-                                    placeholder="0"
-                                    disabled={isFormLocked}
-                                    required
-                                />
+                                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Cash (₹)</label>
+                                <input id="field-cash" type="number" min="0" step="0.01"
+                                    className={inputCls(isFormLocked || !excelLoaded)}
+                                    value={form.cash}
+                                    onChange={(e) => !isFormLocked && excelLoaded && setForm((p) => ({ ...p, cash: e.target.value }))}
+                                    placeholder="0.00"
+                                    disabled={isFormLocked || !excelLoaded} />
                             </div>
 
-                            {/* Difference indicator */}
-                            {!isFormLocked && (
-                                <div className={`p-3 rounded-lg border ${diff === '0.00' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                                    <div className="flex justify-between">
-                                        <span className="text-xs font-semibold text-gray-600">Difference:</span>
-                                        <span className={`text-lg font-bold ${diff === '0.00' ? 'text-green-600' : 'text-red-600'}`}>
-                                            ₹{diff}
+                            {/* ── RazorPay ──────────────────────────── */}
+                            <div>
+                                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>RazorPay (₹)</label>
+                                <input id="field-razorpay" type="number" min="0" step="0.01"
+                                    className={inputCls(isFormLocked || !excelLoaded)}
+                                    value={form.razorpay}
+                                    onChange={(e) => !isFormLocked && excelLoaded && setForm((p) => ({ ...p, razorpay: e.target.value }))}
+                                    placeholder="0.00"
+                                    disabled={isFormLocked || !excelLoaded} />
+                            </div>
+
+                            {/* ── QR / Card / Bank ──────────────────── */}
+                            <div>
+                                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>QR / Card / Bank (₹)</label>
+                                <input id="field-online" type="number" min="0" step="0.01"
+                                    className={inputCls(isFormLocked || !excelLoaded)}
+                                    value={form.online}
+                                    onChange={(e) => !isFormLocked && excelLoaded && setForm((p) => ({ ...p, online: e.target.value }))}
+                                    placeholder="0.00"
+                                    disabled={isFormLocked || !excelLoaded} />
+                            </div>
+
+                            {/* ── Validation indicator ───────────────── */}
+                            {excelLoaded && (
+                                <div className={`p-3 rounded-lg border transition-all ${isMatch
+                                    ? 'bg-green-50 border-green-200'
+                                    : 'bg-red-50 border-red-200'}`}>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-xs font-semibold text-gray-600">Breakdown Sum</span>
+                                        <span className={`text-base font-extrabold ${isMatch ? 'text-green-600' : 'text-red-600'}`}>
+                                            {fmtAmt(breakdownSum)}
                                         </span>
                                     </div>
-                                    <p className="text-xs text-center mt-0.5 text-gray-400">
-                                        Must be ₹0.00 · Total Sale = Cash + QR/CARD/BANK + Expense
+                                    <div className="flex justify-between items-center mt-1">
+                                        <span className="text-xs font-semibold text-gray-600">Total Sale</span>
+                                        <span className="text-base font-extrabold text-teal-700">{fmtAmt(excelTotal)}</span>
+                                    </div>
+                                    <div className={`mt-2 pt-2 border-t ${isMatch ? 'border-green-200' : 'border-red-200'} flex items-center justify-center gap-1.5`}>
+                                        {isMatch
+                                            ? <><CheckCircle2 className="h-4 w-4 text-green-600" /><span className="text-xs font-bold text-green-700">Breakdown matches ✓</span></>
+                                            : <><XCircle className="h-4 w-4 text-red-600" /><span className="text-xs font-bold text-red-700">Breakdown must match Total Sale</span></>
+                                        }
+                                    </div>
+                                    <p className="text-[10px] text-center mt-1 text-gray-400">
+                                        Cash + RazorPay + QR/Card/Bank = Total Sale
                                     </p>
                                 </div>
                             )}
@@ -656,183 +618,111 @@ const ShopDashboard = () => {
                             {/* GPS check */}
                             {!isFormLocked && data.shop?.latitude && (
                                 <div className="space-y-1">
-                                    <button
-                                        type="button"
-                                        onClick={checkGPS}
+                                    <button type="button" onClick={checkGPS}
                                         className={`w-full py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 border transition-colors ${
                                             gpsStatus === 'ok'       ? 'bg-green-50 border-green-300 text-green-700' :
                                             gpsStatus === 'fail'     ? 'bg-red-50 border-red-300 text-red-700' :
                                             gpsStatus === 'checking' ? 'bg-blue-50 border-blue-200 text-blue-600 animate-pulse' :
-                                                                       'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-                                        }`}
-                                    >
+                                                                       'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'}`}>
                                         <MapPin className="h-4 w-4" />
-                                        {gpsStatus === 'ok'       ? '✓ Location Verified' :
+                                        {gpsStatus === 'ok' ? '✓ Location Verified' :
                                          gpsStatus === 'checking' ? 'Checking...' :
-                                         gpsStatus === 'fail'     ? '✗ Location Failed' : 'Check Location'}
+                                         gpsStatus === 'fail' ? '✗ Location Failed' : 'Check Location'}
                                     </button>
-                                    {gpsError && (
-                                        <p className="text-xs text-red-600 flex items-center gap-1">
-                                            <AlertCircle className="h-3 w-3" />{gpsError}
-                                        </p>
-                                    )}
+                                    {gpsError && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle className="h-3 w-3" />{gpsError}</p>}
                                 </div>
                             )}
 
-                            {/* Photo upload */}
+                            {/* Photo */}
                             {!isFormLocked && (
                                 <div>
-                                    <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
-                                        Photo Proof (optional)
-                                    </label>
+                                    <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Photo Proof (optional)</label>
                                     <div className="flex items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => fileRef.current?.click()}
-                                            className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
-                                        >
+                                        <button type="button" onClick={() => fileRef.current?.click()}
+                                            className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
                                             <Camera className="h-3.5 w-3.5" />
                                             {photoFile ? 'Change Photo' : 'Upload Photo'}
                                         </button>
-                                        {photoPreview && (
-                                            <img src={photoPreview} alt="preview" className="h-10 w-10 object-cover rounded-md border" />
-                                        )}
+                                        {photoPreview && <img src={photoPreview} alt="preview" className="h-10 w-10 object-cover rounded-md border" />}
                                     </div>
                                     <input ref={fileRef} type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
                                 </div>
                             )}
 
-                            {/* Submit button */}
-                            <button
-                                type="submit"
-                                disabled={
-                                    submitting || isFormLocked || diff !== '0.00' ||
-                                    (data.shop?.latitude && gpsStatus !== 'ok' && gpsStatus !== 'no_coords')
-                                }
+                            {/* Submit */}
+                            <button id="btn-submit-entry" type="submit"
+                                disabled={submitting || isFormLocked || !excelLoaded || !isMatch ||
+                                    (data.shop?.latitude && gpsStatus !== 'ok' && gpsStatus !== 'no_coords')}
                                 className={`w-full py-2.5 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2 transition-all ${
-                                    submitting || isFormLocked || diff !== '0.00' ||
+                                    submitting || isFormLocked || !excelLoaded || !isMatch ||
                                     (data.shop?.latitude && gpsStatus !== 'ok' && gpsStatus !== 'no_coords')
                                         ? 'bg-gray-300 cursor-not-allowed'
-                                        : 'bg-teal-600 hover:bg-teal-700'
-                                }`}
-                            >
-                                <Send className="h-4 w-4" />
+                                        : 'bg-teal-600 hover:bg-teal-700 shadow-sm'
+                                }`}>
                                 {submitting
-                                    ? (editId !== null ? 'Updating...' : 'Submitting...')
+                                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Submitting…</>
                                     : isFormLocked
-                                    ? 'Entry Locked'
+                                    ? <><Lock className="h-4 w-4" /> Entry Locked</>
                                     : editId !== null
-                                    ? 'Update Entry'
-                                    : 'Submit Entry'}
+                                    ? <><Send className="h-4 w-4" /> Re-submit for Approval</>
+                                    : <><Send className="h-4 w-4" /> Submit for Approval</>
+                                }
                             </button>
+                            {excelLoaded && !isFormLocked && (
+                                <p className="text-[11px] text-center text-gray-400">
+                                    Entry will be sent to admin for approval before it appears in final records.
+                                </p>
+                            )}
                         </form>
                     </div>
 
-                    {/* ── My Entries ──────────────────────────────── */}
-                    <div
-                        className="lg:col-span-3 rounded-xl shadow-sm border overflow-hidden"
-                        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}
-                    >
+                    {/* ── MY ENTRIES ─────────────────────────────────── */}
+                    <div className="lg:col-span-3 rounded-xl shadow-sm border overflow-hidden"
+                        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+
                         {/* Header */}
                         <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--border-color)' }}>
-                            {/* Title row */}
                             <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-                                    My Entries
-                                </h3>
+                                <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>My Entries</h3>
                                 <div className="flex items-center gap-2">
-                                    {/* Upload Excel button */}
-                                    <button
-                                        onClick={() => xlRef.current?.click()}
-                                        disabled={xlLoading}
+                                    <button id="btn-upload-excel" onClick={() => xlRef.current?.click()} disabled={xlLoading}
                                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg text-white transition-all shadow-sm"
-                                        style={{
-                                            background: xlLoading
-                                                ? '#9ca3af'
-                                                : 'linear-gradient(90deg,#059669,#10b981)',
-                                        }}
-                                    >
+                                        style={{ background: xlLoading ? '#9ca3af' : 'linear-gradient(90deg,#059669,#10b981)' }}>
                                         {xlLoading
                                             ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Processing…</>
-                                            : <><FileSpreadsheet className="h-3.5 w-3.5" /> Upload Excel</>
-                                        }
+                                            : <><FileSpreadsheet className="h-3.5 w-3.5" /> Upload Excel</>}
                                     </button>
-                                    <input
-                                        ref={xlRef}
-                                        type="file"
-                                        accept=".xls,.xlsx"
-                                        className="hidden"
-                                        onChange={(e) => handleExcelFile(e.target.files[0])}
-                                    />
-
-                                    {/* Refresh */}
-                                    <button onClick={fetchData} className="p-1 text-teal-600 hover:text-teal-800">
-                                        <RefreshCw className="h-4 w-4" />
-                                    </button>
+                                    <input ref={xlRef} type="file" accept=".xls,.xlsx" className="hidden"
+                                        onChange={(e) => handleExcelFile(e.target.files[0])} />
+                                    <button onClick={fetchData} className="p-1 text-teal-600 hover:text-teal-800"><RefreshCw className="h-4 w-4" /></button>
                                 </div>
                             </div>
 
-                            {/* Filter row */}
-                            <div className="flex flex-wrap items-center gap-3">
-                                {/* Date filter */}
-                                <div className="flex items-center gap-1.5">
-                                    <Calendar className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
-                                    <input
-                                        type="date"
-                                        value={dateFilter}
-                                        onChange={(e) => setDateFilter(e.target.value)}
-                                        className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-teal-400"
-                                        style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
-                                    />
-                                    {dateFilter && (
-                                        <button
-                                            onClick={() => setDateFilter('')}
-                                            className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-0.5"
-                                        >
-                                            <X className="h-3 w-3" /> Clear
-                                        </button>
-                                    )}
-                                </div>
-
-                                {/* Replace / Merge toggle — shown only when Excel rows are loaded */}
-                                {excelRows.length > 0 && (
-                                    <div className="flex items-center gap-1.5 ml-auto">
-                                        <span className="text-xs text-gray-400">Excel:</span>
-                                        <button
-                                            onClick={() => setReplaceMode((v) => !v)}
-                                            className={`px-2.5 py-1 text-xs font-semibold rounded-full border transition-colors ${
-                                                replaceMode
-                                                    ? 'bg-orange-50 border-orange-200 text-orange-700'
-                                                    : 'bg-blue-50 border-blue-200 text-blue-700'
-                                            }`}
-                                        >
-                                            {replaceMode ? '⟳ Replace' : '⊕ Merge'}
-                                        </button>
-                                        <button
-                                            onClick={clearExcel}
-                                            title="Remove Excel data"
-                                            className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
-                                        >
-                                            <X className="h-3.5 w-3.5" />
-                                        </button>
-                                    </div>
+                            {/* Date filter */}
+                            <div className="flex items-center gap-1.5">
+                                <Calendar className="h-3.5 w-3.5 text-gray-400" />
+                                <input type="date" value={dateFilter}
+                                    onChange={(e) => setDateFilter(e.target.value)}
+                                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-teal-400"
+                                    style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)' }} />
+                                {dateFilter && (
+                                    <button onClick={() => setDateFilter('')} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-0.5">
+                                        <X className="h-3 w-3" /> Clear
+                                    </button>
                                 )}
                             </div>
 
                             {/* Status messages */}
                             {xlSuccess && (
                                 <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-green-700 text-xs font-medium">
-                                    <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
-                                    {xlSuccess}
+                                    <CheckCircle2 className="h-3.5 w-3.5" />{xlSuccess}
                                 </div>
                             )}
                             {xlError && (
                                 <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
                                     <XCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                                     <span className="flex-1">{xlError}</span>
-                                    <button onClick={() => setXlError('')}>
-                                        <X className="h-3 w-3" />
-                                    </button>
+                                    <button onClick={() => setXlError('')}><X className="h-3 w-3" /></button>
                                 </div>
                             )}
                         </div>
@@ -842,118 +732,47 @@ const ShopDashboard = () => {
                             <table className="min-w-full divide-y" style={{ borderColor: 'var(--border-color)' }}>
                                 <thead style={{ background: 'var(--bg-primary)' }}>
                                     <tr>
-                                        {['Date', 'Sale', 'Cash', 'Online', 'Expense', 'Photo', 'Status', ''].map((h) => (
-                                            <th
-                                                key={h}
-                                                className="px-4 py-3 text-left text-xs font-semibold uppercase"
-                                                style={{ color: 'var(--text-secondary)' }}
-                                            >
-                                                {h}
-                                            </th>
+                                        {['Date', 'Total Sale', 'Cash', 'RazorPay', 'QR/Card/Bank', 'Status', ''].map((h) => (
+                                            <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase"
+                                                style={{ color: 'var(--text-secondary)' }}>{h}</th>
                                         ))}
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {displayEntries.map((e, idx) => (
-                                        <tr
-                                            key={e.id || idx}
-                                            onClick={() => handleRowClick(e, idx)}
-                                            title="Click to auto-fill form"
+                                    {displayEntries.map((e, idx) => {
+                                        const status = e.approval_status || 'PENDING';
+                                        return (
+                                        <tr key={e.id || idx}
                                             className="cursor-pointer transition-colors hover:opacity-90"
-                                            style={{
-                                                borderTop: '1px solid var(--border-color)',
-                                                background:
-                                                    activeRowIdx === idx
-                                                        ? 'rgba(20,184,166,0.10)'
-                                                        : e._excel
-                                                        ? 'rgba(16,185,129,0.04)'
-                                                        : undefined,
-                                            }}
-                                        >
-                                            {/* Date */}
-                                            <td className="px-4 py-3 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                                                <div className="flex items-center gap-1.5">
-                                                    {fmtDate(e.date)}
-                                                    {e._excel && (
-                                                        <span className="text-[10px] px-1 py-0.5 rounded bg-green-100 text-green-700 font-bold leading-none">
-                                                            XL
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </td>
-
-                                            {/* Sale */}
-                                            <td className="px-4 py-3 text-sm font-bold text-teal-700">
-                                                ₹{Number(e.total_sale || 0).toLocaleString('en-IN')}
-                                            </td>
-
-                                            {/* Cash */}
-                                            <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                                                ₹{Number(e.cash || 0).toLocaleString('en-IN')}
-                                            </td>
-
-                                            {/* Online */}
-                                            <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                                                ₹{(+(e.paytm || 0) + +(e.razorpay || 0)).toFixed(0)}
-                                            </td>
-
-                                            {/* Expense */}
-                                            <td className="px-4 py-3 text-sm text-red-500">
-                                                ₹{Number(e.expense || 0).toLocaleString('en-IN')}
-                                            </td>
-
-                                            {/* Photo */}
+                                            style={{ borderTop: '1px solid var(--border-color)', background: activeRowIdx === idx ? 'rgba(20,184,166,0.10)' : undefined }}
+                                            onClick={() => { setActiveRowIdx(idx); loadEntryForEdit(e); }}>
+                                            <td className="px-4 py-3 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{fmtDate(e.date)}</td>
+                                            <td className="px-4 py-3 text-sm font-bold text-teal-700">₹{Number(e.total_sale || 0).toLocaleString('en-IN')}</td>
+                                            <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>₹{Number(e.cash || 0).toLocaleString('en-IN')}</td>
+                                            <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>₹{Number(e.razorpay || 0).toLocaleString('en-IN')}</td>
+                                            <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>₹{Number(e.online ?? e.paytm ?? 0).toLocaleString('en-IN')}</td>
                                             <td className="px-4 py-3">
-                                                {e.photo_url ? (
-                                                    <a
-                                                        href={`${BACKEND_URL}${e.photo_url}`}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        onClick={(ev) => ev.stopPropagation()}
-                                                    >
-                                                        <img
-                                                            src={`${BACKEND_URL}${e.photo_url}`}
-                                                            alt="proof"
-                                                            className="h-8 w-8 object-cover rounded-md border hover:opacity-80"
-                                                        />
-                                                    </a>
-                                                ) : (
-                                                    <span className="text-gray-300">—</span>
+                                                <StatusBadge status={status} />
+                                                {status === 'REJECTED' && e.rejection_note && (
+                                                    <p className="text-[10px] text-red-500 mt-0.5 max-w-[120px] truncate" title={e.rejection_note}>
+                                                        {e.rejection_note}
+                                                    </p>
                                                 )}
                                             </td>
-
-                                            {/* Status */}
                                             <td className="px-4 py-3">
-                                                <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${e.locked ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                                                    {e.locked ? 'Locked' : 'Open'}
-                                                </span>
-                                            </td>
-
-                                            {/* Edit */}
-                                            <td className="px-4 py-3">
-                                                {!e._excel && (
-                                                    <button
-                                                        type="button"
-                                                        title="Edit this entry"
+                                                {status !== 'APPROVED' && (
+                                                    <button type="button" title="Edit entry"
                                                         onClick={(ev) => { ev.stopPropagation(); loadEntryForEdit(e); }}
-                                                        className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
-                                                    >
+                                                        className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors">
                                                         <Pencil className="h-3.5 w-3.5" />
                                                     </button>
                                                 )}
                                             </td>
                                         </tr>
-                                    ))}
-
-                                    {/* Empty state */}
+                                        );
+                                    })}
                                     {displayEntries.length === 0 && (
-                                        <tr>
-                                            <td colSpan="8" className="text-center py-12 text-gray-400 text-sm">
-                                                {dateFilter
-                                                    ? `No entries found for ${fmtDate(dateFilter)}`
-                                                    : 'No entries yet'}
-                                            </td>
-                                        </tr>
+                                        <tr><td colSpan="7" className="text-center py-12 text-gray-400 text-sm">No entries yet</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -962,119 +781,62 @@ const ShopDashboard = () => {
                 </div>
             </div>
 
-            {/* ══════════════════════════════════════════════════════
-                PREVIEW MODAL
-            ══════════════════════════════════════════════════════ */}
+            {/* ── EXCEL PREVIEW MODAL ──────────────────────────────────── */}
             {showPreview && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center p-4"
-                    style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
-                >
-                    <div
-                        className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl overflow-hidden shadow-2xl"
-                        style={{ background: 'var(--bg-surface)' }}
-                    >
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                    style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}>
+                    <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl overflow-hidden shadow-2xl"
+                        style={{ background: 'var(--bg-surface)' }}>
+
                         {/* Modal header */}
-                        <div
-                            className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0"
-                            style={{ borderColor: 'var(--border-color)' }}
-                        >
+                        <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0"
+                            style={{ borderColor: 'var(--border-color)' }}>
                             <div className="flex items-center gap-3">
                                 <div className="p-2 rounded-xl bg-green-50">
                                     <FileSpreadsheet className="h-5 w-5 text-green-600" />
                                 </div>
                                 <div>
-                                    <h3 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
-                                        Excel Preview
-                                    </h3>
+                                    <h3 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Excel Preview</h3>
                                     <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                                        {previewData.mapped.length} rows parsed — review and confirm
+                                        {previewData.previewRows.length} transaction row(s) · confirm to load Total Sale
                                     </p>
                                 </div>
                             </div>
-                            <button
-                                onClick={() => setShowPreview(false)}
-                                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                            >
+                            <button onClick={() => setShowPreview(false)}
+                                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
                                 <X className="h-5 w-5 text-gray-400" />
                             </button>
                         </div>
 
-                        {/* Replace / Merge toggle */}
-                        <div
-                            className="px-6 py-3 border-b flex items-center gap-3 flex-shrink-0"
-                            style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}
-                        >
-                            <span className="text-xs font-semibold flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>
-                                On confirm:
+                        {/* Info banner */}
+                        <div className="mx-6 mt-4 flex items-start gap-2 px-4 py-3 rounded-xl bg-teal-50 border border-teal-200 text-teal-800 text-xs">
+                            <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                            <span>
+                                <strong>Total Sale</strong> is auto-calculated as the sum of all Received Amount values.
+                                You will enter <strong>Cash, RazorPay, and QR/Card/Bank</strong> manually after loading.
                             </span>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => setReplaceMode(true)}
-                                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-                                        replaceMode
-                                            ? 'bg-orange-500 text-white border-orange-500'
-                                            : 'border-gray-200 text-gray-600 hover:border-orange-300'
-                                    }`}
-                                    style={{ background: replaceMode ? undefined : 'var(--bg-surface)' }}
-                                >
-                                    ⟳ Replace existing entries
-                                </button>
-                                <button
-                                    onClick={() => setReplaceMode(false)}
-                                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-                                        !replaceMode
-                                            ? 'bg-blue-500 text-white border-blue-500'
-                                            : 'border-gray-200 text-gray-600 hover:border-blue-300'
-                                    }`}
-                                    style={{ background: !replaceMode ? undefined : 'var(--bg-surface)' }}
-                                >
-                                    ⊕ Merge with existing
-                                </button>
-                            </div>
                         </div>
 
-                        {/* Preview table — scrollable */}
-                        <div className="flex-1 overflow-auto">
+                        {/* Preview table */}
+                        <div className="flex-1 overflow-auto mt-4">
                             <table className="min-w-full text-sm">
-                                <thead
-                                    className="sticky top-0"
-                                    style={{ background: 'var(--bg-primary)' }}
-                                >
+                                <thead className="sticky top-0" style={{ background: 'var(--bg-primary)' }}>
                                     <tr>
-                                        {['#', 'Date', 'Sale (₹)', 'Cash (₹)', 'QR / CARD / BANK (₹)', 'Expense (₹)'].map((h) => (
-                                            <th
-                                                key={h}
-                                                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
-                                                style={{ color: 'var(--text-secondary)' }}
-                                            >
-                                                {h}
-                                            </th>
+                                        {['#', 'Date', 'Received Amount (₹)'].map((h) => (
+                                            <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
+                                                style={{ color: 'var(--text-secondary)' }}>{h}</th>
                                         ))}
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {previewData.mapped.map((r, i) => (
-                                        <tr
-                                            key={i}
-                                            style={{ borderTop: '1px solid var(--border-color)' }}
-                                            className="hover:opacity-80"
-                                        >
+                                    {previewData.previewRows.map((r, i) => (
+                                        <tr key={i} style={{ borderTop: '1px solid var(--border-color)' }} className="hover:opacity-80">
                                             <td className="px-4 py-2.5 text-xs text-gray-400">{i + 1}</td>
                                             <td className="px-4 py-2.5 font-medium whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
-                                                {r.date ? fmtDate(r.date) : '—'}
+                                                {r.date ? fmtDate(r.date) : <span className="text-gray-400 italic">—</span>}
                                             </td>
                                             <td className="px-4 py-2.5 font-bold text-teal-700">
-                                                {r.sale?.toLocaleString('en-IN') ?? 0}
-                                            </td>
-                                            <td className="px-4 py-2.5" style={{ color: 'var(--text-secondary)' }}>
-                                                {r.cash?.toLocaleString('en-IN') ?? 0}
-                                            </td>
-                                            <td className="px-4 py-2.5" style={{ color: 'var(--text-secondary)' }}>
-                                                {r.paytm?.toLocaleString('en-IN') ?? 0}
-                                            </td>
-                                            <td className="px-4 py-2.5 text-red-500">
-                                                {r.expense?.toLocaleString('en-IN') ?? 0}
+                                                ₹{r.receivedAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                             </td>
                                         </tr>
                                     ))}
@@ -1083,34 +845,23 @@ const ShopDashboard = () => {
                         </div>
 
                         {/* Modal footer */}
-                        <div
-                            className="px-6 py-4 border-t flex items-center justify-between flex-shrink-0 gap-4"
-                            style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}
-                        >
-                            {/* Total sale summary */}
-                            <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                                Total Sale:&nbsp;
-                                <span className="font-extrabold text-teal-700 text-base">
-                                    ₹{previewData.mapped
-                                        .reduce((s, r) => s + (r.sale || 0), 0)
-                                        .toLocaleString('en-IN')}
-                                </span>
+                        <div className="px-6 py-4 border-t flex items-center justify-between flex-shrink-0 gap-4"
+                            style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                            <div>
+                                <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Total Sale (Sum of Received Amount)</p>
+                                <p className="font-extrabold text-teal-700 text-xl">
+                                    ₹{previewData.totalSale.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                </p>
                             </div>
-
-                            {/* Actions */}
                             <div className="flex gap-2 flex-shrink-0">
-                                <button
-                                    onClick={() => setShowPreview(false)}
+                                <button onClick={() => setShowPreview(false)}
                                     className="px-4 py-2 text-sm font-semibold rounded-lg border text-gray-600 hover:bg-gray-50 transition-colors"
-                                    style={{ borderColor: 'var(--border-color)', background: 'var(--bg-surface)' }}
-                                >
+                                    style={{ borderColor: 'var(--border-color)', background: 'var(--bg-surface)' }}>
                                     Cancel
                                 </button>
-                                <button
-                                    onClick={confirmExcel}
+                                <button id="btn-confirm-excel" onClick={confirmExcel}
                                     className="px-5 py-2 text-sm font-bold rounded-lg text-white transition-all shadow-md"
-                                    style={{ background: 'linear-gradient(90deg,#059669,#10b981)' }}
-                                >
+                                    style={{ background: 'linear-gradient(90deg,#059669,#10b981)' }}>
                                     ✓ Confirm &amp; Load
                                 </button>
                             </div>

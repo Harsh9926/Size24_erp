@@ -46,12 +46,14 @@ CREATE TABLE IF NOT EXISTS daily_entries (
     id SERIAL PRIMARY KEY,
     shop_id INT REFERENCES shops(id) ON DELETE CASCADE,
     date DATE NOT NULL,
+    -- total_sale is AUTO-CALCULATED: cash + online + razorpay. Never set manually.
     total_sale DECIMAL(12, 2) DEFAULT 0,
     cash DECIMAL(12, 2) DEFAULT 0,
+    -- online = QR / Card / Bank payments (formerly `paytm`)
+    online DECIMAL(12, 2) DEFAULT 0,
+    -- legacy column kept for backward compatibility; use `online` for new records
     paytm DECIMAL(12, 2) DEFAULT 0,
     razorpay DECIMAL(12, 2) DEFAULT 0,
-    expense DECIMAL(12, 2) DEFAULT 0,
-    difference DECIMAL(12, 2) DEFAULT 0,
     locked BOOLEAN DEFAULT false,
     edit_enabled_till TIMESTAMP,
     photo_url TEXT,

@@ -4,26 +4,29 @@ import { AuthContext } from '../context/AuthContext';
 import {
     LayoutDashboard, Store, Users, ClipboardList,
     Banknote, FileText, LogOut, ChevronRight,
-    BarChart3, Sun, Moon, FileUp
+    BarChart3, Sun, Moon, FileUp, ShieldCheck,
 } from 'lucide-react';
+import api from '../services/api';
 
 const adminLinks = [
-    { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/admin/shops', label: 'Shops', icon: Store },
-    { to: '/admin/users', label: 'Users', icon: Users },
-    { to: '/admin/entries', label: 'Entries', icon: ClipboardList },
-    { to: '/admin/cashflow', label: 'Cash Flow', icon: Banknote },
-    { to: '/admin/reports', label: 'Reports', icon: BarChart3 },
-    { to: '/admin/audit', label: 'Audit Logs', icon: FileText },
-    { to: '/admin/excel', label: 'Excel Upload', icon: FileUp },
+    { to: '/admin',           label: 'Dashboard',   icon: LayoutDashboard },
+    { to: '/admin/approvals', label: 'Approvals',   icon: ShieldCheck },
+    { to: '/admin/shops',     label: 'Shops',       icon: Store },
+    { to: '/admin/users',     label: 'Users',       icon: Users },
+    { to: '/admin/entries',   label: 'Entries',     icon: ClipboardList },
+    { to: '/admin/cashflow',  label: 'Cash Flow',   icon: Banknote },
+    { to: '/admin/reports',   label: 'Reports',     icon: BarChart3 },
+    { to: '/admin/audit',     label: 'Audit Logs',  icon: FileText },
+    { to: '/admin/excel',     label: 'Excel Upload', icon: FileUp },
 ];
 
 const managerLinks = [
-    { to: '/manager', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/admin/entries', label: 'Entries', icon: ClipboardList },
-    { to: '/admin/cashflow', label: 'Cash Flow', icon: Banknote },
-    { to: '/admin/reports', label: 'Reports', icon: BarChart3 },
-    { to: '/admin/excel', label: 'Excel Upload', icon: FileUp },
+    { to: '/manager',         label: 'Dashboard',   icon: LayoutDashboard },
+    { to: '/admin/approvals', label: 'Approvals',   icon: ShieldCheck },
+    { to: '/admin/entries',   label: 'Entries',     icon: ClipboardList },
+    { to: '/admin/cashflow',  label: 'Cash Flow',   icon: Banknote },
+    { to: '/admin/reports',   label: 'Reports',     icon: BarChart3 },
+    { to: '/admin/excel',     label: 'Excel Upload', icon: FileUp },
 ];
 
 const shopLinks = [
@@ -34,14 +37,33 @@ const Sidebar = () => {
     const { logout, user } = useContext(AuthContext);
     const navigate = useNavigate();
     const [dark, setDark] = useState(() => localStorage.getItem('erp_theme') === 'dark');
+    const [pendingCount, setPendingCount] = useState(0);
 
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
         localStorage.setItem('erp_theme', dark ? 'dark' : 'light');
     }, [dark]);
 
+    /* Poll pending count every 60 s for admin / manager */
+    useEffect(() => {
+        if (user?.role !== 'admin' && user?.role !== 'manager') return;
+
+        const fetchPending = async () => {
+            try {
+                const res = await api.get('/entries/pending');
+                setPendingCount(res.data.length);
+            } catch { /* silently ignore */ }
+        };
+
+        fetchPending();
+        const iv = setInterval(fetchPending, 60_000);
+        return () => clearInterval(iv);
+    }, [user?.role]);
+
     const handleLogout = () => { logout(); navigate('/login'); };
-    const links = user?.role === 'manager' ? managerLinks : user?.role === 'shop_user' ? shopLinks : adminLinks;
+    const links = user?.role === 'manager' ? managerLinks
+        : user?.role === 'shop_user' ? shopLinks
+        : adminLinks;
 
     return (
         <div className="w-64 min-h-screen flex flex-col shadow-2xl flex-shrink-0" style={{ background: 'var(--bg-sidebar)' }}>
@@ -68,6 +90,14 @@ const Sidebar = () => {
                     >
                         <Icon className="h-5 w-5 flex-shrink-0" />
                         <span className="flex-1">{label}</span>
+
+                        {/* Pending badge on Approvals link */}
+                        {label === 'Approvals' && pendingCount > 0 && (
+                            <span className="inline-flex items-center justify-center h-5 min-w-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-extrabold">
+                                {pendingCount > 99 ? '99+' : pendingCount}
+                            </span>
+                        )}
+
                         <ChevronRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-50 transition-opacity" />
                     </NavLink>
                 ))}
