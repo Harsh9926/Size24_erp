@@ -59,7 +59,7 @@ app.use('/api/reports',       require('./routes/reports'));
 app.use('/api/excel',         require('./routes/excel'));
 
 // ── 404 handler — catches any unknown /api/* path ────────────────
-app.use('/api/*', (req, res) => {
+app.use('/api/*path', (req, res) => {
     res.status(404).json({
         error: `Route not found: ${req.method} ${req.originalUrl}`,
         hint:  'Check the API path. Example: POST /api/auth/login',
