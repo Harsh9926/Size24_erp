@@ -6,7 +6,8 @@ import {
     Send, RefreshCw, LogOut, IndianRupee, Store, Lock,
     Camera, MapPin, AlertCircle, FileSpreadsheet, X,
     CheckCircle2, XCircle, Loader2, Calendar, Pencil,
-    Info, Clock, ShieldCheck, ShieldX,
+    Info, Clock, ShieldCheck, ShieldX, Wallet, ArrowRightLeft,
+    ChevronDown,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -242,8 +243,69 @@ const ShopDashboard = () => {
     const [dateFilter,   setDateFilter]   = useState('');
     const [activeRowIdx, setActiveRowIdx] = useState(null);
 
+    // ── Wallet / Transfer state ───────────────────────────────────
+    const [walletBalance,     setWalletBalance]     = useState(0);
+    const [managers,          setManagers]          = useState([]);
+    const [myTransfers,       setMyTransfers]       = useState([]);
+    const [showTransferPanel, setShowTransferPanel] = useState(false);
+    const [transferForm,      setTransferForm]      = useState({ to_user_id: '', amount: '', note: '' });
+    const [transferring,      setTransferring]      = useState(false);
+    const [transferMsg,       setTransferMsg]       = useState(null); // {type, text}
+
+    /* ── Wallet helpers ──────────────────────────────────────────── */
+    const fetchBalance = useCallback(async () => {
+        try {
+            const res = await api.get('/transfers/balance');
+            setWalletBalance(res.data.balance);
+        } catch {}
+    }, []);
+
+    const fetchManagers = useCallback(async () => {
+        try {
+            const res = await api.get('/transfers/managers');
+            setManagers(res.data);
+        } catch {}
+    }, []);
+
+    const fetchMyTransfers = useCallback(async () => {
+        try {
+            const res = await api.get('/transfers/mine');
+            setMyTransfers(res.data);
+        } catch {}
+    }, []);
+
+    const handleTransfer = async (e) => {
+        e.preventDefault();
+        const amt = parseFloat(transferForm.amount);
+        if (!transferForm.to_user_id) return setTransferMsg({ type: 'error', text: 'Select a manager.' });
+        if (!amt || amt <= 0)         return setTransferMsg({ type: 'error', text: 'Enter a valid amount.' });
+        if (amt > walletBalance)      return setTransferMsg({ type: 'error', text: `Insufficient balance. Available: ₹${walletBalance.toFixed(2)}` });
+
+        setTransferring(true);
+        setTransferMsg(null);
+        try {
+            await api.post('/transfers', {
+                to_user_id: transferForm.to_user_id,
+                amount:     amt,
+                note:       transferForm.note || undefined,
+            });
+            setTransferMsg({ type: 'success', text: 'Transfer sent! Waiting for manager acceptance.' });
+            setTransferForm({ to_user_id: '', amount: '', note: '' });
+            fetchMyTransfers();
+        } catch (err) {
+            setTransferMsg({ type: 'error', text: err.response?.data?.error || 'Transfer failed.' });
+        } finally {
+            setTransferring(false);
+        }
+    };
+
     /* ── effects ─────────────────────────────────────────────────── */
-    useEffect(() => { fetchData(); }, []);
+    useEffect(() => {
+        fetchData();
+        fetchBalance();
+        fetchManagers();
+        fetchMyTransfers();
+    }, []);
     useEffect(() => {
         if (!xlSuccess) return;
         const t = setTimeout(() => setXlSuccess(''), 5000);
@@ -467,20 +529,149 @@ const ShopDashboard = () => {
             <div className="max-w-7xl mx-auto px-4 py-8">
 
                 {/* Summary Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     {[
-                        ['Sales',     data.summary?.total_sales,    'text-teal-600'],
-                        ['Cash',      data.summary?.total_cash,     'text-blue-600'],
-                        ['Online',    data.summary?.total_online,   'text-purple-600'],
-                        ['RazorPay',  data.summary?.total_razorpay, 'text-orange-500'],
+                        ['Sales (month)',  data.summary?.total_sales,  'text-teal-600'],
+                        ['Cash (month)',   data.summary?.total_cash,   'text-blue-600'],
+                        ['Online (month)', data.summary?.total_online, 'text-purple-600'],
                     ].map(([l, v, c]) => (
                         <div key={l} className="rounded-xl p-4 shadow-sm border"
                             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-                            <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>{l} (this month)</p>
+                            <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>{l}</p>
                             <p className={`text-xl font-bold ${c}`}>₹{Number(v || 0).toLocaleString('en-IN')}</p>
                         </div>
                     ))}
+
+                    {/* Wallet Balance Card */}
+                    <div className="rounded-xl p-4 shadow-sm border flex flex-col justify-between"
+                        style={{ background: 'linear-gradient(135deg,#0f766e,#14b8a6)', borderColor: 'transparent' }}>
+                        <div className="flex items-center justify-between mb-1">
+                            <p className="text-xs text-teal-100 font-semibold">Wallet Balance</p>
+                            <Wallet className="h-4 w-4 text-teal-200" />
+                        </div>
+                        <p className="text-xl font-extrabold text-white">₹{walletBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                        <button
+                            onClick={() => { setShowTransferPanel(p => !p); setTransferMsg(null); }}
+                            className="mt-2 flex items-center gap-1 text-xs font-semibold text-teal-100 hover:text-white transition-colors">
+                            <ArrowRightLeft className="h-3 w-3" />
+                            Transfer Cash
+                            <ChevronDown className={`h-3 w-3 transition-transform ${showTransferPanel ? 'rotate-180' : ''}`} />
+                        </button>
+                    </div>
                 </div>
+
+                {/* ── Cash Transfer Panel ─────────────────────────── */}
+                {showTransferPanel && (
+                    <div className="rounded-xl border mb-6 overflow-hidden shadow-sm"
+                        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                        <div className="px-6 py-4 border-b flex items-center gap-2"
+                            style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                            <ArrowRightLeft className="h-4 w-4 text-teal-600" />
+                            <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Transfer Cash to Manager</h3>
+                        </div>
+
+                        <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Transfer Form */}
+                            <form onSubmit={handleTransfer} className="space-y-3">
+                                <div>
+                                    <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Select Manager</label>
+                                    <select
+                                        value={transferForm.to_user_id}
+                                        onChange={e => setTransferForm(p => ({ ...p, to_user_id: e.target.value }))}
+                                        className="w-full px-3 py-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                        required>
+                                        <option value="">— Choose a manager —</option>
+                                        {managers.map(m => (
+                                            <option key={m.id} value={m.id}>{m.name || m.mobile}</option>
+                                        ))}
+                                    </select>
+                                    {managers.length === 0 && (
+                                        <p className="text-xs text-amber-600 mt-1">No managers found.</p>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                                        Amount (₹) <span className="font-normal text-gray-400">— Available: ₹{walletBalance.toFixed(2)}</span>
+                                    </label>
+                                    <input
+                                        type="number" min="1" step="0.01"
+                                        value={transferForm.amount}
+                                        onChange={e => setTransferForm(p => ({ ...p, amount: e.target.value }))}
+                                        placeholder="0.00"
+                                        className="w-full px-3 py-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                        required />
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Note (optional)</label>
+                                    <input
+                                        type="text"
+                                        value={transferForm.note}
+                                        onChange={e => setTransferForm(p => ({ ...p, note: e.target.value }))}
+                                        placeholder="e.g. Daily cash handover"
+                                        className="w-full px-3 py-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                                </div>
+
+                                {transferMsg && (
+                                    <div className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium border ${
+                                        transferMsg.type === 'success'
+                                            ? 'bg-green-50 border-green-200 text-green-700'
+                                            : 'bg-red-50 border-red-200 text-red-700'
+                                    }`}>
+                                        {transferMsg.type === 'success'
+                                            ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                                            : <AlertCircle  className="h-4 w-4 flex-shrink-0" />}
+                                        {transferMsg.text}
+                                    </div>
+                                )}
+
+                                <button type="submit" disabled={transferring}
+                                    className="w-full py-2.5 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2 transition-all"
+                                    style={{ background: transferring ? '#9ca3af' : 'linear-gradient(135deg,#0f766e,#14b8a6)' }}>
+                                    {transferring
+                                        ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending…</>
+                                        : <><Send className="h-4 w-4" /> Send Transfer</>}
+                                </button>
+                            </form>
+
+                            {/* My Transfer History */}
+                            <div>
+                                <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-secondary)' }}>
+                                    My Transfer History
+                                </p>
+                                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                    {myTransfers.length === 0 && (
+                                        <p className="text-sm text-gray-400 py-4 text-center">No transfers yet.</p>
+                                    )}
+                                    {myTransfers.map(t => {
+                                        const statusCfg = {
+                                            pending:  { cls: 'bg-amber-100 text-amber-700', label: '⏳ Pending'  },
+                                            accepted: { cls: 'bg-green-100 text-green-700', label: '✅ Accepted' },
+                                            rejected: { cls: 'bg-red-100   text-red-700',   label: '❌ Rejected' },
+                                        }[t.status] || { cls: 'bg-gray-100 text-gray-600', label: t.status };
+                                        return (
+                                            <div key={t.id} className="flex items-center justify-between px-3 py-2.5 rounded-lg border text-xs"
+                                                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                                                <div>
+                                                    <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                                                        ₹{parseFloat(t.amount).toLocaleString('en-IN')} → {t.to_name || t.to_mobile}
+                                                    </p>
+                                                    {t.note && <p className="text-gray-400 truncate max-w-[160px]">{t.note}</p>}
+                                                    <p className="text-gray-400">{new Date(t.created_at).toLocaleDateString('en-IN')}</p>
+                                                </div>
+                                                <span className={`px-2 py-0.5 rounded-full font-semibold ${statusCfg.cls}`}>{statusCfg.label}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 

@@ -1,23 +1,37 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import Layout from '../components/Layout';
-import { TrendingUp, IndianRupee, CreditCard, Wallet, Lock, Clock } from 'lucide-react';
+import { TrendingUp, IndianRupee, CreditCard, Clock, Lock, ShieldCheck, ShieldX, AlertCircle, ArrowRightLeft, RefreshCw } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 
 const AdminDashboard = () => {
-    const [data, setData] = useState({ summary: {}, chartData: [], latestEntries: [], pendingUsersCount: 0 });
+    const [data, setData] = useState({ summary: {}, chartData: [], latestEntries: [], pendingUsersCount: 0, pendingEntriesCount: 0 });
     const [loading, setLoading] = useState(true);
     const [period, setPeriod] = useState('monthly');
     const [shops, setShops] = useState([]);
     const [cities, setCities] = useState([]);
     const [filters, setFilters] = useState({ city_id: '', shop_id: '' });
+    const [transfers,     setTransfers]     = useState([]);
+    const [txLoading,     setTxLoading]     = useState(false);
+    const [txStatusFilter, setTxStatusFilter] = useState('');
+
+    const fetchTransfers = async (status = '') => {
+        setTxLoading(true);
+        try {
+            const params = status ? `?status=${status}` : '';
+            const res = await api.get(`/transfers/admin${params}`);
+            setTransfers(res.data);
+        } catch (err) { console.error('[AdminDashboard] fetchTransfers error:', err); }
+        finally { setTxLoading(false); }
+    };
 
     useEffect(() => {
         api.get('/locations/states').then(() => { }).catch(() => { });
         api.get('/shops').then(r => setShops(r.data)).catch(() => { });
         fetchData();
+        fetchTransfers();
     }, []);
 
     useEffect(() => { fetchData(); }, [period, filters]);
@@ -38,10 +52,10 @@ const AdminDashboard = () => {
     };
 
     const cards = [
-        { label: 'Total Sales', value: data.summary?.total_sales, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-        { label: 'Total Cash', value: data.summary?.total_cash, icon: IndianRupee, color: 'text-blue-600', bg: 'bg-blue-50' },
-        { label: 'Total Online', value: data.summary?.total_online, icon: CreditCard, color: 'text-purple-600', bg: 'bg-purple-50' },
-        { label: 'Total Expense', value: data.summary?.total_expense, icon: Wallet, color: 'text-red-600', bg: 'bg-red-50' },
+        { label: 'Total Sales (Approved)', value: data.summary?.total_sales,  icon: TrendingUp,   color: 'text-emerald-600', bg: 'bg-emerald-50', isCurrency: true },
+        { label: 'Total Cash',             value: data.summary?.total_cash,   icon: IndianRupee,  color: 'text-blue-600',    bg: 'bg-blue-50',    isCurrency: true },
+        { label: 'Total Online',           value: data.summary?.total_online, icon: CreditCard,   color: 'text-purple-600',  bg: 'bg-purple-50',  isCurrency: true },
+        { label: 'Pending Approvals',      value: data.pendingEntriesCount,   icon: AlertCircle,  color: 'text-amber-600',   bg: 'bg-amber-50',   isCurrency: false },
     ];
 
     return (
@@ -59,12 +73,14 @@ const AdminDashboard = () => {
 
             {/* KPI Cards */}
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
-                {cards.map(({ label, value, icon: Icon, color, bg }) => (
+                {cards.map(({ label, value, icon: Icon, color, bg, isCurrency }) => (
                     <div key={label} className="rounded-xl p-5 shadow-sm border transition-shadow hover:shadow-md" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-secondary)' }}>{label}</p>
-                                <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>₹{Number(value || 0).toLocaleString('en-IN')}</p>
+                                <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                                    {isCurrency ? `₹${Number(value || 0).toLocaleString('en-IN')}` : Number(value || 0)}
+                                </p>
                             </div>
                             <div className={`p-3 rounded-xl ${bg}`}><Icon className={`h-6 w-6 ${color}`} /></div>
                         </div>
@@ -118,27 +134,33 @@ const AdminDashboard = () => {
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y" style={{ '--tw-divide-opacity': 1, borderColor: 'var(--border-color)' }}>
                         <thead style={{ background: 'var(--bg-primary)' }}>
-                            <tr>{['Date', 'Shop', 'City', 'Total Sale', 'Cash', 'Online', 'Expense', 'Status', 'Action'].map(h => (
+                            <tr>{['Date', 'Shop', 'City', 'Total Sale', 'Cash', 'Online', 'Approval', 'Action'].map(h => (
                                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>{h}</th>
                             ))}</tr>
                         </thead>
                         <tbody>
-                            {data.latestEntries?.map(entry => (
+                            {data.latestEntries?.map(entry => {
+                                const status = (entry.approval_status || 'APPROVED').toUpperCase();
+                                const statusCfg = {
+                                    PENDING:  { cls: 'bg-amber-100 text-amber-700', Icon: AlertCircle,  label: 'Pending'  },
+                                    APPROVED: { cls: 'bg-green-100 text-green-700', Icon: ShieldCheck,  label: 'Approved' },
+                                    REJECTED: { cls: 'bg-red-100   text-red-700',   Icon: ShieldX,      label: 'Rejected' },
+                                }[status] || { cls: 'bg-gray-100 text-gray-600', Icon: AlertCircle, label: status };
+                                return (
                                 <tr key={entry.id} className="transition-colors hover:opacity-90" style={{ borderTop: '1px solid var(--border-color)' }}>
                                     <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-primary)' }}>{new Date(entry.date).toLocaleDateString('en-IN')}</td>
                                     <td className="px-4 py-3 text-sm font-medium text-indigo-600">{entry.shop_name}</td>
                                     <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{entry.city_name}</td>
-                                    <td className="px-4 py-3 text-sm font-bold" style={{ color: 'var(--text-primary)' }}>₹{Number(entry.total_sale).toLocaleString()}</td>
-                                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>₹{Number(entry.cash).toLocaleString()}</td>
-                                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>₹{(+entry.paytm + +entry.razorpay).toFixed(0)}</td>
-                                    <td className="px-4 py-3 text-sm text-red-500">₹{Number(entry.expense).toLocaleString()}</td>
+                                    <td className="px-4 py-3 text-sm font-bold" style={{ color: 'var(--text-primary)' }}>₹{Number(entry.total_sale).toLocaleString('en-IN')}</td>
+                                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>₹{Number(entry.cash).toLocaleString('en-IN')}</td>
+                                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>₹{Number((+entry.online || 0) + (+entry.razorpay || 0)).toLocaleString('en-IN')}</td>
                                     <td className="px-4 py-3">
-                                        <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${entry.locked ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                                            {entry.locked ? 'Locked' : 'Open'}
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full ${statusCfg.cls}`}>
+                                            <statusCfg.Icon className="h-3 w-3" />{statusCfg.label}
                                         </span>
                                     </td>
                                     <td className="px-4 py-3">
-                                        {entry.locked && (
+                                        {entry.locked && status === 'APPROVED' && (
                                             <button onClick={() => handleUnlock(entry.id)}
                                                 className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium border border-indigo-200 px-2 py-1 rounded-md hover:bg-indigo-50 transition-colors">
                                                 <Lock className="h-3 w-3" /> Unlock
@@ -146,9 +168,93 @@ const AdminDashboard = () => {
                                         )}
                                     </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                             {(!data.latestEntries || data.latestEntries.length === 0) && (
                                 <tr><td colSpan="9" className="text-center py-12 text-gray-400">No entries yet</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {/* ── All Cash Transfers ──────────────────────────── */}
+            <div className="mt-8 rounded-xl shadow-sm border overflow-hidden"
+                style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                <div className="px-6 py-4 border-b flex items-center justify-between flex-wrap gap-3"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                    <div className="flex items-center gap-2">
+                        <ArrowRightLeft className="h-4 w-4 text-indigo-500" />
+                        <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Cash Transfers</h3>
+                        <span className="text-xs text-gray-400">({transfers.length})</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <select
+                            value={txStatusFilter}
+                            onChange={e => { setTxStatusFilter(e.target.value); fetchTransfers(e.target.value); }}
+                            className="text-xs border rounded-lg px-2 py-1.5 outline-none"
+                            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+                            <option value="">All Statuses</option>
+                            <option value="pending">Pending</option>
+                            <option value="accepted">Accepted</option>
+                            <option value="rejected">Rejected</option>
+                        </select>
+                        <button onClick={() => fetchTransfers(txStatusFilter)}
+                            className="flex items-center gap-1.5 text-xs text-indigo-600 hover:underline font-medium">
+                            <RefreshCw className={`h-3.5 w-3.5 ${txLoading ? 'animate-spin' : ''}`} />
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                        <thead style={{ background: 'var(--bg-primary)' }}>
+                            <tr>
+                                {['From (Shop User)', 'To (Manager)', 'Amount', 'Note', 'Status', 'Date'].map(h => (
+                                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
+                                        style={{ color: 'var(--text-secondary)' }}>{h}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {transfers.map(t => {
+                                const statusCfg = {
+                                    pending:  { cls: 'bg-amber-100 text-amber-700', label: '⏳ Pending'  },
+                                    accepted: { cls: 'bg-green-100 text-green-700', label: '✅ Accepted' },
+                                    rejected: { cls: 'bg-red-100   text-red-700',   label: '❌ Rejected' },
+                                }[t.status] || { cls: 'bg-gray-100 text-gray-600', label: t.status };
+                                return (
+                                    <tr key={t.id} style={{ borderTop: '1px solid var(--border-color)' }}>
+                                        <td className="px-4 py-3">
+                                            <p className="font-medium" style={{ color: 'var(--text-primary)' }}>{t.from_name || '—'}</p>
+                                            <p className="text-xs text-gray-400">{t.from_mobile}</p>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <p className="font-medium text-indigo-600">{t.to_name || '—'}</p>
+                                            <p className="text-xs text-gray-400">{t.to_mobile}</p>
+                                        </td>
+                                        <td className="px-4 py-3 font-bold text-emerald-600 whitespace-nowrap">
+                                            ₹{parseFloat(t.amount).toLocaleString('en-IN')}
+                                        </td>
+                                        <td className="px-4 py-3 text-xs max-w-[140px] truncate"
+                                            style={{ color: 'var(--text-secondary)' }} title={t.note}>
+                                            {t.note || '—'}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${statusCfg.cls}`}>
+                                                {statusCfg.label}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                                            {new Date(t.created_at).toLocaleDateString('en-IN')}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {transfers.length === 0 && !txLoading && (
+                                <tr>
+                                    <td colSpan="6" className="text-center py-10 text-gray-400">No transfers found.</td>
+                                </tr>
                             )}
                         </tbody>
                     </table>

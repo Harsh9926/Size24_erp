@@ -154,12 +154,15 @@ exports.getEntries = async (req, res) => {
 
         let query  = `
             SELECT e.*, s.shop_name, s.shop_address,
-                   c.name AS city_name,
-                   u.name AS approved_by_name
+                   c.name  AS city_name,
+                   au.name AS approved_by_name,
+                   su.name AS submitted_by_name,
+                   su.mobile AS submitted_by_mobile
             FROM daily_entries e
-            JOIN shops s ON e.shop_id = s.id
-            LEFT JOIN cities c ON s.city_id = c.id
-            LEFT JOIN users u  ON e.approved_by = u.id
+            JOIN shops s   ON e.shop_id     = s.id
+            LEFT JOIN cities c  ON s.city_id     = c.id
+            LEFT JOIN users au  ON e.approved_by  = au.id
+            LEFT JOIN users su  ON s.user_id      = su.id
         `;
         const params  = [];
         const clauses = [];

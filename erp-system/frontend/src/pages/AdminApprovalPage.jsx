@@ -364,10 +364,8 @@ const AdminApprovalPage = () => {
         try {
             const res = await api.get('/entries');
             const normalized = normalizeEntries(res.data);
-            // If DB doesn't have approval_status yet (migration not run),
-            // all entries will be PENDING — no crash occurs.
-            setEntries(normalized.length > 0 ? normalized : normalizeEntries(MOCK_ENTRIES));
-            if (normalized.length === 0) setApiError(true); // show mock banner
+            console.log('[AdminApproval] Entries fetched:', normalized.length);
+            setEntries(normalized);
         } catch (err) {
             console.error('[AdminApprovalPage] fetchEntries error:', err);
             setApiError(true);

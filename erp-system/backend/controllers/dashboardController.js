@@ -67,6 +67,11 @@ exports.getAdminDashboard = async (req, res) => {
             "SELECT COUNT(*) FROM users WHERE is_approved = false AND role != 'admin'"
         );
 
+        // ── Pending entries count ────────────────────────────────
+        const pendingEntriesQ = await db.query(
+            "SELECT COUNT(*) FROM daily_entries WHERE approval_status = 'PENDING'"
+        );
+
         const summary = summaryQ.rows[0];
 
         res.json({
@@ -80,7 +85,8 @@ exports.getAdminDashboard = async (req, res) => {
             summary,
             chartData: chartQ.rows.reverse(),
             latestEntries: entriesQ.rows,
-            pendingUsersCount: parseInt(pendingQ.rows[0].count),
+            pendingUsersCount:   parseInt(pendingQ.rows[0].count),
+            pendingEntriesCount: parseInt(pendingEntriesQ.rows[0].count),
         });
     } catch (err) {
         console.error('[Dashboard] getAdminDashboard error:', err.message);
