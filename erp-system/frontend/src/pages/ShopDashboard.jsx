@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const BACKEND_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
+const BACKEND_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || '';
 
 /* ── Geo helpers ─────────────────────────────────────────────────── */
 const toRad  = (v) => (v * Math.PI) / 180;

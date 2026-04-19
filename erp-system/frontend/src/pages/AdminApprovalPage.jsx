@@ -123,7 +123,7 @@ const EntryDrawer = ({ entry, onClose, onApprove, onReject, actionLoading }) => 
         else               { setShowRejectBox(true); }
     };
 
-    const BACKEND = import.meta.env.VITE_API_URL?.replace('/api', '') ?? 'http://localhost:5000';
+    const BACKEND = import.meta.env.VITE_API_URL?.replace('/api', '') ?? '';
 
     return (
         <>
