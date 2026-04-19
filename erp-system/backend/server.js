@@ -89,7 +89,17 @@ cron.schedule('0 0 * * *', async () => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Allowed CORS origins: ${allowedOrigins.join(', ')}`);
+
+    // Auto-seed Indian states & cities if DB is empty
+    try {
+        const { seedLocations } = require('./scripts/seed_locations');
+        const client = await db.connect();
+        await seedLocations(client);
+        client.release();
+    } catch (err) {
+        console.error('[seed] Location seed failed:', err.message);
+    }
 });

@@ -1,5 +1,17 @@
 const db = require('../config/db');
 
+exports.getAllLocations = async (req, res) => {
+    try {
+        const [states, cities] = await Promise.all([
+            db.query('SELECT id, name FROM states ORDER BY name ASC'),
+            db.query('SELECT id, name, state_id FROM cities ORDER BY name ASC'),
+        ]);
+        res.json({ states: states.rows, cities: cities.rows });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 exports.createState = async (req, res) => {
     try {
         const { name } = req.body;
