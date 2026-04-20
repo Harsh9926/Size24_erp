@@ -213,21 +213,35 @@ exports.getPendingEntries = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────
 // APPROVE  (admin only)
+// Atomically: mark entry APPROVED + credit cash → shop user's wallet
+// Uses a DB transaction with FOR UPDATE to prevent double-processing.
 // ─────────────────────────────────────────────────────────────────
 exports.approveEntry = async (req, res) => {
+    const { id } = req.params;
+    const client = await db.pool.connect();
+
     try {
-        const { id } = req.params;
+        await client.query('BEGIN');
 
-        const entryResult = await db.query(
-            'SELECT * FROM daily_entries WHERE id = $1', [id],
+        // Lock this entry row — prevents concurrent approval of the same record
+        const entryResult = await client.query(
+            'SELECT * FROM daily_entries WHERE id = $1 FOR UPDATE',
+            [id],
         );
-        if (entryResult.rows.length === 0)
+        if (entryResult.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Entry not found' });
+        }
 
-        if (entryResult.rows[0].approval_status === 'APPROVED')
+        const entry = entryResult.rows[0];
+
+        if (entry.approval_status === 'APPROVED') {
+            await client.query('ROLLBACK');
             return res.status(400).json({ error: 'Entry is already approved.' });
+        }
 
-        const result = await db.query(
+        // 1. Mark entry as APPROVED
+        const updated = await client.query(
             `UPDATE daily_entries
              SET approval_status = 'APPROVED',
                  approved_by     = $1,
@@ -239,16 +253,44 @@ exports.approveEntry = async (req, res) => {
             [req.user.id, id],
         );
 
-        // Audit
-        await db.query(
-            `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
-             VALUES ('daily_entries', $1, $2, $3, $4)`,
-            [id, entryResult.rows[0], result.rows[0], req.user.id],
+        // 2. Credit ONLY the cash portion to the shop user's wallet_balance.
+        //    wallet_balance is the sole source of truth for transferable funds —
+        //    it must never be edited manually or topped up any other way.
+        const shopResult = await client.query(
+            'SELECT user_id FROM shops WHERE id = $1',
+            [entry.shop_id],
         );
 
-        res.json({ message: 'Entry approved successfully.', entry: result.rows[0] });
+        if (shopResult.rows.length > 0 && shopResult.rows[0].user_id) {
+            const shopUserId = shopResult.rows[0].user_id;
+            const cashAmt    = parseFloat(entry.cash || 0);
+
+            await client.query(
+                'UPDATE users SET wallet_balance = wallet_balance + $1 WHERE id = $2',
+                [cashAmt, shopUserId],
+            );
+
+            console.log(
+                `[approveEntry] Entry #${id} approved. ₹${cashAmt} credited to user #${shopUserId} wallet.`,
+            );
+        }
+
+        // 3. Audit log
+        await client.query(
+            `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
+             VALUES ('daily_entries', $1, $2, $3, $4)`,
+            [id, entry, updated.rows[0], req.user.id],
+        );
+
+        await client.query('COMMIT');
+
+        res.json({ message: 'Entry approved successfully.', entry: updated.rows[0] });
     } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[approveEntry] Transaction rolled back:', err.message);
         res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
     }
 };
 
