@@ -266,7 +266,7 @@ exports.approveEntry = async (req, res) => {
             const cashAmt    = parseFloat(entry.cash || 0);
 
             await client.query(
-                'UPDATE users SET wallet_balance = wallet_balance + $1 WHERE id = $2',
+                'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
                 [cashAmt, shopUserId],
             );
 
