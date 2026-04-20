@@ -63,6 +63,62 @@ exports.rejectUser = async (req, res) => {
     }
 };
 
+// Edit user (name, mobile, role)
+exports.updateUser = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, mobile, role } = req.body;
+        if (!name || !mobile || !role)
+            return res.status(400).json({ error: 'name, mobile and role are required' });
+
+        const existing = await db.query(
+            'SELECT id FROM users WHERE mobile = $1 AND id != $2', [mobile, id]
+        );
+        if (existing.rows.length > 0)
+            return res.status(409).json({ error: 'Mobile already used by another user' });
+
+        const result = await db.query(
+            'UPDATE users SET name = $1, mobile = $2, role = $3 WHERE id = $4 RETURNING id, name, mobile, role, is_approved',
+            [name, mobile, role, id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        res.json({ message: 'User updated', user: result.rows[0] });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Reset password
+exports.resetPassword = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { password } = req.body;
+        if (!password || password.length < 4)
+            return res.status(400).json({ error: 'Password must be at least 4 characters' });
+
+        const hash = await bcrypt.hash(password, 10);
+        const result = await db.query(
+            'UPDATE users SET password_hash = $1 WHERE id = $2 RETURNING id, name, mobile',
+            [hash, id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        res.json({ message: 'Password reset successfully' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Delete an approved user
+exports.deleteUser = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.query('DELETE FROM users WHERE id = $1', [id]);
+        res.json({ message: 'User deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 // Assign a shop to a user
 exports.assignShop = async (req, res) => {
     try {

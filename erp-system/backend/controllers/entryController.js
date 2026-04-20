@@ -278,8 +278,8 @@ exports.approveEntry = async (req, res) => {
         // 3. Audit log
         await client.query(
             `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
-             VALUES ('daily_entries', $1, $2, $3, $4)`,
-            [id, entry, updated.rows[0], req.user.id],
+             VALUES ('daily_entries', $1, $2::jsonb, $3::jsonb, $4)`,
+            [id, JSON.stringify(entry), JSON.stringify(updated.rows[0]), req.user.id],
         );
 
         await client.query('COMMIT');
@@ -288,7 +288,7 @@ exports.approveEntry = async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK');
         console.error('[approveEntry] Transaction rolled back:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: err.message, detail: err.detail || null });
     } finally {
         client.release();
     }
