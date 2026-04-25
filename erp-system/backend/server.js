@@ -18,6 +18,8 @@ const defaultOrigins = [
     'http://127.0.0.1:5174',
     'http://snugg.in',
     'https://snugg.in',
+    'http://www.snugg.in',
+    'https://www.snugg.in',
 ];
 const allowedOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
@@ -97,7 +99,7 @@ app.listen(PORT, async () => {
     // Auto-seed Indian states & cities if DB is empty
     try {
         const { seedLocations } = require('./scripts/seed_locations');
-        const client = await db.connect();
+        const client = await db.pool.connect();
         await seedLocations(client);
         client.release();
     } catch (err) {
