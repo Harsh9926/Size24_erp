@@ -55,12 +55,11 @@ exports.register = async (req, res) => {
 
         const hash = await bcrypt.hash(password, 10);
 
-        // Admins are auto-approved, others need manual approval
-        const isApproved = role === 'admin';
-
+        // Self-registrations always require admin approval — no exceptions.
+        // Only the admin "Create User" panel creates auto-approved accounts.
         const result = await db.query(
-            'INSERT INTO users (name, mobile, password_hash, role, is_approved) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, mobile, role, is_approved',
-            [name || null, mobile, hash, role, isApproved]
+            'INSERT INTO users (name, mobile, password_hash, role, is_approved) VALUES ($1, $2, $3, $4, false) RETURNING id, name, mobile, role, is_approved',
+            [name || null, mobile, hash, role]
         );
         res.status(201).json(result.rows[0]);
     } catch (err) {

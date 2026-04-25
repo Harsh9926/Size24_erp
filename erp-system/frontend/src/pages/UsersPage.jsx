@@ -181,7 +181,10 @@ const UsersPage = () => {
                                 <option value="shop_user">Shop User</option>
                             </select>
                         </div>
-                        <p className="text-xs text-gray-400">Users created here are auto-approved.</p>
+                        <p className="text-xs text-gray-400">
+                            Manager &amp; Shop User accounts are auto-approved.
+                            Admin accounts require approval from an existing admin.
+                        </p>
                         <button type="submit" className="w-full py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors">Create User</button>
                     </form>
                 </div>

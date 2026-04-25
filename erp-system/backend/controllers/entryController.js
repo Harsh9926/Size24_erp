@@ -235,9 +235,11 @@ exports.approveEntry = async (req, res) => {
 
         const entry = entryResult.rows[0];
 
-        if (entry.approval_status === 'APPROVED') {
+        if (entry.approval_status !== 'PENDING') {
             await client.query('ROLLBACK');
-            return res.status(400).json({ error: 'Entry is already approved.' });
+            return res.status(400).json({
+                error: `Entry is already ${entry.approval_status.toLowerCase()}. Only PENDING entries can be approved.`,
+            });
         }
 
         // 1. Mark entry as APPROVED
@@ -308,8 +310,10 @@ exports.rejectEntry = async (req, res) => {
         if (entryResult.rows.length === 0)
             return res.status(404).json({ error: 'Entry not found' });
 
-        if (entryResult.rows[0].approval_status === 'REJECTED')
-            return res.status(400).json({ error: 'Entry is already rejected.' });
+        if (entryResult.rows[0].approval_status !== 'PENDING')
+            return res.status(400).json({
+                error: `Entry is already ${entryResult.rows[0].approval_status.toLowerCase()}. Only PENDING entries can be rejected.`,
+            });
 
         const result = await db.query(
             `UPDATE daily_entries

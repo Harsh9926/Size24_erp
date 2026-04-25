@@ -27,9 +27,14 @@ exports.createUser = async (req, res) => {
         if (existing.rows.length > 0) return res.status(409).json({ error: 'Mobile already registered' });
 
         const hash = await bcrypt.hash(password, 10);
+
+        // New admin accounts always need approval — prevents bypassing Radhika's oversight.
+        // shop_user and manager accounts created from the panel are auto-approved.
+        const isApproved = role !== 'admin';
+
         const result = await db.query(
             'INSERT INTO users (name, mobile, password_hash, role, is_approved) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, mobile, role, is_approved',
-            [name || null, mobile, hash, role, true] // Admin-created users are auto-approved
+            [name || null, mobile, hash, role, isApproved]
         );
         res.status(201).json(result.rows[0]);
     } catch (err) {
