@@ -37,9 +37,10 @@ exports.getAdminDashboard = async (req, res) => {
 
         const chartQ = await db.query(
             `SELECT ${groupBy} AS label,
-               COALESCE(SUM(de.total_sale), 0)           AS sales,
-               COALESCE(SUM(de.cash), 0)                 AS cash,
-               COALESCE(SUM(de.online + de.razorpay), 0) AS online
+               COALESCE(SUM(de.total_sale), 0)                 AS sales,
+               COALESCE(SUM(de.cash), 0)                       AS cash,
+               COALESCE(SUM(de.online + de.razorpay), 0)       AS online,
+               COALESCE(SUM(de.expense), 0)                    AS expense
              FROM daily_entries de
              JOIN shops s ON de.shop_id = s.id
              ${where}
@@ -64,7 +65,7 @@ exports.getAdminDashboard = async (req, res) => {
 
         // ── Pending users count ──────────────────────────────────
         const pendingQ = await db.query(
-            "SELECT COUNT(*) FROM users WHERE is_approved = false AND role != 'admin'"
+            "SELECT COUNT(*) FROM users WHERE is_approved = false"
         );
 
         // ── Pending entries count ────────────────────────────────

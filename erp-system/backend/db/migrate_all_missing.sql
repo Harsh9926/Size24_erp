@@ -5,9 +5,15 @@
 -- to run multiple times.
 -- ================================================================
 
--- ── 1. daily_entries: online (QR / Card / Bank) ──────────────────
+-- ── 1. daily_entries: online, expense, difference ────────────────
 ALTER TABLE daily_entries
-    ADD COLUMN IF NOT EXISTS online DECIMAL(12, 2) DEFAULT 0;
+    ADD COLUMN IF NOT EXISTS online      DECIMAL(12, 2) DEFAULT 0;
+
+ALTER TABLE daily_entries
+    ADD COLUMN IF NOT EXISTS expense     DECIMAL(12, 2) DEFAULT 0;
+
+ALTER TABLE daily_entries
+    ADD COLUMN IF NOT EXISTS difference  DECIMAL(12, 2) DEFAULT 0;
 
 UPDATE daily_entries SET online = COALESCE(paytm, 0) WHERE online IS NULL OR online = 0;
 

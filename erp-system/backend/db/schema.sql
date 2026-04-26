@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS daily_entries (
     -- paytm kept for backward-compat with legacy rows
     paytm            DECIMAL(12, 2) DEFAULT 0,
     razorpay         DECIMAL(12, 2) DEFAULT 0,
+    expense          DECIMAL(12, 2) DEFAULT 0,
+    difference       DECIMAL(12, 2) DEFAULT 0,
     approval_status  VARCHAR(20) NOT NULL DEFAULT 'PENDING'
                          CHECK (approval_status IN ('PENDING', 'APPROVED', 'REJECTED')),
     approved_by      INT REFERENCES users(id) ON DELETE SET NULL,
