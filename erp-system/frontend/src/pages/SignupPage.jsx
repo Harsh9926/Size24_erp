@@ -28,7 +28,7 @@ const SignupPage = () => {
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
                 {/* Logo & Brand */}
                 <div className="flex flex-col items-center mb-7">
-                    <img src="/logo.png" alt="SIZE24" className="h-14 w-auto object-contain mb-3" />
+                    <img src="/logo.avif" alt="SIZE24" className="h-14 w-auto object-contain mb-3" />
                     <h2 className="text-2xl font-extrabold text-gray-900">Create Account</h2>
                     <p className="text-gray-500 text-sm mt-0.5">Join SIZE24 ERP – Smart Retail System</p>
                 </div>
@@ -52,13 +52,12 @@ const SignupPage = () => {
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-1">Role</label>
                         <select className={inputCls + ' bg-white'} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-                            <option value="admin">Admin</option>
                             <option value="manager">Manager</option>
                             <option value="shop_user">Shop User</option>
                         </select>
                     </div>
                     <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
-                        ⚠ Non-admin accounts require Admin approval before login.
+                        ⚠ All accounts require approval from Admin (Radhika) before you can login.
                     </p>
                     <button type="submit" disabled={loading}
                         className="w-full py-3 rounded-xl text-white font-bold text-sm transition-all disabled:opacity-60 mt-2"

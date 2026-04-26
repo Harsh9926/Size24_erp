@@ -320,13 +320,12 @@ const SignupForm = ({ onSwitch }) => {
                     <motion.div variants={item}>
                         <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-1.5">Role</label>
                         <select style={{ ...inputBase, background: '#f9fafb' }} value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                            <option value="admin">Admin</option>
                             <option value="manager">Manager</option>
                             <option value="shop_user">Shop User</option>
                         </select>
                     </motion.div>
                     <motion.div variants={item}>
-                        <p className="text-xs bg-amber-50 border border-amber-200 text-amber-700 px-3 py-2 rounded-lg">⚠ Non-admin accounts need Admin approval before login.</p>
+                        <p className="text-xs bg-amber-50 border border-amber-200 text-amber-700 px-3 py-2 rounded-lg">⚠ All accounts require approval from Admin (Radhika) before you can login.</p>
                     </motion.div>
                     <motion.div variants={item}>
                         <motion.button type="submit" disabled={loading}
@@ -401,7 +400,7 @@ const LoginPage = () => {
                 {/* Logo header */}
                 <motion.div className="relative z-10 px-8 pt-8 flex items-center gap-3"
                     initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-                    <img src="/logo.png" alt="SIZE24" className="h-10 w-auto object-contain" />
+                    <img src="/logo.avif" alt="SIZE24" className="h-10 w-auto object-contain" />
                     <div>
                         <h1 className="text-xl font-black tracking-widest" style={{ color: '#FF6B00' }}>SIZE24</h1>
                         <p className="text-xs font-medium" style={{ color: '#6b7280' }}>Smart Retail ERP</p>
@@ -513,7 +512,7 @@ const LoginPage = () => {
 
                 {/* Mobile logo */}
                 <div className="absolute top-8 left-1/2 -translate-x-1/2 lg:hidden">
-                    <img src="/logo.png" alt="SIZE24" className="h-12 w-auto object-contain" />
+                    <img src="/logo.avif" alt="SIZE24" className="h-12 w-auto object-contain" />
                 </div>
 
                 <AnimatePresence mode="wait">

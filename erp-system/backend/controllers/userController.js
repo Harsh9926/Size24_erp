@@ -28,8 +28,8 @@ exports.createUser = async (req, res) => {
 
         const hash = await bcrypt.hash(password, 10);
 
-        // New admin accounts always need approval — prevents bypassing Radhika's oversight.
-        // shop_user and manager accounts created from the panel are auto-approved.
+        // Admin-panel-created manager/shop_user accounts are auto-approved (admin's intent).
+        // Any new admin account must still be approved by Radhika before they can login.
         const isApproved = role !== 'admin';
 
         const result = await db.query(

@@ -12,9 +12,10 @@ exports.login = async (req, res) => {
         const validPassword = await bcrypt.compare(password, user.password_hash);
         if (!validPassword) return res.status(401).json({ error: 'Invalid mobile or password' });
 
-        // Block login if not approved (admins are always approved)
-        if (user.role !== 'admin' && !user.is_approved) {
-            return res.status(403).json({ error: 'Your account is pending approval. Please contact the admin.' });
+        // Block login for every unapproved account — no role exceptions.
+        // Radhika (primary admin) is always is_approved = true so she is unaffected.
+        if (!user.is_approved) {
+            return res.status(403).json({ error: 'Your account is pending approval. Please contact Radhika (Admin).' });
         }
 
         // Fetch assigned shop for shop_user
