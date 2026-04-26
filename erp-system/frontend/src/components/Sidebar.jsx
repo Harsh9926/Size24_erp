@@ -3,8 +3,8 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import {
     LayoutDashboard, Store, Users, ClipboardList,
-    Banknote, FileText, LogOut, ChevronRight,
-    BarChart3, Sun, Moon, FileUp, ShieldCheck,
+    Banknote, LogOut, ChevronRight,
+    BarChart3, Sun, Moon, FileUp, ShieldCheck, PlusCircle,
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -16,8 +16,7 @@ const adminLinks = [
     { to: '/admin/entries',   label: 'Entries',     icon: ClipboardList },
     { to: '/admin/cashflow',  label: 'Cash Flow',   icon: Banknote },
     { to: '/admin/reports',   label: 'Reports',     icon: BarChart3 },
-    { to: '/admin/audit',     label: 'Audit Logs',  icon: FileText },
-    { to: '/admin/excel',     label: 'Excel Upload', icon: FileUp },
+    { to: '/admin/new-entry', label: 'New Entry',    icon: PlusCircle },
 ];
 
 const managerLinks = [
@@ -26,7 +25,6 @@ const managerLinks = [
     { to: '/admin/entries',   label: 'Entries',     icon: ClipboardList },
     { to: '/admin/cashflow',  label: 'Cash Flow',   icon: Banknote },
     { to: '/admin/reports',   label: 'Reports',     icon: BarChart3 },
-    { to: '/admin/excel',     label: 'Excel Upload', icon: FileUp },
 ];
 
 const shopLinks = [
@@ -69,7 +67,7 @@ const Sidebar = () => {
         <div className="w-64 min-h-screen flex flex-col shadow-2xl flex-shrink-0" style={{ background: 'var(--bg-sidebar)' }}>
             {/* Brand Header */}
             <div className="px-5 py-5 border-b border-white/10 flex items-center gap-3">
-                <img src="/logo.png" alt="SIZE24 Logo" className="h-9 w-auto object-contain flex-shrink-0" />
+                <img src="/logo.avif" alt="SIZE24 Logo" className="h-9 w-auto object-contain flex-shrink-0" />
                 <div>
                     <h1 className="text-lg font-extrabold tracking-tight" style={{ color: '#FF6B00' }}>SIZE24</h1>
                     <p className="text-xs text-gray-500 leading-none">Smart Retail ERP</p>
@@ -114,6 +112,16 @@ const Sidebar = () => {
                     className="flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-red-900/40 hover:text-red-400 transition-all">
                     <LogOut className="h-5 w-5" /> Logout
                 </button>
+            </div>
+
+            {/* Credit */}
+            <div className="px-4 py-3 border-t border-white/5 text-center">
+                <p className="text-[10px] leading-tight" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                    Designed &amp; Developed by
+                </p>
+                <p className="text-[11px] font-semibold mt-0.5" style={{ color: 'rgba(255,107,0,0.6)' }}>
+                    Harsh Chandel
+                </p>
             </div>
         </div>
     );

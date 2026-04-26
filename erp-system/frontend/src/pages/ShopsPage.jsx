@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import Layout from '../components/Layout';
-import { Plus } from 'lucide-react';
+import { Plus, PlusCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none";
 const labelCls = "block text-xs font-semibold text-gray-600 mb-1";
@@ -13,6 +14,7 @@ const EMPTY_SHOP = {
 };
 
 const ShopsPage = () => {
+    const navigate = useNavigate();
     const [states, setStates] = useState([]);
     const [allCities, setAllCities] = useState([]);
     const [filteredCities, setFilteredCities] = useState([]);
@@ -162,16 +164,16 @@ const ShopsPage = () => {
                     <table className="min-w-full divide-y divide-gray-100">
                         <thead className="bg-gray-50">
                             <tr>
-                                {['Shop Name', 'City', 'State', 'GST', 'Manager', 'Mobile', 'Status'].map(h => (
+                                {['Shop Name', 'City', 'State', 'GST', 'Manager', 'Mobile', 'Status', ''].map(h => (
                                     <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {loading ? (
-                                <tr><td colSpan="7" className="text-center py-10 text-gray-400">Loading...</td></tr>
+                                <tr><td colSpan="8" className="text-center py-10 text-gray-400">Loading...</td></tr>
                             ) : shops.length === 0 ? (
-                                <tr><td colSpan="7" className="text-center py-10 text-gray-400">No shops created yet</td></tr>
+                                <tr><td colSpan="8" className="text-center py-10 text-gray-400">No shops created yet</td></tr>
                             ) : shops.map(shop => (
                                 <tr key={shop.id} className="hover:bg-gray-50">
                                     <td className="px-5 py-3 text-sm font-semibold text-indigo-600">{shop.shop_name}</td>
@@ -184,6 +186,16 @@ const ShopsPage = () => {
                                         <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${shop.user_id ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                                             {shop.user_id ? 'Assigned' : 'Unassigned'}
                                         </span>
+                                    </td>
+                                    <td className="px-5 py-3">
+                                        <button
+                                            onClick={() => navigate(`/admin/new-entry?shop_id=${shop.id}`)}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg text-white transition-all whitespace-nowrap"
+                                            style={{ background: '#FF6B00' }}
+                                            title={`New entry for ${shop.shop_name}`}
+                                        >
+                                            <PlusCircle className="h-3.5 w-3.5" /> New Entry
+                                        </button>
                                     </td>
                                 </tr>
                             ))}

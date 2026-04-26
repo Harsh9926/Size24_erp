@@ -16,6 +16,7 @@ import CashFlowPage     from './pages/CashFlowPage';
 import AuditLogsPage    from './pages/AuditLogsPage';
 import ReportsPage      from './pages/ReportsPage';
 import ExcelUploadPage  from './pages/ExcelUploadPage';
+import AdminEntryPage   from './pages/AdminEntryPage';
 
 // Manager Pages
 import ManagerDashboard from './pages/ManagerDashboard';
@@ -40,7 +41,8 @@ function App() {
         <Route path="/admin/cashflow"   element={<PrivateRoute allowedRoles={['admin', 'manager']}><CashFlowPage /></PrivateRoute>} />
         <Route path="/admin/reports"    element={<PrivateRoute allowedRoles={['admin', 'manager']}><ReportsPage /></PrivateRoute>} />
         <Route path="/admin/audit"      element={<PrivateRoute allowedRoles={['admin']}><AuditLogsPage /></PrivateRoute>} />
-        <Route path="/admin/excel"      element={<PrivateRoute allowedRoles={['admin', 'manager', 'shop_user']}><ExcelUploadPage /></PrivateRoute>} />
+        <Route path="/admin/excel"      element={<PrivateRoute allowedRoles={['shop_user']}><ExcelUploadPage /></PrivateRoute>} />
+        <Route path="/admin/new-entry"  element={<PrivateRoute allowedRoles={['admin']}><AdminEntryPage /></PrivateRoute>} />
 
         {/* Manager Route */}
         <Route path="/manager" element={<PrivateRoute allowedRoles={['manager']}><ManagerDashboard /></PrivateRoute>} />

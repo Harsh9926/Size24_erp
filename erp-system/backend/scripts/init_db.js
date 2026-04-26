@@ -1,51 +1,69 @@
 /**
- * Utility: Create the erp_db database and initialize the schema.
+ * Create the erp_db database, initialize schema, and run all migrations.
  * Run: node scripts/init_db.js
  */
 const { Client } = require('pg');
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
-async function init() {
-    const defaultClient = new Client({
-        user: process.env.DB_USER || 'postgres',
-        host: process.env.DB_HOST || 'localhost',
-        database: 'postgres',
-        password: process.env.DB_PASSWORD || 'admin',
-        port: process.env.DB_PORT || 5432,
-    });
+const DB_NAME = process.env.DB_NAME || 'erp_db';
 
+const pgConfig = {
+    user:     process.env.DB_USER     || 'postgres',
+    host:     process.env.DB_HOST     || 'localhost',
+    password: process.env.DB_PASSWORD || 'admin',
+    port:     process.env.DB_PORT     || 5432,
+};
+
+async function runSQL(client, label, sql) {
     try {
-        await defaultClient.connect();
-        const res = await defaultClient.query("SELECT 1 FROM pg_database WHERE datname='erp_db'");
-        if (res.rowCount === 0) {
-            await defaultClient.query('CREATE DATABASE erp_db');
-            console.log("Database 'erp_db' created successfully.");
-        } else {
-            console.log("Database 'erp_db' already exists.");
-        }
+        await client.query(sql);
+        console.log(`  ✓ ${label}`);
     } catch (err) {
-        console.error("Error creating database:", err.message);
+        console.error(`  ✗ ${label}: ${err.message}`);
+        throw err;
+    }
+}
+
+async function init() {
+    // Step 1: Create DB if it doesn't exist
+    const pgClient = new Client({ ...pgConfig, database: 'postgres' });
+    try {
+        await pgClient.connect();
+        const res = await pgClient.query(`SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'`);
+        if (res.rowCount === 0) {
+            await pgClient.query(`CREATE DATABASE ${DB_NAME}`);
+            console.log(`Database '${DB_NAME}' created.`);
+        } else {
+            console.log(`Database '${DB_NAME}' already exists.`);
+        }
     } finally {
-        await defaultClient.end();
+        await pgClient.end();
     }
 
-    const erpClient = new Client({
-        user: process.env.DB_USER || 'postgres',
-        host: process.env.DB_HOST || 'localhost',
-        database: 'erp_db',
-        password: process.env.DB_PASSWORD || 'admin',
-        port: process.env.DB_PORT || 5432,
-    });
-
+    // Step 2: Apply schema + consolidated migration
+    const erpClient = new Client({ ...pgConfig, database: DB_NAME });
     try {
         await erpClient.connect();
-        const sql = fs.readFileSync(path.join(__dirname, '../db/schema.sql'), 'utf8');
-        await erpClient.query(sql);
-        console.log("Schema initialized successfully.");
+
+        console.log('\nApplying schema...');
+        const schema = fs.readFileSync(path.join(__dirname, '../db/schema.sql'), 'utf8');
+        await runSQL(erpClient, 'schema.sql', schema);
+
+        // Consolidated migration — adds any columns the schema may have missed
+        // on DBs that were initialized before schema.sql was updated.
+        const migPath = path.join(__dirname, '../db/migrate_all_missing.sql');
+        if (fs.existsSync(migPath)) {
+            console.log('\nApplying consolidated migration...');
+            const migSql = fs.readFileSync(migPath, 'utf8');
+            await runSQL(erpClient, 'migrate_all_missing.sql', migSql);
+        }
+
+        console.log('\n✅  Database ready.\n');
     } catch (err) {
-        console.error("Error initializing schema:", err.message);
+        console.error('Init failed:', err.message);
+        process.exit(1);
     } finally {
         await erpClient.end();
     }

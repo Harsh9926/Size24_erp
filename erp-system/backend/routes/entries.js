@@ -15,9 +15,10 @@ router.post('/',              authenticateToken, ctrl.createEntry);
 router.put( '/:id',          authenticateToken, ctrl.updateEntry);
 
 // ── Admin param routes ────────────────────────────────────────────
-router.post('/:id/approve',  authenticateToken, requireRole('admin'),            ctrl.approveEntry);
-router.post('/:id/reject',   authenticateToken, requireRole('admin'),            ctrl.rejectEntry);
-router.post('/:id/unlock',   authenticateToken, requireRole('admin'),            ctrl.unlockEntry);
+router.post(  '/:id/approve',  authenticateToken, requireRole('admin'),          ctrl.approveEntry);
+router.post(  '/:id/reject',   authenticateToken, requireRole('admin'),          ctrl.rejectEntry);
+router.post(  '/:id/unlock',   authenticateToken, requireRole('admin'),          ctrl.unlockEntry);
+router.delete('/:id',          authenticateToken, requireRole('admin'),          ctrl.deleteEntry);
 
 module.exports = router;
 

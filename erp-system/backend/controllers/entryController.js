@@ -16,35 +16,84 @@ const db = require('../config/db');
 const getTodayUTC = () => new Date().toISOString().split('T')[0];
 
 // ─────────────────────────────────────────────────────────────────
-// CREATE  (shop_user submits; entry lands as PENDING)
+// CREATE
+// - shop_user: saves as PENDING, date must be today
+// - admin:     saves as APPROVED immediately, credits cash to wallet
 // ─────────────────────────────────────────────────────────────────
 exports.createEntry = async (req, res) => {
-    try {
-        const { shop_id, date, excel_total_sale, cash, online, razorpay } = req.body;
+    const { shop_id, date, excel_total_sale, cash, online, razorpay } = req.body;
+    const isAdmin = req.user.role === 'admin';
 
-        // ── Date rule: today only ────────────────────────────────
-        const today      = getTodayUTC();
-        const entryDate  = date ? String(date).split('T')[0] : null;
-        if (!entryDate || entryDate !== today) {
+    const entryDate = date ? String(date).split('T')[0] : null;
+    if (!entryDate) return res.status(400).json({ error: 'Date is required.' });
+
+    // Shop users can only submit today's entry
+    if (!isAdmin) {
+        const today = getTodayUTC();
+        if (entryDate !== today) {
             return res.status(400).json({
                 error: 'Only today\'s data is allowed. Past or future dates are rejected.',
             });
         }
+    }
 
-        // ── Breakdown validation ─────────────────────────────────
-        const excelTotal  = parseFloat(excel_total_sale || 0);
-        const breakdownSum = (
-            parseFloat(cash     || 0) +
-            parseFloat(online   || 0) +
-            parseFloat(razorpay || 0)
-        );
+    const excelTotal   = parseFloat(excel_total_sale || 0);
+    const breakdownSum = parseFloat(cash || 0) + parseFloat(online || 0) + parseFloat(razorpay || 0);
 
-        if (Math.abs(excelTotal - breakdownSum) > 0.01) {
-            return res.status(400).json({
-                error: `Breakdown (₹${breakdownSum.toFixed(2)}) does not match Total Sale (₹${excelTotal.toFixed(2)}). Fix before submitting.`,
-            });
+    // Breakdown validation — strict for shop users, advisory-only for admin
+    if (!isAdmin && Math.abs(excelTotal - breakdownSum) > 0.01) {
+        return res.status(400).json({
+            error: `Breakdown (₹${breakdownSum.toFixed(2)}) does not match Total Sale (₹${excelTotal.toFixed(2)}). Fix before submitting.`,
+        });
+    }
+
+    // ── Admin path: auto-approve in a transaction + credit wallet ──
+    if (isAdmin) {
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const result = await client.query(
+                `INSERT INTO daily_entries
+                    (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay,
+                     approval_status, locked, approved_by, approved_at)
+                 VALUES ($1, $2, $3, $3, $4, $5, $6, 'APPROVED', true, $7, NOW())
+                 RETURNING *`,
+                [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0, req.user.id],
+            );
+
+            // Credit cash portion to shop user's wallet
+            const shopResult = await client.query(
+                'SELECT user_id FROM shops WHERE id = $1', [shop_id],
+            );
+            if (shopResult.rows[0]?.user_id) {
+                await client.query(
+                    'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
+                    [parseFloat(cash || 0), shopResult.rows[0].user_id],
+                );
+            }
+
+            await client.query(
+                `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
+                 VALUES ('daily_entries', $1, '{}'::jsonb, $2::jsonb, $3)`,
+                [result.rows[0].id, JSON.stringify(result.rows[0]), req.user.id],
+            );
+
+            await client.query('COMMIT');
+            return res.status(201).json(result.rows[0]);
+        } catch (err) {
+            await client.query('ROLLBACK');
+            if (err.constraint === 'daily_entries_shop_id_date_key') {
+                return res.status(409).json({ error: 'An entry for this shop and date already exists.' });
+            }
+            return res.status(500).json({ error: err.message });
+        } finally {
+            client.release();
         }
+    }
 
+    // ── Shop user path: save as PENDING ───────────────────────────
+    try {
         const result = await db.query(
             `INSERT INTO daily_entries
                 (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay,
@@ -53,13 +102,12 @@ exports.createEntry = async (req, res) => {
              RETURNING *`,
             [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0],
         );
-
         res.status(201).json(result.rows[0]);
     } catch (err) {
         if (err.constraint === 'daily_entries_shop_id_date_key') {
             const existing = await db.query(
                 'SELECT * FROM daily_entries WHERE shop_id = $1 AND date = $2',
-                [req.body.shop_id, req.body.date?.split('T')[0]],
+                [shop_id, entryDate],
             );
             return res.status(409).json({
                 error: 'Entry for this date already exists.',
@@ -336,6 +384,62 @@ exports.rejectEntry = async (req, res) => {
         res.json({ message: 'Entry rejected.', entry: result.rows[0] });
     } catch (err) {
         res.status(500).json({ error: err.message });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────
+// DELETE  (admin only)
+// Reverses wallet credit if entry was APPROVED, then hard-deletes.
+// ─────────────────────────────────────────────────────────────────
+exports.deleteEntry = async (req, res) => {
+    const { id } = req.params;
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const entryResult = await client.query(
+            'SELECT * FROM daily_entries WHERE id = $1 FOR UPDATE', [id],
+        );
+        if (entryResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Entry not found.' });
+        }
+
+        const entry = entryResult.rows[0];
+
+        // Reverse the cash that was credited to the shop wallet on approval
+        if (entry.approval_status === 'APPROVED') {
+            const shopResult = await client.query(
+                'SELECT user_id FROM shops WHERE id = $1', [entry.shop_id],
+            );
+            if (shopResult.rows[0]?.user_id) {
+                await client.query(
+                    'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) - $1 WHERE id = $2',
+                    [parseFloat(entry.cash || 0), shopResult.rows[0].user_id],
+                );
+            }
+        }
+
+        // Audit log before deletion
+        await client.query(
+            `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
+             VALUES ('daily_entries', $1, $2::jsonb, '{"action":"deleted"}'::jsonb, $3)`,
+            [id, JSON.stringify(entry), req.user.id],
+        );
+
+        await client.query('DELETE FROM daily_entries WHERE id = $1', [id]);
+        await client.query('COMMIT');
+
+        res.json({
+            message: 'Entry deleted successfully.',
+            reversedCash: parseFloat(entry.cash || 0),
+            wasApproved: entry.approval_status === 'APPROVED',
+        });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
     }
 };
 

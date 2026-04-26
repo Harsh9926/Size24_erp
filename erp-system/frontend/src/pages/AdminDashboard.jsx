@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import Layout from '../components/Layout';
-import { TrendingUp, IndianRupee, CreditCard, Clock, Lock, ShieldCheck, ShieldX, AlertCircle, ArrowRightLeft, RefreshCw } from 'lucide-react';
+import { TrendingUp, IndianRupee, CreditCard, Clock, Lock, ShieldCheck, ShieldX, AlertCircle, ArrowRightLeft, RefreshCw, Trash2, CheckCircle2 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
@@ -13,9 +13,14 @@ const AdminDashboard = () => {
     const [shops, setShops] = useState([]);
     const [cities, setCities] = useState([]);
     const [filters, setFilters] = useState({ city_id: '', shop_id: '' });
-    const [transfers,     setTransfers]     = useState([]);
-    const [txLoading,     setTxLoading]     = useState(false);
+    const [transfers,      setTransfers]      = useState([]);
+    const [txLoading,      setTxLoading]      = useState(false);
     const [txStatusFilter, setTxStatusFilter] = useState('');
+
+    // Delete state
+    const [deleteTarget,  setDeleteTarget]  = useState(null);   // entry to confirm
+    const [deleting,      setDeleting]      = useState(false);
+    const [toast,         setToast]         = useState(null);   // { msg, ok }
 
     const fetchTransfers = async (status = '') => {
         setTxLoading(true);
@@ -46,9 +51,35 @@ const AdminDashboard = () => {
         finally { setLoading(false); }
     };
 
+    const showToast = (msg, ok = true) => {
+        setToast({ msg, ok });
+        setTimeout(() => setToast(null), 3500);
+    };
+
     const handleUnlock = async (id) => {
         try { await api.post(`/entries/${id}/unlock`); fetchData(); alert('Unlocked for 10 min'); }
         catch (e) { alert(e.response?.data?.error || 'Error'); }
+    };
+
+    const handleDeleteClick = (entry) => setDeleteTarget(entry);
+
+    const confirmDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
+        try {
+            await api.delete(`/entries/${deleteTarget.id}`);
+            // Remove from local state instantly — no refetch needed
+            setData(prev => ({
+                ...prev,
+                latestEntries: prev.latestEntries.filter(e => e.id !== deleteTarget.id),
+            }));
+            showToast('Entry deleted successfully.');
+        } catch (e) {
+            showToast(e.response?.data?.error || 'Failed to delete entry.', false);
+        } finally {
+            setDeleting(false);
+            setDeleteTarget(null);
+        }
     };
 
     const cards = [
@@ -160,12 +191,18 @@ const AdminDashboard = () => {
                                         </span>
                                     </td>
                                     <td className="px-4 py-3">
-                                        {entry.locked && status === 'APPROVED' && (
-                                            <button onClick={() => handleUnlock(entry.id)}
-                                                className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium border border-indigo-200 px-2 py-1 rounded-md hover:bg-indigo-50 transition-colors">
-                                                <Lock className="h-3 w-3" /> Unlock
+                                        <div className="flex items-center gap-1.5">
+                                            {entry.locked && status === 'APPROVED' && (
+                                                <button onClick={() => handleUnlock(entry.id)}
+                                                    className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium border border-indigo-200 px-2 py-1 rounded-md hover:bg-indigo-50 transition-colors">
+                                                    <Lock className="h-3 w-3" /> Unlock
+                                                </button>
+                                            )}
+                                            <button onClick={() => handleDeleteClick(entry)}
+                                                className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-medium border border-red-200 px-2 py-1 rounded-md hover:bg-red-50 transition-colors">
+                                                <Trash2 className="h-3 w-3" /> Delete
                                             </button>
-                                        )}
+                                        </div>
                                     </td>
                                 </tr>
                                 );
@@ -260,6 +297,66 @@ const AdminDashboard = () => {
                     </table>
                 </div>
             </div>
+            {/* ── Delete Confirmation Modal ───────────────────── */}
+            {deleteTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                    style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}>
+                    <div className="w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden"
+                        style={{ background: 'var(--bg-surface)' }}>
+                        <div className="p-6">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-2.5 rounded-xl bg-red-100 flex-shrink-0">
+                                    <Trash2 className="h-5 w-5 text-red-600" />
+                                </div>
+                                <h3 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+                                    Delete Entry?
+                                </h3>
+                            </div>
+                            <p className="text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>
+                                Are you sure you want to delete this entry? This action cannot be undone.
+                            </p>
+                            <div className="mt-3 px-3 py-2.5 rounded-lg bg-red-50 border border-red-100 text-xs text-red-700 space-y-0.5">
+                                <p><span className="font-semibold">Shop:</span> {deleteTarget.shop_name}</p>
+                                <p><span className="font-semibold">Date:</span> {new Date(deleteTarget.date).toLocaleDateString('en-IN')}</p>
+                                <p><span className="font-semibold">Total Sale:</span> ₹{Number(deleteTarget.total_sale).toLocaleString('en-IN')}</p>
+                                {deleteTarget.approval_status === 'APPROVED' && (
+                                    <p className="font-semibold text-red-800 mt-1">
+                                        ⚠ Wallet will be debited ₹{Number(deleteTarget.cash).toLocaleString('en-IN')} (cash reversal).
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                        <div className="px-6 pb-6 flex gap-3">
+                            <button
+                                onClick={() => setDeleteTarget(null)}
+                                disabled={deleting}
+                                className="flex-1 py-2.5 text-sm font-semibold rounded-xl border transition-colors"
+                                style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmDelete}
+                                disabled={deleting}
+                                className="flex-1 py-2.5 text-sm font-bold rounded-xl text-white transition-all flex items-center justify-center gap-2"
+                                style={{ background: deleting ? '#9ca3af' : '#dc2626' }}>
+                                {deleting
+                                    ? <><span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Deleting…</>
+                                    : <><Trash2 className="h-4 w-4" /> Confirm Delete</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Toast ────────────────────────────────────────── */}
+            {toast && (
+                <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-xl text-sm font-semibold text-white transition-all ${toast.ok ? 'bg-emerald-600' : 'bg-red-600'}`}>
+                    {toast.ok
+                        ? <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
+                        : <AlertCircle className="h-5 w-5 flex-shrink-0" />}
+                    {toast.msg}
+                </div>
+            )}
         </Layout>
     );
 };
