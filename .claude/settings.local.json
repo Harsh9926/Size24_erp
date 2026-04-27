@@ -3,7 +3,8 @@
     "allow": [
       "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(p.dependencies?.xlsx || p.devDependencies?.xlsx || 'NOT FOUND'\\)\")",
       "Bash(find \"c:/Users/harshii/OneDrive/Attachments/Desktop/Saheb sir/erp-system\" -not -path \"*/node_modules/*\" -type f -exec ls -lh {} \\\\;)",
-      "Bash(awk '{print $5, $9}')"
+      "Bash(awk '{print $5, $9}')",
+      "Bash(grep -E \"\\\\.js$\")"
     ]
   }
 }

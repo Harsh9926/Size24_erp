@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import Layout from '../components/Layout';
-import { TrendingUp, IndianRupee, CreditCard, Clock, Lock, ShieldCheck, ShieldX, AlertCircle, ArrowRightLeft, RefreshCw, Trash2, CheckCircle2 } from 'lucide-react';
+import { TrendingUp, IndianRupee, CreditCard, Clock, Lock, ShieldCheck, ShieldX, AlertCircle, ArrowRightLeft, RefreshCw, Trash2, CheckCircle2, Store, X } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
@@ -9,6 +9,7 @@ import {
 const AdminDashboard = () => {
     const [data, setData] = useState({ summary: {}, chartData: [], latestEntries: [], pendingUsersCount: 0, pendingEntriesCount: 0 });
     const [loading, setLoading] = useState(true);
+    const [fetchError, setFetchError] = useState(null);
     const [period, setPeriod] = useState('monthly');
     const [shops, setShops] = useState([]);
     const [cities, setCities] = useState([]);
@@ -43,11 +44,15 @@ const AdminDashboard = () => {
 
     const fetchData = async () => {
         setLoading(true);
+        setFetchError(null);
         try {
             const params = new URLSearchParams({ period, ...filters }).toString();
             const res = await api.get(`/dashboard/admin?${params}`);
             setData(res.data);
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error(e);
+            setFetchError(e.response?.data?.error || 'Failed to load dashboard data. Check backend connection.');
+        }
         finally { setLoading(false); }
     };
 
@@ -83,14 +88,22 @@ const AdminDashboard = () => {
     };
 
     const cards = [
-        { label: 'Total Sales (Approved)', value: data.summary?.total_sales,  icon: TrendingUp,   color: 'text-emerald-600', bg: 'bg-emerald-50', isCurrency: true },
-        { label: 'Total Cash',             value: data.summary?.total_cash,   icon: IndianRupee,  color: 'text-blue-600',    bg: 'bg-blue-50',    isCurrency: true },
-        { label: 'Total Online',           value: data.summary?.total_online, icon: CreditCard,   color: 'text-purple-600',  bg: 'bg-purple-50',  isCurrency: true },
-        { label: 'Pending Approvals',      value: data.pendingEntriesCount,   icon: AlertCircle,  color: 'text-amber-600',   bg: 'bg-amber-50',   isCurrency: false },
+        { label: 'Total Sales (Approved)', value: data.totalSales  ?? data.summary?.total_sales,  icon: TrendingUp,   color: 'text-emerald-600', bg: 'bg-emerald-50', isCurrency: true },
+        { label: 'Total Cash',             value: data.totalCash   ?? data.summary?.total_cash,   icon: IndianRupee,  color: 'text-blue-600',    bg: 'bg-blue-50',    isCurrency: true },
+        { label: 'Total Online',           value: data.totalOnline ?? data.summary?.total_online, icon: CreditCard,   color: 'text-purple-600',  bg: 'bg-purple-50',  isCurrency: true },
+        { label: 'Pending Approvals',      value: data.pendingEntriesCount,                       icon: AlertCircle,  color: 'text-amber-600',   bg: 'bg-amber-50',   isCurrency: false },
     ];
 
     return (
         <Layout title="SIZE24 Dashboard">
+            {/* API Error Banner */}
+            {fetchError && (
+                <div className="mb-6 flex items-center gap-3 bg-red-50 border border-red-200 text-red-800 px-5 py-3 rounded-xl">
+                    <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                    <p className="text-sm font-medium">{fetchError}</p>
+                </div>
+            )}
+
             {/* Pending Banner */}
             {data.pendingUsersCount > 0 && (
                 <div className="mb-6 flex items-center gap-3 bg-amber-50 border border-amber-200 text-amber-800 px-5 py-3 rounded-xl">
@@ -103,7 +116,7 @@ const AdminDashboard = () => {
             )}
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
                 {cards.map(({ label, value, icon: Icon, color, bg, isCurrency }) => (
                     <div key={label} className="rounded-xl p-5 shadow-sm border transition-shadow hover:shadow-md" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
                         <div className="flex items-center justify-between">
@@ -119,6 +132,47 @@ const AdminDashboard = () => {
                 ))}
             </div>
 
+            {/* ── Store Filter Bar ─────────────────────────────────── */}
+            <div className="mb-6 flex flex-wrap items-center gap-3 px-5 py-3.5 rounded-xl border shadow-sm"
+                style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                <Store className="h-4 w-4 flex-shrink-0" style={{ color: '#FF6B00' }} />
+                <span className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>Select Store:</span>
+                <select
+                    value={filters.shop_id}
+                    onChange={e => setFilters(f => ({ ...f, shop_id: e.target.value }))}
+                    className="flex-1 min-w-[180px] max-w-xs px-3 py-1.5 text-sm border rounded-lg outline-none"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                >
+                    <option value="">All Stores</option>
+                    {shops.map(s => <option key={s.id} value={s.id}>{s.shop_name}</option>)}
+                </select>
+
+                {/* Active filter pill */}
+                {filters.shop_id && (() => {
+                    const sel = shops.find(s => String(s.id) === String(filters.shop_id));
+                    return sel ? (
+                        <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-white"
+                            style={{ background: '#FF6B00' }}>
+                            <Store className="h-3 w-3" />
+                            {sel.shop_name}
+                            <button onClick={() => setFilters(f => ({ ...f, shop_id: '' }))}
+                                className="ml-0.5 hover:opacity-70">
+                                <X className="h-3 w-3" />
+                            </button>
+                        </span>
+                    ) : null;
+                })()}
+
+                {filters.shop_id && (
+                    <button onClick={() => setFilters(f => ({ ...f, shop_id: '' }))}
+                        className="text-xs text-gray-400 hover:text-gray-600 underline ml-auto">
+                        Clear filter
+                    </button>
+                )}
+
+                {loading && <span className="text-xs text-gray-400 animate-pulse ml-auto">Refreshing…</span>}
+            </div>
+
             {/* Chart Filters */}
             <div className="rounded-xl shadow-sm border p-6 mb-6" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
                 <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
@@ -131,10 +185,6 @@ const AdminDashboard = () => {
                                 {p}
                             </button>
                         ))}
-                        <select className="px-3 py-1.5 text-xs border rounded-lg bg-white text-gray-600 outline-none" value={filters.shop_id} onChange={e => setFilters(f => ({ ...f, shop_id: e.target.value }))}>
-                            <option value="">All Shops</option>
-                            {shops.map(s => <option key={s.id} value={s.id}>{s.shop_name}</option>)}
-                        </select>
                     </div>
                 </div>
                 {loading ? (
@@ -159,7 +209,7 @@ const AdminDashboard = () => {
             {/* Recent Entries Table */}
             <div className="rounded-xl shadow-sm border overflow-hidden" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
                 <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-color)' }}>
-                    <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Recent Daily Entries</h3>
+                    <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Recent Daily Entries <span className="text-xs font-normal text-gray-400">(all statuses)</span></h3>
                     <button onClick={fetchData} className="text-xs text-indigo-600 hover:underline font-medium">Refresh</button>
                 </div>
                 <div className="overflow-x-auto">
@@ -208,7 +258,15 @@ const AdminDashboard = () => {
                                 );
                             })}
                             {(!data.latestEntries || data.latestEntries.length === 0) && (
-                                <tr><td colSpan="9" className="text-center py-12 text-gray-400">No entries yet</td></tr>
+                                <tr>
+                                    <td colSpan="9" className="text-center py-12">
+                                        <p className="text-gray-400 text-sm">No entries found.</p>
+                                        <p className="text-gray-400 text-xs mt-1">
+                                            Summary totals count only <strong>Approved</strong> entries.{' '}
+                                            <a href="/admin/approvals" className="text-indigo-500 underline">Go to Approvals →</a>
+                                        </p>
+                                    </td>
+                                </tr>
                             )}
                         </tbody>
                     </table>

@@ -48,20 +48,30 @@ exports.getAdminDashboard = async (req, res) => {
             params
         );
 
-        // ── Recent approved entries ──────────────────────────────
+        // ── Recent entries (ALL statuses, scoped by shop/city filter) ─
+        // Build a separate WHERE for entries that shows all statuses so admin
+        // can see pending/rejected entries too (not just approved ones).
+        const entryConditions = [];
+        const entryParams = [];
+        let eIdx = 1;
+        if (city_id) { entryConditions.push(`s.city_id = $${eIdx++}`); entryParams.push(city_id); }
+        if (shop_id) { entryConditions.push(`de.shop_id = $${eIdx++}`); entryParams.push(shop_id); }
+        const entryWhere = entryConditions.length ? 'WHERE ' + entryConditions.join(' AND ') : '';
+
         const entriesQ = await db.query(
-            `SELECT de.*, s.shop_name, c.name AS city_name,
+            `SELECT de.*, s.shop_name,
+                    c.name AS city_name,
                     u.name AS approved_by_name
              FROM daily_entries de
              JOIN shops s ON de.shop_id = s.id
-             JOIN cities c ON s.city_id = c.id
+             LEFT JOIN cities c ON s.city_id = c.id
              LEFT JOIN users u ON de.approved_by = u.id
-             ${where}
-             ORDER BY de.date DESC LIMIT 20`,
-            params
+             ${entryWhere}
+             ORDER BY de.created_at DESC LIMIT 20`,
+            entryParams
         );
 
-        console.log('[Dashboard] Approved entries returned:', entriesQ.rows.length);
+        console.log('[Dashboard] All recent entries returned:', entriesQ.rows.length);
 
         // ── Pending users count ──────────────────────────────────
         const pendingQ = await db.query(

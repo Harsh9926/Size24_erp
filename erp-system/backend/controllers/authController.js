@@ -1,6 +1,6 @@
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const db = require('../config/db');
+const jwt    = require('jsonwebtoken');
+const db     = require('../config/db');
 
 exports.login = async (req, res) => {
     try {
@@ -43,6 +43,43 @@ exports.login = async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server error during login' });
+    }
+};
+
+// ── Change Password (any logged-in user changes their own password) ──
+exports.changePassword = async (req, res) => {
+    try {
+        const { current_password, new_password } = req.body;
+        const userId = req.user.id;
+
+        if (!current_password || !new_password)
+            return res.status(400).json({ error: 'current_password and new_password are required.' });
+
+        if (new_password.length < 6)
+            return res.status(400).json({ error: 'New password must be at least 6 characters.' });
+
+        const userResult = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
+        if (userResult.rows.length === 0)
+            return res.status(404).json({ error: 'User not found.' });
+
+        const user = userResult.rows[0];
+
+        const valid = await bcrypt.compare(current_password, user.password_hash);
+        if (!valid)
+            return res.status(401).json({ error: 'Current password is incorrect.' });
+
+        const sameAsOld = await bcrypt.compare(new_password, user.password_hash);
+        if (sameAsOld)
+            return res.status(400).json({ error: 'New password must be different from the current password.' });
+
+        const hash = await bcrypt.hash(new_password, 10);
+        await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, userId]);
+
+        console.log(`[changePassword] User #${userId} changed their password.`);
+        res.json({ message: 'Password updated successfully.' });
+    } catch (err) {
+        console.error('[changePassword] error:', err.message);
+        res.status(500).json({ error: 'Server error.' });
     }
 };
 
