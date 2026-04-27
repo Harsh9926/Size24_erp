@@ -4,7 +4,7 @@ import Layout from '../components/Layout';
 import {
     TrendingUp, IndianRupee, CreditCard, Clock, Lock, ShieldCheck, ShieldX,
     AlertCircle, ArrowRightLeft, RefreshCw, Trash2, CheckCircle2, Store, X,
-    Calendar, Pencil, Save, Wallet,
+    Calendar, Pencil, Save, Wallet, Calculator,
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -31,7 +31,8 @@ const EditModal = ({ entry, onClose, onSaved }) => {
 
     const total       = parseFloat(form.total_sale       || 0);
     const breakdown   = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0);
-    const mismatch    = Math.abs(total - breakdown) > 0.01;
+    const diff        = breakdown - total;
+    const mismatch    = Math.abs(diff) > 0.01;
     const oldCash     = parseFloat(entry.cash || 0);
     const newCash     = parseFloat(form.cash || 0);
     const cashDelta   = newCash - oldCash;
@@ -116,14 +117,33 @@ const EditModal = ({ entry, onClose, onSaved }) => {
                         ))}
                     </div>
 
-                    {/* Breakdown validation banner */}
-                    <div className={`rounded-lg px-4 py-2.5 flex items-center justify-between text-sm border ${
-                        mismatch ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
-                        <span className={`font-semibold text-xs ${mismatch ? 'text-red-700' : 'text-green-700'}`}>
-                            {mismatch
-                                ? `⚠ Mismatch: breakdown ${fmt(breakdown)} ≠ total ${fmt(total)}`
-                                : `✓ Breakdown matches (${fmt(breakdown)})`}
-                        </span>
+                    {/* Live Difference Calculator */}
+                    <div className={`rounded-xl border overflow-hidden ${mismatch ? 'border-red-200' : 'border-green-200'}`}>
+                        <div className={`px-4 pt-3 pb-2.5 space-y-1.5 ${mismatch ? 'bg-red-50' : 'bg-green-50'}`}>
+                            <div className="flex justify-between items-center text-xs">
+                                <span style={{ color: 'var(--text-secondary)' }}>Breakdown (Cash + Razorpay + QR)</span>
+                                <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{fmt(breakdown)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                                <span style={{ color: 'var(--text-secondary)' }}>Total Sale</span>
+                                <span className="font-bold text-teal-600">{fmt(total)}</span>
+                            </div>
+                        </div>
+                        <div className={`px-4 py-2.5 border-t flex items-center justify-between ${
+                            mismatch ? 'border-red-200 bg-red-100' : 'border-green-200 bg-green-100'
+                        }`}>
+                            <div className="flex items-center gap-1.5">
+                                <Calculator className="h-3.5 w-3.5 text-gray-500" title="Auto-calculated difference" />
+                                <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Difference</span>
+                            </div>
+                            {!mismatch ? (
+                                <span className="text-xs font-bold text-green-700">✔ Perfect Match</span>
+                            ) : diff > 0 ? (
+                                <span className="text-xs font-bold text-red-600">+{fmt(diff)} Extra (Over Amount) ❌</span>
+                            ) : (
+                                <span className="text-xs font-bold text-red-600">-{fmt(Math.abs(diff))} Short (Less Amount) ❌</span>
+                            )}
+                        </div>
                     </div>
 
                     {/* Wallet delta warning */}

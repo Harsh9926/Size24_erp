@@ -6,7 +6,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
     CheckCircle2, XCircle, IndianRupee, Store, Calendar,
     PlusCircle, AlertCircle, FileSpreadsheet, Camera, Loader2,
-    Info, Send, X,
+    Info, Send, X, Calculator,
 } from 'lucide-react';
 
 /* ── Excel parser (no date restriction for admin) ─────────────────── */
@@ -115,6 +115,7 @@ const AdminEntryPage = () => {
     const [submitting, setSubmitting] = useState(false);
     const [success,    setSuccess]    = useState(null);
     const [error,      setError]      = useState(null);
+    const [allowMismatch, setAllowMismatch] = useState(false);
 
     // Excel
     const xlRef = useRef(null);
@@ -143,11 +144,11 @@ const AdminEntryPage = () => {
         setError(null); setSuccess(null);
     };
 
-    const total     = parseFloat(form.excel_total_sale || 0);
-    const breakdown = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0);
-    const mismatch  = form.excel_total_sale !== '' && Math.abs(total - breakdown) > 0.01;
-    // Admin can override mismatch — warning shown but not a blocker
-    const canSubmit = form.shop_id && form.date && form.excel_total_sale !== '' && !submitting;
+    const total      = parseFloat(form.excel_total_sale || 0);
+    const breakdown  = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0);
+    const diff       = breakdown - total;
+    const mismatch   = form.excel_total_sale !== '' && Math.abs(diff) > 0.01;
+    const canSubmit  = form.shop_id && form.date && form.excel_total_sale !== '' && !submitting && (!mismatch || allowMismatch);
 
     /* ── Photo ──────────────────────────────────────────────────── */
     const handlePhotoChange = (e) => {
@@ -180,6 +181,7 @@ const AdminEntryPage = () => {
     const confirmExcel = () => {
         const { date, totalSale } = previewData;
         setShowPreview(false);
+        setAllowMismatch(false);
         setForm(prev => ({
             ...prev,
             ...(date ? { date } : {}),
@@ -212,6 +214,7 @@ const AdminEntryPage = () => {
                 `₹${payload.cash.toFixed(2)} credited to wallet.`
             );
             setForm(prev => ({ ...EMPTY, shop_id: prev.shop_id, date: prev.date }));
+            setAllowMismatch(false);
             setPhotoFile(null); setPhotoPreview('');
         } catch (err) {
             setError(err.response?.data?.error || 'Failed to create entry.');
@@ -341,22 +344,71 @@ const AdminEntryPage = () => {
                             ))}
                         </div>
 
-                        {/* Breakdown validation */}
+                        {/* Live Difference Calculator */}
                         {form.excel_total_sale !== '' && (
-                            <div className={`p-3 rounded-lg border transition-all ${mismatch ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}`}>
-                                <div className="flex justify-between text-sm font-medium">
-                                    <span className="text-gray-600">Breakdown (Cash + Razorpay + QR)</span>
-                                    <span className={`font-bold ${mismatch ? 'text-red-600' : 'text-green-700'}`}>{fmtAmt(breakdown)}</span>
+                            <div className={`rounded-xl border overflow-hidden transition-all ${
+                                !mismatch
+                                    ? 'border-green-200'
+                                    : allowMismatch
+                                        ? 'border-amber-300'
+                                        : 'border-red-200'
+                            }`}>
+                                {/* Breakdown & Total rows */}
+                                <div className={`px-4 pt-3 pb-2.5 space-y-2 ${
+                                    !mismatch ? 'bg-green-50' : allowMismatch ? 'bg-amber-50' : 'bg-red-50'
+                                }`}>
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-gray-600 font-medium">Breakdown (Cash + Razorpay + QR)</span>
+                                        <span className="font-bold text-gray-800">{fmtAmt(breakdown)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-gray-600 font-medium">Total Sale</span>
+                                        <span className="font-bold text-teal-700">{fmtAmt(total)}</span>
+                                    </div>
                                 </div>
-                                <div className="flex justify-between text-sm font-medium mt-1">
-                                    <span className="text-gray-600">Total Sale</span>
-                                    <span className="font-bold text-teal-700">{fmtAmt(total)}</span>
+
+                                {/* Difference row */}
+                                <div className={`px-4 py-2.5 border-t flex items-center justify-between ${
+                                    !mismatch
+                                        ? 'border-green-200 bg-green-100'
+                                        : allowMismatch
+                                            ? 'border-amber-300 bg-amber-100'
+                                            : 'border-red-200 bg-red-100'
+                                }`}>
+                                    <div className="flex items-center gap-1.5">
+                                        <Calculator className="h-4 w-4 text-gray-500" title="Auto-calculated difference" />
+                                        <span className="text-sm font-semibold text-gray-700">Difference</span>
+                                    </div>
+                                    {!mismatch ? (
+                                        <span className="text-sm font-bold text-green-700">✔ Perfect Match</span>
+                                    ) : diff > 0 ? (
+                                        <span className={`text-sm font-bold ${allowMismatch ? 'text-amber-700' : 'text-red-600'}`}>
+                                            +{fmtAmt(diff)} Extra (Over Amount) ❌
+                                        </span>
+                                    ) : (
+                                        <span className={`text-sm font-bold ${allowMismatch ? 'text-amber-700' : 'text-red-600'}`}>
+                                            -{fmtAmt(Math.abs(diff))} Short (Less Amount) ❌
+                                        </span>
+                                    )}
                                 </div>
-                                <div className={`mt-2 pt-2 border-t flex items-center justify-center gap-1.5 ${mismatch ? 'border-yellow-200' : 'border-green-200'}`}>
-                                    {mismatch
-                                        ? <><AlertCircle className="h-4 w-4 text-yellow-500" /><span className="text-xs font-bold text-yellow-700">Warning: Breakdown ≠ Total Sale — admin override allowed</span></>
-                                        : <><CheckCircle2 className="h-4 w-4 text-green-600" /><span className="text-xs font-bold text-green-700">Breakdown matches ✓</span></>}
-                                </div>
+
+                                {/* Admin override checkbox */}
+                                {mismatch && (
+                                    <div className={`px-4 py-2.5 border-t flex items-center gap-2 ${
+                                        allowMismatch ? 'border-amber-300 bg-amber-50' : 'border-red-200 bg-red-50'
+                                    }`}>
+                                        <input
+                                            type="checkbox"
+                                            id="allowMismatch"
+                                            checked={allowMismatch}
+                                            onChange={(e) => setAllowMismatch(e.target.checked)}
+                                            className="h-3.5 w-3.5 accent-orange-500 cursor-pointer"
+                                        />
+                                        <label htmlFor="allowMismatch" className="text-xs font-semibold text-gray-700 cursor-pointer select-none">
+                                            Allow mismatch (Admin only) — submit anyway
+                                        </label>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -406,9 +458,15 @@ const AdminEntryPage = () => {
                                 ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating…</>
                                 : <><Send className="h-4 w-4" /> Create & Auto-Approve Entry</>}
                         </button>
-                        <p className="text-center text-xs text-gray-400">
-                            Entry will be saved as <strong>Approved</strong> immediately — cash credited to shop wallet.
-                        </p>
+                        {mismatch && !allowMismatch ? (
+                            <p className="text-center text-xs text-red-500 font-semibold">
+                                ⚠ Check "Allow mismatch" above to enable submit
+                            </p>
+                        ) : (
+                            <p className="text-center text-xs text-gray-400">
+                                Entry will be saved as <strong>Approved</strong> immediately — cash credited to shop wallet.
+                            </p>
+                        )}
                     </form>
                 </div>
             </div>
