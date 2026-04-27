@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import api from '../services/api';
 import Layout from '../components/Layout';
-import { TrendingUp, IndianRupee, CreditCard, Clock, Lock, ShieldCheck, ShieldX, AlertCircle, ArrowRightLeft, RefreshCw, Trash2, CheckCircle2, Store, X } from 'lucide-react';
+import { TrendingUp, IndianRupee, CreditCard, Clock, Lock, ShieldCheck, ShieldX, AlertCircle, ArrowRightLeft, RefreshCw, Trash2, CheckCircle2, Store, X, Calendar } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
@@ -13,7 +13,7 @@ const AdminDashboard = () => {
     const [period, setPeriod] = useState('monthly');
     const [shops, setShops] = useState([]);
     const [cities, setCities] = useState([]);
-    const [filters, setFilters] = useState({ city_id: '', shop_id: '' });
+    const [filters, setFilters] = useState({ city_id: '', shop_id: '', startDate: '', endDate: '' });
     const [transfers,      setTransfers]      = useState([]);
     const [txLoading,      setTxLoading]      = useState(false);
     const [txStatusFilter, setTxStatusFilter] = useState('');
@@ -22,6 +22,38 @@ const AdminDashboard = () => {
     const [deleteTarget,  setDeleteTarget]  = useState(null);   // entry to confirm
     const [deleting,      setDeleting]      = useState(false);
     const [toast,         setToast]         = useState(null);   // { msg, ok }
+
+    // Keep a ref to the latest fetchData so the visibility listener always calls
+    // the most recent version (with up-to-date period/filters in closure).
+    const fetchDataRef = useRef(null);
+    useEffect(() => { fetchDataRef.current = fetchData; });
+
+    // Auto-refresh when the tab becomes visible again (e.g. after approving on
+    // the approvals page and switching back).
+    useEffect(() => {
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') fetchDataRef.current?.();
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+        return () => document.removeEventListener('visibilitychange', handleVisibility);
+    }, []);
+
+    const setQuickFilter = (type) => {
+        const today = new Date();
+        const fmt = (d) => d.toISOString().split('T')[0];
+        if (type === 'today') {
+            setFilters(f => ({ ...f, startDate: fmt(today), endDate: fmt(today) }));
+        } else if (type === 'week') {
+            const start = new Date(today);
+            start.setDate(today.getDate() - today.getDay());
+            setFilters(f => ({ ...f, startDate: fmt(start), endDate: fmt(today) }));
+        } else if (type === 'month') {
+            const start = new Date(today.getFullYear(), today.getMonth(), 1);
+            setFilters(f => ({ ...f, startDate: fmt(start), endDate: fmt(today) }));
+        } else {
+            setFilters(f => ({ ...f, startDate: '', endDate: '' }));
+        }
+    };
 
     const fetchTransfers = async (status = '') => {
         setTxLoading(true);
@@ -46,8 +78,13 @@ const AdminDashboard = () => {
         setLoading(true);
         setFetchError(null);
         try {
-            const params = new URLSearchParams({ period, ...filters }).toString();
-            const res = await api.get(`/dashboard/admin?${params}`);
+            // Only include non-empty params so the backend doesn't receive blank strings
+            const raw = { period };
+            if (filters.city_id)   raw.city_id   = filters.city_id;
+            if (filters.shop_id)   raw.shop_id   = filters.shop_id;
+            if (filters.startDate) raw.startDate = filters.startDate;
+            if (filters.endDate)   raw.endDate   = filters.endDate;
+            const res = await api.get(`/dashboard/admin?${new URLSearchParams(raw).toString()}`);
             setData(res.data);
         } catch (e) {
             console.error(e);
@@ -73,12 +110,8 @@ const AdminDashboard = () => {
         setDeleting(true);
         try {
             await api.delete(`/entries/${deleteTarget.id}`);
-            // Remove from local state instantly — no refetch needed
-            setData(prev => ({
-                ...prev,
-                latestEntries: prev.latestEntries.filter(e => e.id !== deleteTarget.id),
-            }));
             showToast('Entry deleted successfully.');
+            fetchData(); // full refresh so totals update immediately
         } catch (e) {
             showToast(e.response?.data?.error || 'Failed to delete entry.', false);
         } finally {
@@ -88,10 +121,11 @@ const AdminDashboard = () => {
     };
 
     const cards = [
-        { label: 'Total Sales (Approved)', value: data.totalSales  ?? data.summary?.total_sales,  icon: TrendingUp,   color: 'text-emerald-600', bg: 'bg-emerald-50', isCurrency: true },
-        { label: 'Total Cash',             value: data.totalCash   ?? data.summary?.total_cash,   icon: IndianRupee,  color: 'text-blue-600',    bg: 'bg-blue-50',    isCurrency: true },
-        { label: 'Total Online',           value: data.totalOnline ?? data.summary?.total_online, icon: CreditCard,   color: 'text-purple-600',  bg: 'bg-purple-50',  isCurrency: true },
-        { label: 'Pending Approvals',      value: data.pendingEntriesCount,                       icon: AlertCircle,  color: 'text-amber-600',   bg: 'bg-amber-50',   isCurrency: false },
+        { label: 'Total Sales (Approved)', value: data.totalSales  ?? 0, icon: TrendingUp,  color: 'text-emerald-600', bg: 'bg-emerald-50', isCurrency: true  },
+        { label: 'Total Cash',             value: data.totalCash   ?? 0, icon: IndianRupee, color: 'text-blue-600',    bg: 'bg-blue-50',    isCurrency: true  },
+        { label: 'Total Online',           value: data.totalOnline ?? 0, icon: CreditCard,  color: 'text-purple-600',  bg: 'bg-purple-50',  isCurrency: true  },
+        { label: 'Approved Entries',       value: data.totalEntries ?? 0, icon: ShieldCheck, color: 'text-teal-600',   bg: 'bg-teal-50',    isCurrency: false },
+        { label: 'Pending Approvals',      value: data.pendingEntriesCount ?? 0, icon: AlertCircle, color: 'text-amber-600', bg: 'bg-amber-50', isCurrency: false },
     ];
 
     return (
@@ -116,7 +150,7 @@ const AdminDashboard = () => {
             )}
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
+            <div className="grid grid-cols-2 xl:grid-cols-5 gap-5 mb-6">
                 {cards.map(({ label, value, icon: Icon, color, bg, isCurrency }) => (
                     <div key={label} className="rounded-xl p-5 shadow-sm border transition-shadow hover:shadow-md" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
                         <div className="flex items-center justify-between">
@@ -171,6 +205,47 @@ const AdminDashboard = () => {
                 )}
 
                 {loading && <span className="text-xs text-gray-400 animate-pulse ml-auto">Refreshing…</span>}
+            </div>
+
+            {/* ── Date Range Filter Bar ──────────────────────────── */}
+            <div className="mb-6 flex flex-wrap items-center gap-3 px-5 py-3.5 rounded-xl border shadow-sm"
+                style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                <Calendar className="h-4 w-4 flex-shrink-0" style={{ color: '#FF6B00' }} />
+                <span className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>Date Range:</span>
+
+                {/* Quick filters */}
+                {[{ key: 'today', label: 'Today' }, { key: 'week', label: 'This Week' }, { key: 'month', label: 'This Month' }].map(({ key, label }) => (
+                    <button key={key} onClick={() => setQuickFilter(key)}
+                        className="px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors border"
+                        style={{ background: '#f3f4f6', color: '#374151', borderColor: 'var(--border-color)' }}>
+                        {label}
+                    </button>
+                ))}
+
+                <span className="text-xs text-gray-400">or</span>
+
+                <input
+                    type="date"
+                    value={filters.startDate}
+                    onChange={e => setFilters(f => ({ ...f, startDate: e.target.value }))}
+                    className="px-3 py-1.5 text-sm border rounded-lg outline-none"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                />
+                <span className="text-sm text-gray-400">to</span>
+                <input
+                    type="date"
+                    value={filters.endDate}
+                    onChange={e => setFilters(f => ({ ...f, endDate: e.target.value }))}
+                    className="px-3 py-1.5 text-sm border rounded-lg outline-none"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                />
+
+                {(filters.startDate || filters.endDate) && (
+                    <button onClick={() => setQuickFilter('clear')}
+                        className="text-xs text-gray-400 hover:text-gray-600 underline ml-auto">
+                        Clear dates
+                    </button>
+                )}
             </div>
 
             {/* Chart Filters */}

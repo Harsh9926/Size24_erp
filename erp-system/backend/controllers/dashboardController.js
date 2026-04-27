@@ -3,24 +3,27 @@ const db = require('../config/db');
 // ── Admin Dashboard ──────────────────────────────────────────────
 exports.getAdminDashboard = async (req, res) => {
     try {
-        const { city_id, shop_id, period = 'monthly' } = req.query;
+        const { city_id, shop_id, period = 'monthly', startDate, endDate } = req.query;
 
         // Build WHERE clauses — always filter to APPROVED entries only
         const conditions = [`de.approval_status = 'APPROVED'`];
         const params = [];
         let idx = 1;
 
-        if (city_id) { conditions.push(`s.city_id = $${idx++}`); params.push(city_id); }
-        if (shop_id) { conditions.push(`de.shop_id = $${idx++}`); params.push(shop_id); }
+        if (city_id)   { conditions.push(`s.city_id = $${idx++}`);  params.push(city_id); }
+        if (shop_id)   { conditions.push(`de.shop_id = $${idx++}`); params.push(shop_id); }
+        if (startDate) { conditions.push(`de.date >= $${idx++}`);   params.push(startDate); }
+        if (endDate)   { conditions.push(`de.date <= $${idx++}`);   params.push(endDate); }
 
         const where = 'WHERE ' + conditions.join(' AND ');
 
-        // ── Summary totals (approved only) ───────────────────────
+        // ── Summary totals (approved only, NULL-safe) ────────────
         const summaryQ = await db.query(
             `SELECT
-               COALESCE(SUM(de.total_sale), 0)             AS total_sales,
-               COALESCE(SUM(de.cash), 0)                   AS total_cash,
-               COALESCE(SUM(de.online + de.razorpay), 0)   AS total_online
+               COALESCE(SUM(de.total_sale), 0)                                        AS total_sales,
+               COALESCE(SUM(COALESCE(de.cash, 0)), 0)                                 AS total_cash,
+               COALESCE(SUM(COALESCE(de.online, 0) + COALESCE(de.razorpay, 0)), 0)    AS total_online,
+               COUNT(*) AS total_entries
              FROM daily_entries de
              JOIN shops s ON de.shop_id = s.id
              ${where}`,
@@ -37,10 +40,10 @@ exports.getAdminDashboard = async (req, res) => {
 
         const chartQ = await db.query(
             `SELECT ${groupBy} AS label,
-               COALESCE(SUM(de.total_sale), 0)                 AS sales,
-               COALESCE(SUM(de.cash), 0)                       AS cash,
-               COALESCE(SUM(de.online + de.razorpay), 0)       AS online,
-               COALESCE(SUM(de.expense), 0)                    AS expense
+               COALESCE(SUM(de.total_sale), 0)                                       AS sales,
+               COALESCE(SUM(COALESCE(de.cash, 0)), 0)                                AS cash,
+               COALESCE(SUM(COALESCE(de.online, 0) + COALESCE(de.razorpay, 0)), 0)   AS online,
+               COALESCE(SUM(COALESCE(de.expense, 0)), 0)                             AS expense
              FROM daily_entries de
              JOIN shops s ON de.shop_id = s.id
              ${where}
@@ -87,9 +90,10 @@ exports.getAdminDashboard = async (req, res) => {
 
         res.json({
             // Flat keys expected by the frontend analytics cards
-            totalSales:  parseFloat(summary.total_sales),
-            totalCash:   parseFloat(summary.total_cash),
-            totalOnline: parseFloat(summary.total_online),
+            totalSales:   parseFloat(summary.total_sales),
+            totalCash:    parseFloat(summary.total_cash),
+            totalOnline:  parseFloat(summary.total_online),
+            totalEntries: parseInt(summary.total_entries),
             entries: entriesQ.rows,
 
             // Nested keys kept for backward compatibility
