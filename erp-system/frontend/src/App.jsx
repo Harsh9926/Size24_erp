@@ -19,7 +19,12 @@ import ExcelUploadPage  from './pages/ExcelUploadPage';
 import AdminEntryPage   from './pages/AdminEntryPage';
 
 // Manager Pages
-import ManagerDashboard from './pages/ManagerDashboard';
+import ManagerDashboard       from './pages/ManagerDashboard';
+import ManagerCashTransferPage from './pages/ManagerCashTransferPage';
+
+// Admin Manager Fund pages
+import AdminManagerFundsPage   from './pages/AdminManagerFundsPage';
+import AdminManagerProfilePage from './pages/AdminManagerProfilePage';
 
 // Shop User Pages
 import ShopDashboard from './pages/ShopDashboard';
@@ -42,10 +47,13 @@ function App() {
         <Route path="/admin/reports"    element={<PrivateRoute allowedRoles={['admin', 'manager']}><ReportsPage /></PrivateRoute>} />
         <Route path="/admin/audit"      element={<PrivateRoute allowedRoles={['admin']}><AuditLogsPage /></PrivateRoute>} />
         <Route path="/admin/excel"      element={<PrivateRoute allowedRoles={['shop_user']}><ExcelUploadPage /></PrivateRoute>} />
-        <Route path="/admin/new-entry"  element={<PrivateRoute allowedRoles={['admin']}><AdminEntryPage /></PrivateRoute>} />
+        <Route path="/admin/new-entry"    element={<PrivateRoute allowedRoles={['admin']}><AdminEntryPage /></PrivateRoute>} />
+        <Route path="/admin/manager-funds" element={<PrivateRoute allowedRoles={['admin']}><AdminManagerFundsPage /></PrivateRoute>} />
+        <Route path="/admin/manager/:id"   element={<PrivateRoute allowedRoles={['admin']}><AdminManagerProfilePage /></PrivateRoute>} />
 
-        {/* Manager Route */}
-        <Route path="/manager" element={<PrivateRoute allowedRoles={['manager']}><ManagerDashboard /></PrivateRoute>} />
+        {/* Manager Routes */}
+        <Route path="/manager"               element={<PrivateRoute allowedRoles={['manager']}><ManagerDashboard /></PrivateRoute>} />
+        <Route path="/manager/cash-transfer" element={<PrivateRoute allowedRoles={['manager']}><ManagerCashTransferPage /></PrivateRoute>} />
 
         {/* Shop User Route */}
         <Route path="/shop" element={<PrivateRoute allowedRoles={['shop_user']}><ShopDashboard /></PrivateRoute>} />

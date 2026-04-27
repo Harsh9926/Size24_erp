@@ -61,7 +61,8 @@ app.use('/api/upload',        require('./routes/upload'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/reports',       require('./routes/reports'));
 app.use('/api/excel',         require('./routes/excel'));
-app.use('/api/transfers',     require('./routes/transfer'));
+app.use('/api/transfers',          require('./routes/transfer'));
+app.use('/api/manager-transfers',  require('./routes/managerTransfers'));
 
 // ── 404 handler — catches any unknown /api/* path ────────────────
 app.use('/api/*path', (req, res) => {
