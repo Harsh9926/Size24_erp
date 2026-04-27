@@ -275,7 +275,6 @@ const AdminDashboard = () => {
                             <Bar dataKey="sales" name="Sales" fill="#FF6B00" radius={[4, 4, 0, 0]} />
                             <Bar dataKey="cash" name="Cash" fill="#10b981" radius={[4, 4, 0, 0]} />
                             <Bar dataKey="online" name="Online" fill="#1E1E2F" radius={[4, 4, 0, 0]} />
-                            <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[4, 4, 0, 0]} />
                         </BarChart>
                     </ResponsiveContainer>
                 )}

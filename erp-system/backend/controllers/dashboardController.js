@@ -42,8 +42,7 @@ exports.getAdminDashboard = async (req, res) => {
             `SELECT ${groupBy} AS label,
                COALESCE(SUM(de.total_sale), 0)                                       AS sales,
                COALESCE(SUM(COALESCE(de.cash, 0)), 0)                                AS cash,
-               COALESCE(SUM(COALESCE(de.online, 0) + COALESCE(de.razorpay, 0)), 0)   AS online,
-               COALESCE(SUM(COALESCE(de.expense, 0)), 0)                             AS expense
+               COALESCE(SUM(COALESCE(de.online, 0) + COALESCE(de.razorpay, 0)), 0)   AS online
              FROM daily_entries de
              JOIN shops s ON de.shop_id = s.id
              ${where}
