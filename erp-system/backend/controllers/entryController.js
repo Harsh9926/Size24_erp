@@ -119,77 +119,122 @@ exports.createEntry = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────
-// UPDATE  (shop_user updates breakdown while status is still PENDING)
+// UPDATE
+// - shop_user: can update breakdown on PENDING/unlocked entries
+// - admin:     can update any entry (including APPROVED) + editable
+//              fields total_sale, excel_total_sale, date; wallet is
+//              adjusted by the cash delta when editing APPROVED rows
 // ─────────────────────────────────────────────────────────────────
 exports.updateEntry = async (req, res) => {
+    const { id } = req.params;
+    const isAdmin = req.user.role === 'admin';
+    const { cash, online, razorpay, total_sale, excel_total_sale, date } = req.body;
+
+    const client = await db.pool.connect();
     try {
-        const { id }               = req.params;
-        const { cash, online, razorpay } = req.body;
+        await client.query('BEGIN');
 
-        const entryResult = await db.query(
-            'SELECT * FROM daily_entries WHERE id = $1', [id],
+        const entryResult = await client.query(
+            'SELECT * FROM daily_entries WHERE id = $1 FOR UPDATE', [id],
         );
-        if (entryResult.rows.length === 0)
+        if (!entryResult.rows.length) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Entry not found' });
-
+        }
         const entry = entryResult.rows[0];
 
-        // ── Role check ───────────────────────────────────────────
+        // ── Auth checks ──────────────────────────────────────────
         if (req.user.role === 'shop_user' && entry.shop_id !== req.user.shopId) {
+            await client.query('ROLLBACK');
             return res.status(403).json({ error: 'This entry does not belong to your shop.' });
         }
-
-        // ── Approved entries are immutable ───────────────────────
-        if (entry.approval_status === 'APPROVED') {
-            return res.status(403).json({
-                error: 'Approved entries cannot be edited.',
-            });
+        if (entry.approval_status === 'APPROVED' && !isAdmin) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ error: 'Approved entries cannot be edited.' });
         }
-
-        // ── Lock check ───────────────────────────────────────────
-        if (entry.locked) {
+        if (!isAdmin && entry.locked) {
             const unlockActive =
                 entry.edit_enabled_till && new Date() < new Date(entry.edit_enabled_till);
             if (!unlockActive) {
-                return res.status(403).json({
-                    error: 'Entry is locked. Request admin to unlock.',
-                });
+                await client.query('ROLLBACK');
+                return res.status(403).json({ error: 'Entry is locked. Request admin to unlock.' });
             }
         }
 
-        // ── Breakdown validation ─────────────────────────────────
-        const excelTotal   = parseFloat(entry.excel_total_sale || entry.total_sale || 0);
-        const breakdownSum = (
-            parseFloat(cash     || 0) +
-            parseFloat(online   || 0) +
-            parseFloat(razorpay || 0)
-        );
+        // ── Compute new values ───────────────────────────────────
+        const newCash      = parseFloat(cash     ?? entry.cash     ?? 0);
+        const newOnline    = parseFloat(online   ?? entry.online   ?? 0);
+        const newRazorpay  = parseFloat(razorpay ?? entry.razorpay ?? 0);
+        const breakdownSum = newCash + newOnline + newRazorpay;
 
-        if (Math.abs(excelTotal - breakdownSum) > 0.01) {
+        // Admin can override totals; for shop_user the excel total is immutable
+        const newTotal = isAdmin && total_sale !== undefined
+            ? parseFloat(total_sale)
+            : parseFloat(entry.excel_total_sale || entry.total_sale || 0);
+        const newExcelTotal = isAdmin && excel_total_sale !== undefined
+            ? parseFloat(excel_total_sale)
+            : newTotal;
+
+        // Strict breakdown check for shop_user only
+        if (!isAdmin && Math.abs(newTotal - breakdownSum) > 0.01) {
+            await client.query('ROLLBACK');
             return res.status(400).json({
-                error: `Breakdown (₹${breakdownSum.toFixed(2)}) does not match Total Sale (₹${excelTotal.toFixed(2)}).`,
+                error: `Breakdown (₹${breakdownSum.toFixed(2)}) does not match Total Sale (₹${newTotal.toFixed(2)}).`,
             });
         }
 
+        // ── Build SET clause dynamically ─────────────────────────
+        const setCols  = ['cash = $1', 'online = $2', 'razorpay = $3'];
+        const setVals  = [newCash, newOnline, newRazorpay];
+        let   pIdx     = 4;
+
+        if (isAdmin) {
+            setCols.push(`total_sale = $${pIdx++}`);       setVals.push(newTotal);
+            setCols.push(`excel_total_sale = $${pIdx++}`); setVals.push(newExcelTotal);
+            if (date) { setCols.push(`date = $${pIdx++}`); setVals.push(date); }
+            // approval_status stays as-is when admin edits an approved entry
+        } else {
+            setCols.push(`approval_status = 'PENDING'`);
+        }
+        setVals.push(id); // always last
+
+        const result = await client.query(
+            `UPDATE daily_entries SET ${setCols.join(', ')} WHERE id = $${pIdx} RETURNING *`,
+            setVals,
+        );
+
+        // ── Wallet delta for admin edits on APPROVED entries ─────
+        if (isAdmin && entry.approval_status === 'APPROVED') {
+            const cashDelta = newCash - parseFloat(entry.cash || 0);
+            if (Math.abs(cashDelta) > 0.001) {
+                const shopRes = await client.query(
+                    'SELECT user_id FROM shops WHERE id = $1', [entry.shop_id],
+                );
+                if (shopRes.rows[0]?.user_id) {
+                    await client.query(
+                        'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
+                        [cashDelta, shopRes.rows[0].user_id],
+                    );
+                    console.log(`[updateEntry] Wallet adjusted by ₹${cashDelta} for user #${shopRes.rows[0].user_id}`);
+                }
+            }
+        }
+
         // ── Audit log ────────────────────────────────────────────
-        await db.query(
+        await client.query(
             `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
-             VALUES ($1, $2, $3, $4, $5)`,
-            ['daily_entries', id, entry, req.body, req.user.id],
+             VALUES ('daily_entries', $1, $2::jsonb, $3::jsonb, $4)`,
+            [id, JSON.stringify(entry), JSON.stringify(result.rows[0]), req.user.id],
         );
 
-        const result = await db.query(
-            `UPDATE daily_entries
-             SET cash = $1, online = $2, razorpay = $3,
-                 approval_status = 'PENDING'
-             WHERE id = $4
-             RETURNING *`,
-            [cash || 0, online || 0, razorpay || 0, id],
-        );
-
+        await client.query('COMMIT');
         res.json(result.rows[0]);
     } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[updateEntry] error:', err.message);
         res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
     }
 };
 

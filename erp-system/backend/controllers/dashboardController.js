@@ -87,6 +87,25 @@ exports.getAdminDashboard = async (req, res) => {
 
         const summary = summaryQ.rows[0];
 
+        // ── Shop wallet balance (only when a single shop is selected) ─
+        let shopWallet = null;
+        if (shop_id) {
+            const walletQ = await db.query(
+                `SELECT u.wallet_balance, u.name AS user_name, s.shop_name
+                 FROM shops s
+                 JOIN users u ON s.user_id = u.id
+                 WHERE s.id = $1`,
+                [shop_id]
+            );
+            if (walletQ.rows.length > 0) {
+                shopWallet = {
+                    balance:   parseFloat(walletQ.rows[0].wallet_balance || 0),
+                    userName:  walletQ.rows[0].user_name,
+                    shopName:  walletQ.rows[0].shop_name,
+                };
+            }
+        }
+
         res.json({
             // Flat keys expected by the frontend analytics cards
             totalSales:   parseFloat(summary.total_sales),
@@ -101,6 +120,7 @@ exports.getAdminDashboard = async (req, res) => {
             latestEntries: entriesQ.rows,
             pendingUsersCount:   parseInt(pendingQ.rows[0].count),
             pendingEntriesCount: parseInt(pendingEntriesQ.rows[0].count),
+            shopWallet,
         });
     } catch (err) {
         console.error('[Dashboard] getAdminDashboard error:', err.message);
