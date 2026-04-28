@@ -24,39 +24,34 @@ const ManagerDashboard = () => {
     };
 
     const fetchAll = useCallback(async () => {
-        try {
-            const [balRes, dashRes, txRes, myTxRes] = await Promise.all([
-                api.get('/transfers/balance'),
-                api.get('/dashboard/manager'),
-                api.get('/transfers/manager'),
-                api.get('/manager-transfers/mine'),
-            ]);
+        // Run all 4 fetches independently — a failure in one won't blank the others
+        const [balRes, dashRes, txRes, myTxRes] = await Promise.allSettled([
+            api.get('/transfers/balance'),
+            api.get('/dashboard/manager'),
+            api.get('/transfers/manager'),
+            api.get('/manager-transfers/mine'),
+        ]);
 
-            setWalletBalance(parseFloat(balRes.data.balance || 0));
-            setShops(dashRes.data.shops || []);
+        if (balRes.status === 'fulfilled')
+            setWalletBalance(parseFloat(balRes.value.data.balance || 0));
 
-            const allUserTx = txRes.data;
-            setPendingRequests(allUserTx.filter(t => t.status === 'pending'));
+        if (dashRes.status === 'fulfilled')
+            setShops(dashRes.value.data.shops || []);
 
-            const received = allUserTx
-                .filter(t => t.status === 'accepted')
-                .reduce((s, t) => s + parseFloat(t.amount), 0);
-            const to_admin = myTxRes.data
-                .filter(t => t.type === 'manager_to_admin' && t.status === 'approved')
-                .reduce((s, t) => s + parseFloat(t.amount), 0);
-            const to_bank = myTxRes.data
-                .filter(t => t.type === 'manager_to_bank' && t.status === 'approved')
-                .reduce((s, t) => s + parseFloat(t.amount), 0);
-            const pending_count = myTxRes.data.filter(t => t.status === 'pending').length;
-            const pending_user_count = allUserTx.filter(t => t.status === 'pending').length;
+        const allUserTx = txRes.status === 'fulfilled' ? (txRes.value.data || []) : [];
+        setPendingRequests(allUserTx.filter(t => t.status === 'pending'));
 
-            setSummary({ received, to_admin, to_bank, pending_count, pending_user_count });
-        } catch (err) {
-            console.error('[ManagerDashboard] fetchAll:', err);
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
+        const myTx = myTxRes.status === 'fulfilled' ? (myTxRes.value.data || []) : [];
+
+        const received       = allUserTx.filter(t => t.status === 'accepted').reduce((s, t) => s + parseFloat(t.amount), 0);
+        const to_admin       = myTx.filter(t => t.type === 'manager_to_admin' && t.status === 'approved').reduce((s, t) => s + parseFloat(t.amount), 0);
+        const to_bank        = myTx.filter(t => t.type === 'manager_to_bank'  && t.status === 'approved').reduce((s, t) => s + parseFloat(t.amount), 0);
+        const pending_count  = myTx.filter(t => t.status === 'pending').length;
+        const pending_user_count = allUserTx.filter(t => t.status === 'pending').length;
+
+        setSummary({ received, to_admin, to_bank, pending_count, pending_user_count });
+        setLoading(false);
+        setRefreshing(false);
     }, []);
 
     const handleAccept = async (id) => {
@@ -180,19 +175,34 @@ const ManagerDashboard = () => {
             </div>
 
             {/* ── Pending User → Manager Requests ────────────────────── */}
-            {pendingRequests.length > 0 && (
-                <div className="rounded-xl border shadow-sm overflow-hidden mb-6"
-                    style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-                    <div className="px-6 py-4 border-b flex items-center gap-2"
-                        style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
+            <div className="rounded-xl border shadow-sm overflow-hidden mb-6"
+                style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                <div className="px-6 py-4 border-b flex items-center justify-between"
+                    style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
+                    <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4 text-amber-500" />
                         <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
                             Pending Requests from Users
                         </h3>
-                        <span className="ml-2 px-2 py-0.5 text-xs font-bold bg-amber-100 text-amber-700 rounded-full border border-amber-200">
-                            {pendingRequests.length}
-                        </span>
+                        {pendingRequests.length > 0 && (
+                            <span className="ml-1 px-2 py-0.5 text-xs font-bold bg-amber-100 text-amber-700 rounded-full border border-amber-200">
+                                {pendingRequests.length}
+                            </span>
+                        )}
                     </div>
+                    <button onClick={handleRefresh} disabled={refreshing}
+                        className="flex items-center gap-1 text-xs font-medium transition-colors hover:underline"
+                        style={{ color: 'var(--text-secondary)' }}>
+                        <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                        Refresh
+                    </button>
+                </div>
+
+                {pendingRequests.length === 0 ? (
+                    <div className="py-10 text-center text-sm text-gray-400">
+                        No pending requests from users.
+                    </div>
+                ) : (
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead style={{ background: 'var(--bg-primary)' }}>
@@ -249,8 +259,8 @@ const ManagerDashboard = () => {
                             </tbody>
                         </table>
                     </div>
-                </div>
-            )}
+                )}
+            </div>
 
             {/* ── Cash Flow Breakdown ─────────────────────────────────── */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
