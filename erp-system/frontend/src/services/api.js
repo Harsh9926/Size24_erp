@@ -15,16 +15,25 @@ api.interceptors.request.use((config) => {
     return Promise.reject(error);
 });
 
-// Response interceptor to handle token expiry or 401s globally
+// Response interceptor to handle token expiry or auth errors globally
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response && error.response.status === 401) {
-            if (localStorage.getItem('token')) {
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
-                window.location.href = '/login';
-            }
+        const status = error.response?.status;
+        const msg    = error.response?.data?.error;
+
+        const shouldLogout =
+            status === 401 ||
+            (status === 403 && (
+                msg === 'Invalid or expired token' ||
+                msg === 'Access token missing' ||
+                msg === 'Insufficient permissions'
+            ));
+
+        if (shouldLogout && localStorage.getItem('token')) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/login';
         }
         return Promise.reject(error);
     }

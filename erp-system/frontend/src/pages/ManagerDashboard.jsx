@@ -4,16 +4,24 @@ import api from '../services/api';
 import Layout from '../components/Layout';
 import {
     Wallet, Store, ArrowUpRight, ArrowDownRight, RefreshCw,
-    TrendingUp, Clock,
+    TrendingUp, Clock, CheckCircle2, XCircle, Loader2, AlertCircle,
 } from 'lucide-react';
 
 const ManagerDashboard = () => {
-    const [walletBalance, setWalletBalance] = useState(0);
-    const [shops,         setShops]         = useState([]);
-    const [selectedShop,  setSelectedShop]  = useState('');
-    const [summary,       setSummary]       = useState({ received: 0, to_admin: 0, to_bank: 0, pending_count: 0 });
-    const [loading,       setLoading]       = useState(true);
-    const [refreshing,    setRefreshing]    = useState(false);
+    const [walletBalance,     setWalletBalance]     = useState(0);
+    const [shops,             setShops]             = useState([]);
+    const [selectedShop,      setSelectedShop]      = useState('');
+    const [summary,           setSummary]           = useState({ received: 0, to_admin: 0, to_bank: 0, pending_count: 0 });
+    const [pendingRequests,   setPendingRequests]   = useState([]);
+    const [actionLoading,     setActionLoading]     = useState({});
+    const [toast,             setToast]             = useState(null);
+    const [loading,           setLoading]           = useState(true);
+    const [refreshing,        setRefreshing]        = useState(false);
+
+    const showToast = (type, text) => {
+        setToast({ type, text });
+        setTimeout(() => setToast(null), 4000);
+    };
 
     const fetchAll = useCallback(async () => {
         try {
@@ -27,7 +35,10 @@ const ManagerDashboard = () => {
             setWalletBalance(parseFloat(balRes.data.balance || 0));
             setShops(dashRes.data.shops || []);
 
-            const received = txRes.data
+            const allUserTx = txRes.data;
+            setPendingRequests(allUserTx.filter(t => t.status === 'pending'));
+
+            const received = allUserTx
                 .filter(t => t.status === 'accepted')
                 .reduce((s, t) => s + parseFloat(t.amount), 0);
             const to_admin = myTxRes.data
@@ -37,7 +48,7 @@ const ManagerDashboard = () => {
                 .filter(t => t.type === 'manager_to_bank' && t.status === 'approved')
                 .reduce((s, t) => s + parseFloat(t.amount), 0);
             const pending_count = myTxRes.data.filter(t => t.status === 'pending').length;
-            const pending_user_count = txRes.data.filter(t => t.status === 'pending').length;
+            const pending_user_count = allUserTx.filter(t => t.status === 'pending').length;
 
             setSummary({ received, to_admin, to_bank, pending_count, pending_user_count });
         } catch (err) {
@@ -47,6 +58,32 @@ const ManagerDashboard = () => {
             setRefreshing(false);
         }
     }, []);
+
+    const handleAccept = async (id) => {
+        setActionLoading(prev => ({ ...prev, [id]: 'accept' }));
+        try {
+            await api.put(`/transfers/${id}/accept`);
+            showToast('success', 'Transfer accepted. Amount credited to your wallet.');
+            fetchAll();
+        } catch (err) {
+            showToast('error', err.response?.data?.error || 'Failed to accept transfer.');
+        } finally {
+            setActionLoading(prev => { const n = { ...prev }; delete n[id]; return n; });
+        }
+    };
+
+    const handleReject = async (id) => {
+        setActionLoading(prev => ({ ...prev, [id]: 'reject' }));
+        try {
+            await api.put(`/transfers/${id}/reject`);
+            showToast('success', 'Transfer rejected.');
+            fetchAll();
+        } catch (err) {
+            showToast('error', err.response?.data?.error || 'Failed to reject transfer.');
+        } finally {
+            setActionLoading(prev => { const n = { ...prev }; delete n[id]; return n; });
+        }
+    };
 
     useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -60,6 +97,20 @@ const ManagerDashboard = () => {
 
     return (
         <Layout title="Manager Dashboard">
+            {/* Toast */}
+            {toast && (
+                <div className={`mb-5 flex items-center gap-3 px-5 py-3.5 rounded-xl border text-sm font-medium ${
+                    toast.type === 'success'
+                        ? 'bg-green-50 border-green-200 text-green-800'
+                        : 'bg-red-50 border-red-200 text-red-800'
+                }`}>
+                    {toast.type === 'success'
+                        ? <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+                        : <AlertCircle  className="h-5 w-5 text-red-600 flex-shrink-0" />}
+                    <span className="flex-1">{toast.text}</span>
+                </div>
+            )}
+
             {/* Header */}
             <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
                 <div>
@@ -127,6 +178,79 @@ const ManagerDashboard = () => {
                     </div>
                 </div>
             </div>
+
+            {/* ── Pending User → Manager Requests ────────────────────── */}
+            {pendingRequests.length > 0 && (
+                <div className="rounded-xl border shadow-sm overflow-hidden mb-6"
+                    style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                    <div className="px-6 py-4 border-b flex items-center gap-2"
+                        style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
+                        <Clock className="h-4 w-4 text-amber-500" />
+                        <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+                            Pending Requests from Users
+                        </h3>
+                        <span className="ml-2 px-2 py-0.5 text-xs font-bold bg-amber-100 text-amber-700 rounded-full border border-amber-200">
+                            {pendingRequests.length}
+                        </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead style={{ background: 'var(--bg-primary)' }}>
+                                <tr>
+                                    {['From', 'Amount', 'Note', 'Date', 'Actions'].map(h => (
+                                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
+                                            style={{ color: 'var(--text-secondary)' }}>{h}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {pendingRequests.map(t => (
+                                    <tr key={t.id} style={{ borderTop: '1px solid var(--border-color)' }}>
+                                        <td className="px-4 py-3 font-medium" style={{ color: 'var(--text-primary)' }}>
+                                            {t.from_name}
+                                            <span className="block text-xs text-gray-400">{t.from_mobile}</span>
+                                        </td>
+                                        <td className="px-4 py-3 font-bold text-emerald-600">
+                                            ₹{parseFloat(t.amount).toLocaleString('en-IN')}
+                                        </td>
+                                        <td className="px-4 py-3 text-xs max-w-[140px] truncate"
+                                            style={{ color: 'var(--text-secondary)' }} title={t.note}>
+                                            {t.note || '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                            {new Date(t.created_at).toLocaleDateString('en-IN')}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => handleAccept(t.id)}
+                                                    disabled={!!actionLoading[t.id]}
+                                                    className="px-3 py-1.5 text-xs font-bold rounded-lg text-white flex items-center gap-1 transition-all"
+                                                    style={{ background: actionLoading[t.id] ? '#9ca3af' : '#16a34a' }}>
+                                                    {actionLoading[t.id] === 'accept'
+                                                        ? <Loader2      className="h-3 w-3 animate-spin" />
+                                                        : <CheckCircle2 className="h-3 w-3" />}
+                                                    Accept
+                                                </button>
+                                                <button
+                                                    onClick={() => handleReject(t.id)}
+                                                    disabled={!!actionLoading[t.id]}
+                                                    className="px-3 py-1.5 text-xs font-bold rounded-lg text-white flex items-center gap-1 transition-all"
+                                                    style={{ background: actionLoading[t.id] ? '#9ca3af' : '#dc2626' }}>
+                                                    {actionLoading[t.id] === 'reject'
+                                                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                                                        : <XCircle className="h-3 w-3" />}
+                                                    Reject
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
 
             {/* ── Cash Flow Breakdown ─────────────────────────────────── */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
