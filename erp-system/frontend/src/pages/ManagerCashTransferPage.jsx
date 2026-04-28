@@ -32,12 +32,14 @@ const TypeBadge = ({ type }) => (
 
 /* ── Page ─────────────────────────────────────────────────────────── */
 const ManagerCashTransferPage = () => {
-    const [activeTab,     setActiveTab]     = useState('admin');
-    const [transfers,     setTransfers]     = useState([]);
-    const [loading,       setLoading]       = useState(false);
-    const [submitting,    setSubmitting]    = useState(false);
-    const [walletBalance, setWalletBalance] = useState(0);
-    const [toast,         setToast]         = useState(null);
+    const [activeTab,          setActiveTab]          = useState('admin');
+    const [transfers,          setTransfers]          = useState([]);
+    const [incomingTransfers,  setIncomingTransfers]  = useState([]);
+    const [loading,            setLoading]            = useState(false);
+    const [submitting,         setSubmitting]         = useState(false);
+    const [actionLoading,      setActionLoading]      = useState({});
+    const [walletBalance,      setWalletBalance]      = useState(0);
+    const [toast,              setToast]              = useState(null);
 
     const [adminForm, setAdminForm] = useState({ amount: '', note: '' });
     const [bankForm,  setBankForm]  = useState({ amount: '', note: '' });
@@ -48,12 +50,14 @@ const ManagerCashTransferPage = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [balRes, txRes] = await Promise.all([
+            const [balRes, txRes, incomingRes] = await Promise.all([
                 api.get('/transfers/balance'),
                 api.get('/manager-transfers/mine'),
+                api.get('/transfers/manager'),
             ]);
             setWalletBalance(parseFloat(balRes.data.balance || 0));
             setTransfers(txRes.data);
+            setIncomingTransfers(incomingRes.data.filter(t => t.status === 'pending'));
         } catch {}
         finally { setLoading(false); }
     }, []);
@@ -67,6 +71,33 @@ const ManagerCashTransferPage = () => {
     }, [toast]);
 
     const showToast = (type, text) => setToast({ type, text });
+
+    /* ── Accept / Reject incoming user→manager transfer ───────────── */
+    const handleAccept = async (id) => {
+        setActionLoading(prev => ({ ...prev, [id]: 'accept' }));
+        try {
+            await api.put(`/transfers/${id}/accept`);
+            showToast('success', 'Transfer accepted. Amount credited to your wallet.');
+            fetchData();
+        } catch (err) {
+            showToast('error', err.response?.data?.error || 'Failed to accept transfer.');
+        } finally {
+            setActionLoading(prev => { const n = { ...prev }; delete n[id]; return n; });
+        }
+    };
+
+    const handleReject = async (id) => {
+        setActionLoading(prev => ({ ...prev, [id]: 'reject' }));
+        try {
+            await api.put(`/transfers/${id}/reject`);
+            showToast('success', 'Transfer rejected.');
+            fetchData();
+        } catch (err) {
+            showToast('error', err.response?.data?.error || 'Failed to reject transfer.');
+        } finally {
+            setActionLoading(prev => { const n = { ...prev }; delete n[id]; return n; });
+        }
+    };
 
     /* ── Submit: Transfer to Admin ─────────────────────────────────── */
     const handleAdminSubmit = async (e) => {
@@ -183,6 +214,79 @@ const ManagerCashTransferPage = () => {
                     </button>
                 </div>
             </div>
+
+            {/* ── Pending Requests from Users ────────────────────────── */}
+            {incomingTransfers.length > 0 && (
+                <div className="rounded-xl border shadow-sm overflow-hidden mb-6"
+                    style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                    <div className="px-6 py-4 border-b flex items-center gap-2"
+                        style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
+                        <Clock className="h-4 w-4 text-amber-500" />
+                        <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+                            Pending Requests from Users
+                        </h3>
+                        <span className="ml-2 px-2 py-0.5 text-xs font-bold bg-amber-100 text-amber-700 rounded-full border border-amber-200">
+                            {incomingTransfers.length}
+                        </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead style={{ background: 'var(--bg-primary)' }}>
+                                <tr>
+                                    {['From', 'Amount', 'Note', 'Date', 'Actions'].map(h => (
+                                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
+                                            style={{ color: 'var(--text-secondary)' }}>{h}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {incomingTransfers.map(t => (
+                                    <tr key={t.id} style={{ borderTop: '1px solid var(--border-color)' }}>
+                                        <td className="px-4 py-3 font-medium" style={{ color: 'var(--text-primary)' }}>
+                                            {t.from_name}
+                                            <span className="block text-xs text-gray-400">{t.from_mobile}</span>
+                                        </td>
+                                        <td className="px-4 py-3 font-bold text-emerald-600">
+                                            ₹{parseFloat(t.amount).toLocaleString('en-IN')}
+                                        </td>
+                                        <td className="px-4 py-3 text-xs max-w-[140px] truncate"
+                                            style={{ color: 'var(--text-secondary)' }} title={t.note}>
+                                            {t.note || '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                            {new Date(t.created_at).toLocaleDateString('en-IN')}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => handleAccept(t.id)}
+                                                    disabled={!!actionLoading[t.id]}
+                                                    className="px-3 py-1.5 text-xs font-bold rounded-lg text-white flex items-center gap-1 transition-all"
+                                                    style={{ background: actionLoading[t.id] ? '#9ca3af' : '#16a34a' }}>
+                                                    {actionLoading[t.id] === 'accept'
+                                                        ? <Loader2       className="h-3 w-3 animate-spin" />
+                                                        : <CheckCircle2  className="h-3 w-3" />}
+                                                    Accept
+                                                </button>
+                                                <button
+                                                    onClick={() => handleReject(t.id)}
+                                                    disabled={!!actionLoading[t.id]}
+                                                    className="px-3 py-1.5 text-xs font-bold rounded-lg text-white flex items-center gap-1 transition-all"
+                                                    style={{ background: actionLoading[t.id] ? '#9ca3af' : '#dc2626' }}>
+                                                    {actionLoading[t.id] === 'reject'
+                                                        ? <Loader2  className="h-3 w-3 animate-spin" />
+                                                        : <XCircle  className="h-3 w-3" />}
+                                                    Reject
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-8">
 

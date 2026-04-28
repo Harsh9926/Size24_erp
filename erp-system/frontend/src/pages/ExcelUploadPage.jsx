@@ -3,27 +3,127 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Upload, FileSpreadsheet, CheckCircle2, XCircle,
     TrendingUp, Calendar, RefreshCw, History, Eye,
-    ChevronDown, ChevronUp, AlertCircle, Loader2
+    ChevronDown, ChevronUp, AlertCircle, Loader2,
+    UserCheck, Clock, ShieldAlert,
 } from 'lucide-react';
 import api from '../services/api';
 import Layout from '../components/Layout';
 import { AuthContext } from '../context/AuthContext';
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
-const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+const fmt     = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+const fmtTime = (d) => d ? new Date(d).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
+
+/* ── Already-Submitted Modal ─────────────────────────────────────── */
+const AlreadySubmittedModal = ({ data, onClose, onForce, isAdmin, forceLoading }) => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}>
+        <motion.div
+            initial={{ opacity: 0, scale: 0.92, y: 16 }}
+            animate={{ opacity: 1, scale: 1,    y: 0  }}
+            exit={{   opacity: 0, scale: 0.92, y: 16  }}
+            className="w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden"
+            style={{ background: 'var(--bg-surface)' }}>
+
+            {/* Header */}
+            <div className="flex items-center gap-3 px-6 py-4 border-b"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                <div className="p-2 rounded-xl bg-amber-100">
+                    <AlertCircle className="h-5 w-5 text-amber-600" />
+                </div>
+                <h3 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+                    Report Already Submitted
+                </h3>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5 space-y-3">
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    Today's report has already been submitted by{' '}
+                    <strong style={{ color: 'var(--text-primary)' }}>{data.submitted_by}</strong>.
+                </p>
+
+                {data.submitted_at && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
+                        style={{ background: 'var(--bg-primary)' }}>
+                        <Clock className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                            Submitted at <strong style={{ color: 'var(--text-primary)' }}>{fmtTime(data.submitted_at)}</strong>
+                            {' '}on {fmtDate(data.submitted_at)}
+                        </p>
+                    </div>
+                )}
+
+                {isAdmin && (
+                    <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-orange-50 border border-orange-100">
+                        <ShieldAlert className="h-4 w-4 text-orange-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-orange-700">
+                            As admin, you can override this and force a new upload for today.
+                        </p>
+                    </div>
+                )}
+            </div>
+
+            {/* Actions */}
+            <div className="px-6 pb-5 flex gap-3">
+                <button onClick={onClose}
+                    className="flex-1 py-2.5 text-sm font-semibold rounded-xl border transition-colors"
+                    style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+                    OK
+                </button>
+                {isAdmin && (
+                    <button onClick={onForce} disabled={forceLoading}
+                        className="flex-1 py-2.5 text-sm font-bold rounded-xl text-white flex items-center justify-center gap-2 transition-all"
+                        style={{ background: forceLoading ? '#9ca3af' : '#FF6B00' }}>
+                        {forceLoading
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <ShieldAlert className="h-4 w-4" />}
+                        {forceLoading ? 'Uploading…' : 'Upload Anyway'}
+                    </button>
+                )}
+            </div>
+        </motion.div>
+    </div>
+);
+
+/* ── Already-Submitted Banner (inline, on page load) ─────────────── */
+const AlreadySubmittedBanner = ({ data, isAdmin, onOverride }) => (
+    <motion.div
+        initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+        className="flex items-start gap-3 p-4 rounded-xl border border-amber-200 bg-amber-50">
+        <UserCheck className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+        <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-800">
+                Today's report already submitted
+            </p>
+            <p className="text-sm text-amber-700 mt-0.5">
+                Submitted by <strong>{data.submitted_by}</strong> at <strong>{fmtTime(data.submitted_at)}</strong>
+                {data.total_sale > 0 && ` · Total Sale: ${fmt(data.total_sale)}`}
+            </p>
+        </div>
+        {isAdmin && (
+            <button onClick={onOverride}
+                className="flex-shrink-0 px-3 py-1.5 text-xs font-bold rounded-lg text-white transition-all"
+                style={{ background: '#FF6B00' }}>
+                Override
+            </button>
+        )}
+    </motion.div>
+);
 
 /* ── Drop-zone component ─────────────────────────────────────────── */
-const DropZone = ({ onFile, loading }) => {
+const DropZone = ({ onFile, loading, disabled, disabledReason }) => {
     const [dragging, setDragging] = useState(false);
     const inputRef = useRef();
 
     const handleDrop = useCallback((e) => {
         e.preventDefault();
+        if (disabled || loading) return;
         setDragging(false);
         const file = e.dataTransfer.files[0];
         if (file) onFile(file);
-    }, [onFile]);
+    }, [onFile, disabled, loading]);
 
     const handleChange = (e) => {
         const file = e.target.files[0];
@@ -31,9 +131,26 @@ const DropZone = ({ onFile, loading }) => {
         e.target.value = '';
     };
 
+    if (disabled) {
+        return (
+            <div className="relative flex flex-col items-center justify-center gap-4 border-2 border-dashed rounded-2xl p-12 select-none"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', opacity: 0.6 }}>
+                <div className="p-5 rounded-2xl bg-gray-100">
+                    <FileSpreadsheet className="h-12 w-12 text-gray-400" />
+                </div>
+                <div className="text-center">
+                    <p className="text-base font-bold text-gray-500">Upload Unavailable</p>
+                    <p className="text-sm mt-1 text-gray-400">
+                        {disabledReason || "Today's report has already been submitted."}
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <motion.div
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragOver={(e) => { e.preventDefault(); if (!loading) setDragging(true); }}
             onDragLeave={() => setDragging(false)}
             onDrop={handleDrop}
             onClick={() => !loading && inputRef.current.click()}
@@ -41,12 +158,9 @@ const DropZone = ({ onFile, loading }) => {
             transition={{ type: 'spring', stiffness: 300, damping: 25 }}
             className="relative flex flex-col items-center justify-center gap-4 border-2 border-dashed rounded-2xl p-12 cursor-pointer select-none transition-colors"
             style={{
-                background: dragging
-                    ? 'rgba(255,107,0,0.05)'
-                    : 'var(--bg-surface)',
-                borderColor: dragging ? '#FF6B00' : 'var(--border-color)',
-            }}
-        >
+                background:   dragging ? 'rgba(255,107,0,0.05)' : 'var(--bg-surface)',
+                borderColor:  dragging ? '#FF6B00' : 'var(--border-color)',
+            }}>
             <input ref={inputRef} type="file" accept=".xls,.xlsx" className="hidden" onChange={handleChange} />
 
             {loading ? (
@@ -59,8 +173,7 @@ const DropZone = ({ onFile, loading }) => {
                     <motion.div
                         className="p-5 rounded-2xl"
                         style={{ background: dragging ? 'rgba(255,107,0,0.15)' : 'rgba(255,107,0,0.08)' }}
-                        animate={{ rotate: dragging ? 5 : 0 }}
-                    >
+                        animate={{ rotate: dragging ? 5 : 0 }}>
                         <FileSpreadsheet className="h-12 w-12" style={{ color: '#FF6B00' }} />
                     </motion.div>
                     <div className="text-center">
@@ -110,7 +223,7 @@ const PreviewTable = ({ rows }) => {
                             {headers.map(h => (
                                 <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
                                     style={{
-                                        color: h.trim().toLowerCase() === 'received amount' ? '#FF6B00' : 'var(--text-secondary)',
+                                        color:      h.trim().toLowerCase() === 'received amount' ? '#FF6B00' : 'var(--text-secondary)',
                                         background: h.trim().toLowerCase() === 'received amount' ? 'rgba(255,107,0,0.06)' : undefined,
                                     }}>
                                     {h.trim().toLowerCase() === 'received amount' ? '★ ' : ''}{h}
@@ -125,8 +238,7 @@ const PreviewTable = ({ rows }) => {
                                 {headers.map(h => (
                                     <td key={h} className="px-4 py-2.5 whitespace-nowrap"
                                         style={{
-                                            color: h.trim().toLowerCase() === 'received amount'
-                                                ? '#10b981' : 'var(--text-primary)',
+                                            color:      h.trim().toLowerCase() === 'received amount' ? '#10b981' : 'var(--text-primary)',
                                             fontWeight: h.trim().toLowerCase() === 'received amount' ? 600 : 400,
                                         }}>
                                         {row[h] instanceof Date
@@ -166,12 +278,38 @@ const HistoryRow = ({ item }) => (
 ══════════════════════════════════════════════════════════════════ */
 const ExcelUploadPage = () => {
     const { user } = useContext(AuthContext);
-    const [loading, setLoading] = useState(false);
-    const [result, setResult] = useState(null);   // last upload result
-    const [error, setError] = useState('');
-    const [history, setHistory] = useState([]);
-    const [histLoading, setHistLoading] = useState(true);
-    const [selectedFile, setSelectedFile] = useState(null);
+    const isAdmin = user?.role === 'admin';
+
+    const [loading,          setLoading]          = useState(false);
+    const [result,           setResult]           = useState(null);
+    const [error,            setError]            = useState('');
+    const [history,          setHistory]          = useState([]);
+    const [histLoading,      setHistLoading]      = useState(true);
+    const [selectedFile,     setSelectedFile]     = useState(null);
+
+    /* Already-submitted state (null = still checking, false = clear, object = submitted) */
+    const [submittedInfo,    setSubmittedInfo]    = useState(null);
+    const [checkingToday,    setCheckingToday]    = useState(true);
+    const [overrideMode,     setOverrideMode]     = useState(false); // admin pressed Override
+
+    /* Duplicate-upload modal (shown when API returns 409 mid-upload) */
+    const [dupModal,         setDupModal]         = useState(null);
+    const [pendingFile,      setPendingFile]      = useState(null); // file waiting for force upload
+    const [forceLoading,     setForceLoading]     = useState(false);
+
+    /* ── Check if today's upload already exists ─────────────────── */
+    const checkToday = useCallback(async () => {
+        setCheckingToday(true);
+        try {
+            const params = user?.shopId ? `?shop_id=${user.shopId}` : '';
+            const res = await api.get(`/excel/check-today${params}`);
+            setSubmittedInfo(res.data.already_submitted ? res.data : false);
+        } catch {
+            setSubmittedInfo(false);
+        } finally {
+            setCheckingToday(false);
+        }
+    }, [user?.shopId]);
 
     const fetchHistory = async () => {
         setHistLoading(true);
@@ -182,10 +320,13 @@ const ExcelUploadPage = () => {
         finally { setHistLoading(false); }
     };
 
-    useEffect(() => { fetchHistory(); }, []);
+    useEffect(() => {
+        checkToday();
+        fetchHistory();
+    }, [checkToday]);
 
-    const handleFile = async (file) => {
-        setSelectedFile(file);
+    /* ── Core upload function ────────────────────────────────────── */
+    const doUpload = useCallback(async (file, force = false) => {
         setError('');
         setResult(null);
         setLoading(true);
@@ -194,19 +335,52 @@ const ExcelUploadPage = () => {
             const fd = new FormData();
             fd.append('excel', file);
             if (user?.shopId) fd.append('shop_id', user.shopId);
+            if (force) fd.append('force', 'true');
 
             const res = await api.post('/excel/upload', fd, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
 
             setResult(res.data);
-            fetchHistory(); // refresh history
+            // Mark as submitted so the banner shows up even without a page refresh
+            setSubmittedInfo({
+                already_submitted: true,
+                submitted_by:      user?.name || 'You',
+                submitted_at:      new Date().toISOString(),
+                total_sale:        res.data.totalSale,
+            });
+            setOverrideMode(false);
+            fetchHistory();
         } catch (e) {
-            setError(e.response?.data?.error || 'Upload failed. Please try again.');
+            if (e.response?.status === 409) {
+                // Another user already submitted today → show the modal
+                setDupModal(e.response.data);
+                setPendingFile(file);
+            } else {
+                setError(e.response?.data?.error || 'Upload failed. Please try again.');
+            }
         } finally {
             setLoading(false);
         }
+    }, [user?.shopId, user?.name]);
+
+    const handleFile = (file) => {
+        setSelectedFile(file);
+        doUpload(file, false);
     };
+
+    /* ── Admin: force re-upload from modal ───────────────────────── */
+    const handleForceUpload = async () => {
+        if (!pendingFile) return;
+        setForceLoading(true);
+        setDupModal(null);
+        await doUpload(pendingFile, true);
+        setPendingFile(null);
+        setForceLoading(false);
+    };
+
+    /* ── Admin: override banner → enter override mode ───────────── */
+    const handleOverride = () => setOverrideMode(true);
 
     const handleReupload = () => {
         setResult(null);
@@ -214,12 +388,31 @@ const ExcelUploadPage = () => {
         setSelectedFile(null);
     };
 
+    /* ── Determine if DropZone should be disabled ────────────────── */
+    const dropZoneDisabled =
+        !isAdmin &&               // non-admin
+        !overrideMode &&          // not in override mode
+        !!submittedInfo;          // and today is already submitted
+
     return (
         <Layout title="Excel Upload — Total Sale">
+            {/* Already-submitted modal (triggered by mid-upload 409) */}
+            <AnimatePresence>
+                {dupModal && (
+                    <AlreadySubmittedModal
+                        data={dupModal}
+                        isAdmin={isAdmin}
+                        forceLoading={forceLoading}
+                        onClose={() => { setDupModal(null); setPendingFile(null); }}
+                        onForce={handleForceUpload}
+                    />
+                )}
+            </AnimatePresence>
+
             <div className="max-w-4xl mx-auto space-y-6">
 
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-3">
                     <div>
                         <h2 className="text-xl font-extrabold" style={{ color: 'var(--text-primary)' }}>
                             📊 Excel Sales Upload
@@ -238,11 +431,50 @@ const ExcelUploadPage = () => {
                     )}
                 </div>
 
+                {/* Already-submitted banner — shown while checking or when confirmed */}
+                {checkingToday ? (
+                    <div className="flex items-center gap-2 px-4 py-3 rounded-xl border"
+                        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                        <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                        <span className="text-sm text-gray-400">Checking today's submission status…</span>
+                    </div>
+                ) : submittedInfo && !overrideMode ? (
+                    <AlreadySubmittedBanner
+                        data={submittedInfo}
+                        isAdmin={isAdmin}
+                        onOverride={handleOverride}
+                    />
+                ) : overrideMode ? (
+                    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+                        className="flex items-center gap-3 px-4 py-3 rounded-xl border border-orange-200 bg-orange-50">
+                        <ShieldAlert className="h-5 w-5 text-orange-500 flex-shrink-0" />
+                        <div className="flex-1">
+                            <p className="text-sm font-semibold text-orange-800">Admin Override Active</p>
+                            <p className="text-xs text-orange-600 mt-0.5">
+                                You are about to re-upload today's report. The existing record will be kept and a new one added.
+                            </p>
+                        </div>
+                        <button onClick={() => setOverrideMode(false)}
+                            className="text-xs text-orange-600 hover:underline font-medium">
+                            Cancel
+                        </button>
+                    </motion.div>
+                ) : null}
+
                 {/* Upload / Result area */}
                 <AnimatePresence mode="wait">
                     {!result ? (
                         <motion.div key="upload" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}>
-                            <DropZone onFile={handleFile} loading={loading} />
+                            <DropZone
+                                onFile={handleFile}
+                                loading={loading}
+                                disabled={dropZoneDisabled}
+                                disabledReason={
+                                    submittedInfo
+                                        ? `Today's report was already submitted by ${submittedInfo.submitted_by}.`
+                                        : undefined
+                                }
+                            />
 
                             {/* Error message */}
                             <AnimatePresence>
@@ -275,7 +507,6 @@ const ExcelUploadPage = () => {
 
                             {/* KPI Cards */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {/* Total Sale */}
                                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.05 }}
                                     className="rounded-2xl p-6 border shadow-sm"
                                     style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
@@ -295,7 +526,6 @@ const ExcelUploadPage = () => {
                                     </p>
                                 </motion.div>
 
-                                {/* Date */}
                                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}
                                     className="rounded-2xl p-6 border shadow-sm"
                                     style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>

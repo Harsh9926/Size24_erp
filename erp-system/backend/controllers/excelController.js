@@ -45,10 +45,74 @@ function extractDateFromFilename(filename) {
     return null;
 }
 
+/* ── GET /api/excel/check-today ─────────────────────────────────── */
+exports.checkToday = async (req, res) => {
+    const shopId = req.query.shop_id
+        ? parseInt(req.query.shop_id)
+        : (req.user.shopId || null);
+
+    if (!shopId) return res.json({ already_submitted: false });
+
+    try {
+        const result = await db.query(
+            `SELECT eu.id, eu.total_sale, eu.created_at, u.name AS submitted_by
+             FROM excel_uploads eu
+             LEFT JOIN users u ON u.id = eu.user_id
+             WHERE eu.shop_id = $1 AND eu.created_at::date = CURRENT_DATE
+             ORDER BY eu.created_at DESC
+             LIMIT 1`,
+            [shopId]
+        );
+
+        if (result.rows.length === 0) return res.json({ already_submitted: false });
+
+        const row = result.rows[0];
+        return res.json({
+            already_submitted: true,
+            submitted_by:      row.submitted_by || 'Unknown',
+            submitted_at:      row.created_at,
+            total_sale:        parseFloat(row.total_sale),
+            upload_id:         row.id,
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 /* ── POST /api/excel/upload ─────────────────────────────────────── */
 exports.processExcel = async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+        /* ── Duplicate-upload guard ──────────────────────────────────
+           One Excel per shop per calendar day.
+           Admins can bypass by sending force=true in the body.
+        ─────────────────────────────────────────────────────────── */
+        const shopId = req.body.shop_id ? parseInt(req.body.shop_id) : (req.user.shopId || null);
+        const isAdmin = req.user.role === 'admin';
+        const force   = req.body.force === 'true' || req.body.force === true;
+
+        if (shopId && !(isAdmin && force)) {
+            const dupCheck = await db.query(
+                `SELECT eu.id, eu.created_at, u.name AS submitted_by
+                 FROM excel_uploads eu
+                 LEFT JOIN users u ON u.id = eu.user_id
+                 WHERE eu.shop_id = $1 AND eu.created_at::date = CURRENT_DATE
+                 ORDER BY eu.created_at DESC
+                 LIMIT 1`,
+                [shopId]
+            );
+            if (dupCheck.rows.length > 0) {
+                const dup = dupCheck.rows[0];
+                return res.status(409).json({
+                    success:      false,
+                    message:      "Today's report already submitted",
+                    submitted_by: dup.submitted_by || 'Unknown',
+                    submitted_at: dup.created_at,
+                    upload_id:    dup.id,
+                });
+            }
+        }
 
         /* Parse workbook */
         const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
@@ -137,9 +201,6 @@ exports.processExcel = async (req, res) => {
         if (!uploadDate) {
             uploadDate = new Date().toISOString().split('T')[0];
         }
-
-        /* Get optional shopId from body */
-        const shopId = req.body.shop_id ? parseInt(req.body.shop_id) : null;
 
         /* Limit row_data to 500 rows to avoid huge JSONB */
         const rowData = rows.slice(0, 500);

@@ -37,8 +37,9 @@ const ManagerDashboard = () => {
                 .filter(t => t.type === 'manager_to_bank' && t.status === 'approved')
                 .reduce((s, t) => s + parseFloat(t.amount), 0);
             const pending_count = myTxRes.data.filter(t => t.status === 'pending').length;
+            const pending_user_count = txRes.data.filter(t => t.status === 'pending').length;
 
-            setSummary({ received, to_admin, to_bank, pending_count });
+            setSummary({ received, to_admin, to_bank, pending_count, pending_user_count });
         } catch (err) {
             console.error('[ManagerDashboard] fetchAll:', err);
         } finally {
@@ -109,12 +110,21 @@ const ManagerDashboard = () => {
                     </p>
                     <p className="text-sm text-orange-100 mt-1">Cash available in hand</p>
 
-                    {summary.pending_count > 0 && (
-                        <div className="mt-4 inline-flex items-center gap-2 bg-white/20 rounded-full px-4 py-1.5 text-sm font-semibold">
-                            <Clock className="h-3.5 w-3.5 text-yellow-200" />
-                            {summary.pending_count} transfer{summary.pending_count > 1 ? 's' : ''} pending admin approval
-                        </div>
-                    )}
+                    <div className="mt-4 flex flex-wrap gap-2">
+                        {summary.pending_user_count > 0 && (
+                            <Link to="/manager/cash-transfer"
+                                className="inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 rounded-full px-4 py-1.5 text-sm font-semibold transition-colors">
+                                <Clock className="h-3.5 w-3.5 text-yellow-200" />
+                                {summary.pending_user_count} user request{summary.pending_user_count > 1 ? 's' : ''} awaiting your approval
+                            </Link>
+                        )}
+                        {summary.pending_count > 0 && (
+                            <div className="inline-flex items-center gap-2 bg-white/20 rounded-full px-4 py-1.5 text-sm font-semibold">
+                                <Clock className="h-3.5 w-3.5 text-yellow-200" />
+                                {summary.pending_count} transfer{summary.pending_count > 1 ? 's' : ''} pending admin approval
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
