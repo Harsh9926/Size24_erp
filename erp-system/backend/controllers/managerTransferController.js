@@ -23,8 +23,7 @@ exports.upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 10
 /* ─────────────────────────────────────────────────────────────────
    POST /api/manager-transfers
    Manager creates a pending transfer request (to admin or bank).
-   type: 'manager_to_admin' | 'manager_to_bank'
-   Bank deposits MUST include a receipt file.
+   Money is NOT deducted until admin approves.
 ───────────────────────────────────────────────────────────────── */
 exports.createTransfer = async (req, res) => {
     const { amount, type, note } = req.body;
@@ -40,7 +39,7 @@ exports.createTransfer = async (req, res) => {
         return res.status(400).json({ error: 'Receipt upload is mandatory for bank deposits.' });
 
     try {
-        const balQ   = await db.query('SELECT wallet_balance FROM users WHERE id = $1', [managerId]);
+        const balQ    = await db.query('SELECT wallet_balance FROM users WHERE id = $1', [managerId]);
         const balance = parseFloat(balQ.rows[0]?.wallet_balance || 0);
         if (balance < amt)
             return res.status(400).json({ error: `Insufficient wallet balance. Available: ₹${balance.toFixed(2)}` });
@@ -59,7 +58,7 @@ exports.createTransfer = async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────
    GET /api/manager-transfers/mine
-   Manager sees all their own transfer requests.
+   Manager sees all their own transfer requests (to admin or bank).
 ───────────────────────────────────────────────────────────────── */
 exports.getMyTransfers = async (req, res) => {
     try {
@@ -79,7 +78,7 @@ exports.getMyTransfers = async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────
    GET /api/manager-transfers/managers
-   Admin gets list of all managers with wallet balances.
+   Admin: list of all managers with wallet balances.
 ───────────────────────────────────────────────────────────────── */
 exports.getManagersList = async (req, res) => {
     try {
@@ -96,41 +95,118 @@ exports.getManagersList = async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────
    GET /api/manager-transfers/all
-   Admin sees all manager transfer requests (filterable).
+   Admin: all transfers — BOTH user→manager AND manager→admin/bank —
+   in a single unified response, filterable by status/type/manager.
 ───────────────────────────────────────────────────────────────── */
 exports.getAllTransfers = async (req, res) => {
     const { status, type, manager_id } = req.query;
-    const params = [], conditions = [];
-
-    if (status)     { conditions.push(`mt.status = $${params.length + 1}`);     params.push(status); }
-    if (type)       { conditions.push(`mt.type = $${params.length + 1}`);        params.push(type); }
-    if (manager_id) { conditions.push(`mt.manager_id = $${params.length + 1}`); params.push(parseInt(manager_id)); }
-
-    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
     try {
-        const result = await db.query(
-            `SELECT mt.*,
-                    m.name   AS manager_name,    m.mobile AS manager_mobile,
-                    a.name   AS approved_by_name
+        // ── Manager → Admin / Bank (manager_transfers table) ──────
+        const mtParams      = [];
+        const mtConditions  = [];
+
+        if (status) {
+            mtConditions.push(`mt.status = $${mtParams.length + 1}`);
+            mtParams.push(status);
+        }
+        if (type && type !== 'user_to_manager') {
+            mtConditions.push(`mt.type = $${mtParams.length + 1}`);
+            mtParams.push(type);
+        }
+        if (manager_id) {
+            mtConditions.push(`mt.manager_id = $${mtParams.length + 1}`);
+            mtParams.push(parseInt(manager_id));
+        }
+        const mtWhere = mtConditions.length ? 'WHERE ' + mtConditions.join(' AND ') : '';
+
+        const mtQ = await db.query(
+            `SELECT
+                mt.id,
+                mt.manager_id                   AS manager_id,
+                m.name                          AS manager_name,
+                m.mobile                        AS manager_mobile,
+                mt.amount,
+                mt.type,
+                mt.status,
+                mt.note,
+                mt.receipt_url,
+                mt.created_at,
+                mt.approved_by,
+                a.name                          AS approved_by_name,
+                NULL::text                      AS from_name,
+                NULL::text                      AS from_mobile
              FROM manager_transfers mt
              JOIN  users m ON mt.manager_id  = m.id
              LEFT JOIN users a ON mt.approved_by = a.id
-             ${where}
+             ${mtWhere}
              ORDER BY mt.created_at DESC`,
-            params
+            mtParams
         );
-        res.json(result.rows);
+
+        // ── User → Manager (cash_transfers table) ─────────────────
+        // Only include when type filter is absent or explicitly 'user_to_manager'
+        let ctRows = [];
+        if (!type || type === 'user_to_manager') {
+            const ctParams     = [];
+            const ctConditions = [];
+
+            if (status) {
+                // Handle legacy 'accepted' = new 'approved'
+                if (status === 'approved') {
+                    ctConditions.push(`ct.status IN ('approved', 'accepted')`);
+                } else {
+                    ctConditions.push(`ct.status = $${ctParams.length + 1}`);
+                    ctParams.push(status);
+                }
+            }
+            if (manager_id) {
+                ctConditions.push(`ct.to_user_id = $${ctParams.length + 1}`);
+                ctParams.push(parseInt(manager_id));
+            }
+            const ctWhere = ctConditions.length ? 'WHERE ' + ctConditions.join(' AND ') : '';
+
+            const ctQ = await db.query(
+                `SELECT
+                    ct.id,
+                    ct.to_user_id               AS manager_id,
+                    tu.name                     AS manager_name,
+                    tu.mobile                   AS manager_mobile,
+                    ct.amount,
+                    'user_to_manager'::text     AS type,
+                    ct.status,
+                    ct.note,
+                    NULL::text                  AS receipt_url,
+                    ct.created_at,
+                    NULL::integer               AS approved_by,
+                    NULL::text                  AS approved_by_name,
+                    fu.name                     AS from_name,
+                    fu.mobile                   AS from_mobile
+                 FROM cash_transfers ct
+                 JOIN users tu ON ct.to_user_id   = tu.id
+                 JOIN users fu ON ct.from_user_id = fu.id
+                 ${ctWhere}
+                 ORDER BY ct.created_at DESC`,
+                ctParams
+            );
+            ctRows = ctQ.rows;
+        }
+
+        // Merge and sort by created_at DESC
+        const allRows = [...mtQ.rows, ...ctRows].sort(
+            (a, b) => new Date(b.created_at) - new Date(a.created_at)
+        );
+
+        res.json(allRows);
     } catch (err) {
+        console.error('[ManagerTransfer] getAllTransfers:', err.message);
         res.status(500).json({ error: err.message });
     }
 };
 
 /* ─────────────────────────────────────────────────────────────────
    GET /api/manager-transfers/summary/:managerId
-   Admin gets the full cash trail for one manager:
-     - wallet balance, received from users, sent to admin, to bank
-     - unified transaction history (user→mgr + mgr→admin/bank)
+   Admin: full cash trail for one manager.
 ───────────────────────────────────────────────────────────────── */
 exports.getManagerSummary = async (req, res) => {
     const { managerId } = req.params;
@@ -146,10 +222,11 @@ exports.getManagerSummary = async (req, res) => {
         const manager = managerQ.rows[0];
 
         const [receivedQ, toAdminQ, toBankQ] = await Promise.all([
+            // Handle both legacy 'accepted' and new 'approved'
             db.query(
                 `SELECT COALESCE(SUM(amount),0) AS total
                  FROM cash_transfers
-                 WHERE to_user_id = $1 AND status = 'accepted'`, [managerId]),
+                 WHERE to_user_id = $1 AND status IN ('accepted', 'approved')`, [managerId]),
             db.query(
                 `SELECT COALESCE(SUM(amount),0) AS total
                  FROM manager_transfers
@@ -170,7 +247,7 @@ exports.getManagerSummary = async (req, res) => {
             `SELECT
                 'user_to_manager'  AS flow_type,
                 ct.amount,
-                'accepted'         AS status,
+                ct.status,
                 fu.name            AS from_name,
                 $1::text           AS to_name,
                 ct.created_at,
@@ -178,7 +255,7 @@ exports.getManagerSummary = async (req, res) => {
                 ct.note
              FROM cash_transfers ct
              JOIN users fu ON ct.from_user_id = fu.id
-             WHERE ct.to_user_id = $2 AND ct.status = 'accepted'
+             WHERE ct.to_user_id = $2 AND ct.status IN ('accepted', 'approved')
 
              UNION ALL
 
@@ -220,12 +297,14 @@ exports.getManagerSummary = async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────
    PUT /api/manager-transfers/:id/approve
-   Admin approves → atomically deducts from manager wallet.
+   Admin approves:
+   - manager_to_admin: debit manager wallet, credit admin wallet
+   - manager_to_bank:  debit manager wallet only
 ───────────────────────────────────────────────────────────────── */
 exports.approveTransfer = async (req, res) => {
-    const { id }    = req.params;
-    const adminId   = req.user.id;
-    const client    = await db.pool.connect();
+    const { id }  = req.params;
+    const adminId = req.user.id;
+    const client  = await db.pool.connect();
     try {
         await client.query('BEGIN');
 
@@ -242,8 +321,8 @@ exports.approveTransfer = async (req, res) => {
             return res.status(400).json({ error: `Transfer is already ${transfer.status}.` });
         }
 
-        const amt     = parseFloat(transfer.amount);
-        const mgrQ    = await client.query(
+        const amt  = parseFloat(transfer.amount);
+        const mgrQ = await client.query(
             'SELECT wallet_balance FROM users WHERE id = $1 FOR UPDATE', [transfer.manager_id]
         );
         const balance = parseFloat(mgrQ.rows[0]?.wallet_balance || 0);
@@ -252,10 +331,20 @@ exports.approveTransfer = async (req, res) => {
             return res.status(400).json({ error: `Manager balance (₹${balance.toFixed(2)}) is insufficient.` });
         }
 
+        // Debit manager wallet
         await client.query(
             'UPDATE users SET wallet_balance = wallet_balance - $1 WHERE id = $2',
             [amt, transfer.manager_id]
         );
+
+        // Credit admin wallet only for manager→admin transfers
+        if (transfer.type === 'manager_to_admin') {
+            await client.query(
+                'UPDATE users SET wallet_balance = wallet_balance + $1 WHERE id = $2',
+                [amt, adminId]
+            );
+        }
+
         const updated = await client.query(
             `UPDATE manager_transfers
              SET status = 'approved', approved_by = $1, approved_at = NOW()
@@ -264,7 +353,7 @@ exports.approveTransfer = async (req, res) => {
         );
 
         await client.query('COMMIT');
-        console.log('[ManagerTransfer] Approved ID:', id, '| Amount: ₹', amt);
+        console.log('[ManagerTransfer] Approved ID:', id, '| Type:', transfer.type, '| Amount: ₹', amt);
         res.json({ message: 'Transfer approved.', transfer: updated.rows[0] });
     } catch (err) {
         await client.query('ROLLBACK');
@@ -280,7 +369,7 @@ exports.approveTransfer = async (req, res) => {
    Admin rejects — no balance change.
 ───────────────────────────────────────────────────────────────── */
 exports.rejectTransfer = async (req, res) => {
-    const { id }           = req.params;
+    const { id }            = req.params;
     const { rejection_note } = req.body;
     try {
         const tQ = await db.query('SELECT * FROM manager_transfers WHERE id = $1', [id]);

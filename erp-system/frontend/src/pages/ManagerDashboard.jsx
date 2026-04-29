@@ -43,7 +43,7 @@ const ManagerDashboard = () => {
 
         const myTx = myTxRes.status === 'fulfilled' ? (myTxRes.value.data || []) : [];
 
-        const received       = allUserTx.filter(t => t.status === 'accepted').reduce((s, t) => s + parseFloat(t.amount), 0);
+        const received       = allUserTx.filter(t => t.status === 'approved' || t.status === 'accepted').reduce((s, t) => s + parseFloat(t.amount), 0);
         const to_admin       = myTx.filter(t => t.type === 'manager_to_admin' && t.status === 'approved').reduce((s, t) => s + parseFloat(t.amount), 0);
         const to_bank        = myTx.filter(t => t.type === 'manager_to_bank'  && t.status === 'approved').reduce((s, t) => s + parseFloat(t.amount), 0);
         const pending_count  = myTx.filter(t => t.status === 'pending').length;

@@ -15,7 +15,6 @@ exports.createTransfer = async (req, res) => {
     }
 
     try {
-        // Verify recipient exists and is a manager
         const recipientQ = await db.query(
             'SELECT id, name, role FROM users WHERE id = $1 AND is_approved = true',
             [to_user_id]
@@ -25,7 +24,6 @@ exports.createTransfer = async (req, res) => {
         if (recipientQ.rows[0].role !== 'manager')
             return res.status(400).json({ error: 'Cash can only be transferred to a manager.' });
 
-        // Check sender balance
         const senderQ = await db.query(
             'SELECT wallet_balance FROM users WHERE id = $1',
             [fromUserId]
@@ -37,7 +35,6 @@ exports.createTransfer = async (req, res) => {
             });
         }
 
-        // Create transfer (no balance change yet)
         const result = await db.query(
             `INSERT INTO cash_transfers (from_user_id, to_user_id, amount, note, status)
              VALUES ($1, $2, $3, $4, 'pending')
@@ -46,7 +43,7 @@ exports.createTransfer = async (req, res) => {
         );
 
         console.log('[Transfer] Created:', result.rows[0]);
-        res.status(201).json(result.rows[0]);
+        res.status(201).json({ ...result.rows[0], type: 'user_to_manager' });
     } catch (err) {
         console.error('[Transfer] createTransfer error:', err.message);
         res.status(500).json({ error: err.message });
@@ -56,17 +53,15 @@ exports.createTransfer = async (req, res) => {
 /* ─────────────────────────────────────────────────────────────────
    PUT /api/transfers/:id/accept
    Manager accepts — atomically moves money in a DB transaction.
-   Uses SELECT ... FOR UPDATE to prevent double-processing.
+   Status is now stored as 'approved' (was 'accepted' in old data).
 ───────────────────────────────────────────────────────────────── */
 exports.acceptTransfer = async (req, res) => {
-    const { id } = req.params;
-    const managerId = req.user.id;
-
-    const client = await db.pool.connect();
+    const { id }       = req.params;
+    const managerId    = req.user.id;
+    const client       = await db.pool.connect();
     try {
         await client.query('BEGIN');
 
-        // Lock this transfer row — prevents concurrent accept on same record
         const tQ = await client.query(
             'SELECT * FROM cash_transfers WHERE id = $1 FOR UPDATE',
             [id]
@@ -80,12 +75,11 @@ exports.acceptTransfer = async (req, res) => {
 
         if (transfer.to_user_id !== managerId)
             throw { status: 403, message: 'This transfer is not assigned to you.' };
-        if (transfer.status !== 'pending')
+        if (!['pending'].includes(transfer.status))
             throw { status: 400, message: `Transfer is already ${transfer.status}.` };
 
         const amt = parseFloat(transfer.amount);
 
-        // Lock sender row and re-verify balance (may have changed since creation)
         const senderQ = await client.query(
             'SELECT wallet_balance FROM users WHERE id = $1 FOR UPDATE',
             [transfer.from_user_id]
@@ -98,22 +92,18 @@ exports.acceptTransfer = async (req, res) => {
             };
         }
 
-        // Deduct from sender
         await client.query(
             'UPDATE users SET wallet_balance = wallet_balance - $1 WHERE id = $2',
             [amt, transfer.from_user_id]
         );
-
-        // Credit to manager
         await client.query(
             'UPDATE users SET wallet_balance = wallet_balance + $1 WHERE id = $2',
             [amt, managerId]
         );
 
-        // Mark accepted
         const updated = await client.query(
             `UPDATE cash_transfers
-             SET status = 'accepted', updated_at = NOW()
+             SET status = 'approved', updated_at = NOW()
              WHERE id = $1
              RETURNING *`,
             [id]
@@ -121,7 +111,7 @@ exports.acceptTransfer = async (req, res) => {
 
         await client.query('COMMIT');
         console.log('[Transfer] Accepted ID:', id, '| Amount: ₹', amt);
-        res.json({ message: 'Transfer accepted.', transfer: updated.rows[0] });
+        res.json({ message: 'Transfer accepted.', transfer: { ...updated.rows[0], type: 'user_to_manager' } });
     } catch (err) {
         await client.query('ROLLBACK');
         console.error('[Transfer] acceptTransfer error:', err.message);
@@ -133,11 +123,10 @@ exports.acceptTransfer = async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────
    PUT /api/transfers/:id/reject
-   Manager rejects — no balance change needed.
 ───────────────────────────────────────────────────────────────── */
 exports.rejectTransfer = async (req, res) => {
-    const { id } = req.params;
-    const managerId = req.user.id;
+    const { id }      = req.params;
+    const managerId   = req.user.id;
 
     try {
         const tQ = await db.query(
@@ -162,7 +151,7 @@ exports.rejectTransfer = async (req, res) => {
         );
 
         console.log('[Transfer] Rejected ID:', id);
-        res.json({ message: 'Transfer rejected.', transfer: result.rows[0] });
+        res.json({ message: 'Transfer rejected.', transfer: { ...result.rows[0], type: 'user_to_manager' } });
     } catch (err) {
         console.error('[Transfer] rejectTransfer error:', err.message);
         res.status(500).json({ error: err.message });
@@ -170,16 +159,28 @@ exports.rejectTransfer = async (req, res) => {
 };
 
 /* ─────────────────────────────────────────────────────────────────
-   GET /api/transfers/admin  — admin sees every transfer
+   GET /api/transfers/admin
+   Admin sees every user→manager transfer.
+   Optional filters: status, manager_id (to_user_id)
 ───────────────────────────────────────────────────────────────── */
 exports.getAdminTransfers = async (req, res) => {
-    const { status } = req.query;
+    const { status, manager_id } = req.query;
     const params = [];
     const conditions = [];
 
     if (status) {
-        conditions.push(`ct.status = $${params.length + 1}`);
-        params.push(status.toLowerCase());
+        // Handle both legacy 'accepted' and new 'approved' values
+        if (status === 'approved') {
+            conditions.push(`ct.status IN ($${params.length + 1}, 'accepted')`);
+            params.push('approved');
+        } else {
+            conditions.push(`ct.status = $${params.length + 1}`);
+            params.push(status.toLowerCase());
+        }
+    }
+    if (manager_id) {
+        conditions.push(`ct.to_user_id = $${params.length + 1}`);
+        params.push(parseInt(manager_id));
     }
 
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
@@ -187,6 +188,7 @@ exports.getAdminTransfers = async (req, res) => {
     try {
         const result = await db.query(
             `SELECT ct.*,
+                    'user_to_manager'  AS type,
                     fu.name   AS from_name,   fu.mobile AS from_mobile,
                     tu.name   AS to_name,     tu.mobile AS to_mobile
              FROM cash_transfers ct
@@ -204,12 +206,14 @@ exports.getAdminTransfers = async (req, res) => {
 };
 
 /* ─────────────────────────────────────────────────────────────────
-   GET /api/transfers/manager  — manager sees transfers to them
+   GET /api/transfers/manager
+   Manager sees transfers sent to them (all statuses).
 ───────────────────────────────────────────────────────────────── */
 exports.getManagerTransfers = async (req, res) => {
     try {
         const result = await db.query(
             `SELECT ct.*,
+                    'user_to_manager' AS type,
                     fu.name AS from_name, fu.mobile AS from_mobile
              FROM cash_transfers ct
              JOIN users fu ON ct.from_user_id = fu.id
@@ -231,6 +235,7 @@ exports.getMyTransfers = async (req, res) => {
     try {
         const result = await db.query(
             `SELECT ct.*,
+                    'user_to_manager' AS type,
                     tu.name AS to_name, tu.mobile AS to_mobile
              FROM cash_transfers ct
              JOIN users tu ON ct.to_user_id = tu.id
@@ -260,8 +265,8 @@ exports.getBalance = async (req, res) => {
 };
 
 /* ─────────────────────────────────────────────────────────────────
-   GET /api/transfers/managers  — list of approved managers
-   Used by shop_user to populate the transfer recipient dropdown.
+   GET /api/transfers/managers  — approved managers list
+   Used by shop_user to populate the recipient dropdown.
 ───────────────────────────────────────────────────────────────── */
 exports.getManagers = async (req, res) => {
     try {

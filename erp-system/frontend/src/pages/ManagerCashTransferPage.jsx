@@ -8,9 +8,11 @@ import {
 
 /* ── Badges ───────────────────────────────────────────────────────── */
 const StatusBadge = ({ status }) => {
+    // 'accepted' is legacy value for approved user→manager transfers
     const cfg = {
         pending:  { cls: 'bg-amber-100 text-amber-700 border-amber-200', Icon: Clock,        label: 'Pending'  },
         approved: { cls: 'bg-green-100 text-green-700 border-green-200', Icon: CheckCircle2, label: 'Approved' },
+        accepted: { cls: 'bg-green-100 text-green-700 border-green-200', Icon: CheckCircle2, label: 'Approved' },
         rejected: { cls: 'bg-red-100   text-red-700   border-red-200',   Icon: XCircle,      label: 'Rejected' },
     }[status] || { cls: 'bg-gray-100 text-gray-600 border-gray-200', Icon: Clock, label: status };
     return (
@@ -49,17 +51,16 @@ const ManagerCashTransferPage = () => {
     /* ── Data fetching ─────────────────────────────────────────────── */
     const fetchData = useCallback(async () => {
         setLoading(true);
-        try {
-            const [balRes, txRes, incomingRes] = await Promise.all([
-                api.get('/transfers/balance'),
-                api.get('/manager-transfers/mine'),
-                api.get('/transfers/manager'),
-            ]);
-            setWalletBalance(parseFloat(balRes.data.balance || 0));
-            setTransfers(txRes.data);
-            setIncomingTransfers(incomingRes.data.filter(t => t.status === 'pending'));
-        } catch {}
-        finally { setLoading(false); }
+        const [balRes, txRes, incomingRes] = await Promise.allSettled([
+            api.get('/transfers/balance'),
+            api.get('/manager-transfers/mine'),
+            api.get('/transfers/manager'),
+        ]);
+        if (balRes.status    === 'fulfilled') setWalletBalance(parseFloat(balRes.value.data.balance || 0));
+        if (txRes.status     === 'fulfilled') setTransfers(txRes.value.data || []);
+        if (incomingRes.status === 'fulfilled')
+            setIncomingTransfers((incomingRes.value.data || []).filter(t => t.status === 'pending'));
+        setLoading(false);
     }, []);
 
     useEffect(() => { fetchData(); }, [fetchData]);

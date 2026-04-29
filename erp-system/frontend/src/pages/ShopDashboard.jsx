@@ -650,7 +650,8 @@ const ShopDashboard = () => {
                                     {myTransfers.map(t => {
                                         const statusCfg = {
                                             pending:  { cls: 'bg-amber-100 text-amber-700', label: '⏳ Pending'  },
-                                            accepted: { cls: 'bg-green-100 text-green-700', label: '✅ Accepted' },
+                                            approved: { cls: 'bg-green-100 text-green-700', label: '✅ Approved' },
+                                            accepted: { cls: 'bg-green-100 text-green-700', label: '✅ Approved' },
                                             rejected: { cls: 'bg-red-100   text-red-700',   label: '❌ Rejected' },
                                         }[t.status] || { cls: 'bg-gray-100 text-gray-600', label: t.status };
                                         return (
