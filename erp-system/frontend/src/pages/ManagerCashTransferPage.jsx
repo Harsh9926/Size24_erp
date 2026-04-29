@@ -43,7 +43,8 @@ const ManagerCashTransferPage = () => {
     const [walletBalance,      setWalletBalance]      = useState(0);
     const [toast,              setToast]              = useState(null);
 
-    const [adminForm, setAdminForm] = useState({ amount: '', note: '' });
+    const [admins,    setAdmins]     = useState([]);
+    const [adminForm, setAdminForm] = useState({ amount: '', note: '', to_admin_id: '' });
     const [bankForm,  setBankForm]  = useState({ amount: '', note: '' });
     const [receiptFile,    setReceiptFile]    = useState(null);
     const [receiptPreview, setReceiptPreview] = useState(null);
@@ -51,15 +52,17 @@ const ManagerCashTransferPage = () => {
     /* ── Data fetching ─────────────────────────────────────────────── */
     const fetchData = useCallback(async () => {
         setLoading(true);
-        const [balRes, txRes, incomingRes] = await Promise.allSettled([
+        const [balRes, txRes, incomingRes, adminsRes] = await Promise.allSettled([
             api.get('/transfers/balance'),
             api.get('/manager-transfers/mine'),
             api.get('/transfers/manager'),
+            api.get('/manager-transfers/admins'),
         ]);
-        if (balRes.status    === 'fulfilled') setWalletBalance(parseFloat(balRes.value.data.balance || 0));
-        if (txRes.status     === 'fulfilled') setTransfers(txRes.value.data || []);
+        if (balRes.status      === 'fulfilled') setWalletBalance(parseFloat(balRes.value.data.balance || 0));
+        if (txRes.status       === 'fulfilled') setTransfers(txRes.value.data || []);
         if (incomingRes.status === 'fulfilled')
             setIncomingTransfers((incomingRes.value.data || []).filter(t => t.status === 'pending'));
+        if (adminsRes.status   === 'fulfilled') setAdmins(adminsRes.value.data || []);
         setLoading(false);
     }, []);
 
@@ -107,16 +110,18 @@ const ManagerCashTransferPage = () => {
         if (!amt || amt <= 0) return showToast('error', 'Enter a valid amount.');
         if (amt > walletBalance)
             return showToast('error', `Amount exceeds wallet balance (₹${walletBalance.toFixed(2)}).`);
+        if (!adminForm.to_admin_id) return showToast('error', 'Please select an admin.');
 
         setSubmitting(true);
         try {
             await api.post('/manager-transfers', {
-                amount: amt,
-                type:   'manager_to_admin',
-                note:   adminForm.note,
+                amount:       amt,
+                type:         'manager_to_admin',
+                note:         adminForm.note,
+                to_admin_id:  adminForm.to_admin_id,
             });
             showToast('success', 'Transfer request sent. Awaiting admin approval.');
-            setAdminForm({ amount: '', note: '' });
+            setAdminForm({ amount: '', note: '', to_admin_id: '' });
             fetchData();
         } catch (err) {
             showToast('error', err.response?.data?.error || 'Failed to send transfer.');
@@ -317,6 +322,21 @@ const ManagerCashTransferPage = () => {
                             <p className="text-sm text-gray-500 mb-2">
                                 Transfer physical cash directly to the Admin. Admin will approve and deduct from your wallet.
                             </p>
+                            <div>
+                                <label className={labelCls} style={{ color: 'var(--text-secondary)' }}>Select Admin *</label>
+                                <select required
+                                    value={adminForm.to_admin_id}
+                                    onChange={e => setAdminForm(f => ({ ...f, to_admin_id: e.target.value }))}
+                                    className={inputCls} style={inputStyle}>
+                                    <option value="">— Choose admin —</option>
+                                    {admins.map(a => (
+                                        <option key={a.id} value={a.id}>{a.name} ({a.mobile})</option>
+                                    ))}
+                                </select>
+                                {admins.length === 0 && (
+                                    <p className="text-xs text-amber-600 mt-1">No admins found. Contact support.</p>
+                                )}
+                            </div>
                             <div>
                                 <label className={labelCls} style={{ color: 'var(--text-secondary)' }}>Amount (₹)</label>
                                 <input type="number" min="1" step="0.01" required

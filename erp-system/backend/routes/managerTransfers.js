@@ -7,6 +7,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 
 // Manager endpoints
 router.get('/mine',                authenticateToken, requireRole('manager'),        ctrl.getMyTransfers);
+router.get('/admins',              authenticateToken, requireRole('manager'),        ctrl.getAdmins);
 router.post('/',                   authenticateToken, requireRole('manager'),        ctrl.upload.single('receipt'), ctrl.createTransfer);
 
 // Admin endpoints

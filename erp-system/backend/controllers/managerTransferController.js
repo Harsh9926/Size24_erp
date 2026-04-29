@@ -25,8 +25,25 @@ exports.upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 10
    Manager creates a pending transfer request (to admin or bank).
    Money is NOT deducted until admin approves.
 ───────────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────
+   GET /api/manager-transfers/admins
+   Manager fetches the list of admins to choose who to send cash to.
+───────────────────────────────────────────────────────────────── */
+exports.getAdmins = async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT id, name, mobile
+             FROM users WHERE role = 'admin' AND is_approved = true
+             ORDER BY name`
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 exports.createTransfer = async (req, res) => {
-    const { amount, type, note } = req.body;
+    const { amount, type, note, to_admin_id } = req.body;
     const managerId  = req.user.id;
     const receiptUrl = req.file ? `/uploads/${req.file.filename}` : null;
 
@@ -45,9 +62,9 @@ exports.createTransfer = async (req, res) => {
             return res.status(400).json({ error: `Insufficient wallet balance. Available: ₹${balance.toFixed(2)}` });
 
         const result = await db.query(
-            `INSERT INTO manager_transfers (manager_id, amount, type, note, receipt_url, status)
-             VALUES ($1, $2, $3, $4, $5, 'pending') RETURNING *`,
-            [managerId, amt, type, note || null, receiptUrl]
+            `INSERT INTO manager_transfers (manager_id, to_admin_id, amount, type, note, receipt_url, status)
+             VALUES ($1, $2, $3, $4, $5, $6, 'pending') RETURNING *`,
+            [managerId, to_admin_id ? parseInt(to_admin_id) : null, amt, type, note || null, receiptUrl]
         );
         res.status(201).json(result.rows[0]);
     } catch (err) {

@@ -103,7 +103,7 @@ exports.acceptTransfer = async (req, res) => {
 
         const updated = await client.query(
             `UPDATE cash_transfers
-             SET status = 'approved', updated_at = NOW()
+             SET status = 'accepted', updated_at = NOW()
              WHERE id = $1
              RETURNING *`,
             [id]
