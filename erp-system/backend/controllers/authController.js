@@ -18,6 +18,10 @@ exports.login = async (req, res) => {
             return res.status(403).json({ error: 'Your account is pending approval. Please contact Radhika (Admin).' });
         }
 
+        if (user.status === 'inactive') {
+            return res.status(403).json({ error: 'Your account has been deactivated. Please contact admin.' });
+        }
+
         // Fetch assigned shop for shop_user
         let shopId = null;
         let shopName = null;

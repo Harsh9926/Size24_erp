@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
     role           VARCHAR(50) NOT NULL CHECK (role IN ('admin', 'manager', 'shop_user')),
     name           VARCHAR(100),
     is_approved    BOOLEAN DEFAULT true,
+    status         VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
     wallet_balance DECIMAL(12, 2) NOT NULL DEFAULT 0,
     created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS shops (
     document_type   VARCHAR(50) CHECK (document_type IN ('aadhaar', 'pan', 'voter')),
     document_number VARCHAR(50),
     user_id         INT REFERENCES users(id) ON DELETE SET NULL,
+    created_by      INT REFERENCES users(id) ON DELETE SET NULL,
     latitude        DECIMAL(10,7),
     longitude       DECIMAL(10,7),
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -70,14 +72,27 @@ CREATE TABLE IF NOT EXISTS daily_entries (
     photo_url        TEXT,
     submitted_lat    DECIMAL(10,7),
     submitted_lng    DECIMAL(10,7),
+    created_by       INT REFERENCES users(id) ON DELETE SET NULL,
+    updated_by       INT REFERENCES users(id) ON DELETE SET NULL,
     created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(shop_id, date)
 );
 
+-- Junction table: many users ↔ many shops
+-- shop_users.user_id is the primary assigned user for a shop; others are collaborators.
+CREATE TABLE IF NOT EXISTS shop_users (
+    id          SERIAL PRIMARY KEY,
+    shop_id     INT NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+    user_id     INT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    assigned_by INT REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE(shop_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS cash_transfers (
     id           SERIAL PRIMARY KEY,
-    from_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    to_user_id   INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    from_user_id INT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    to_user_id   INT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     amount       DECIMAL(12, 2) NOT NULL CHECK (amount > 0),
     note         TEXT,
     status       VARCHAR(20) NOT NULL DEFAULT 'pending'
@@ -139,3 +154,6 @@ CREATE INDEX IF NOT EXISTS idx_excel_uploads_date       ON excel_uploads(upload_
 CREATE INDEX IF NOT EXISTS idx_cash_transfers_from      ON cash_transfers(from_user_id);
 CREATE INDEX IF NOT EXISTS idx_cash_transfers_to        ON cash_transfers(to_user_id);
 CREATE INDEX IF NOT EXISTS idx_cash_transfers_status    ON cash_transfers(status);
+CREATE INDEX IF NOT EXISTS idx_users_status             ON users(status);
+CREATE INDEX IF NOT EXISTS idx_shop_users_shop          ON shop_users(shop_id);
+CREATE INDEX IF NOT EXISTS idx_shop_users_user          ON shop_users(user_id);
