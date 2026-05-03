@@ -3,8 +3,14 @@ import api from '../services/api';
 import Layout from '../components/Layout';
 import {
     Lock, Unlock, ChevronLeft, ChevronRight,
-    Search, Filter, RefreshCw, Calendar,
+    Search, Filter, RefreshCw, Calendar, ArrowRightLeft,
 } from 'lucide-react';
+
+const fmt = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+const fmtDate = (d) => {
+    if (!d) return '—';
+    return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+};
 
 const PAGE_SIZE = 20;
 
@@ -19,11 +25,16 @@ const inputCls =
     'focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 bg-white text-gray-700';
 
 const EntriesPage = () => {
-    const [entries,  setEntries]  = useState([]);
-    const [shops,    setShops]    = useState([]);
-    const [loading,  setLoading]  = useState(true);
-    const [total,    setTotal]    = useState(0);
-    const [pages,    setPages]    = useState(1);
+    const [entries,       setEntries]       = useState([]);
+    const [shops,         setShops]         = useState([]);
+    const [loading,       setLoading]       = useState(true);
+    const [total,         setTotal]         = useState(0);
+    const [pages,         setPages]         = useState(1);
+
+    // Cash transfers
+    const [transfers,     setTransfers]     = useState([]);
+    const [txLoading,     setTxLoading]     = useState(true);
+    const [txStatusFilter,setTxStatusFilter]= useState('');
 
     // Filters
     const [dateFrom,    setDateFrom]    = useState('');
@@ -52,9 +63,20 @@ const EntriesPage = () => {
         }
     }, [page, dateFrom, dateTo, shopFilter, statusFilter]);
 
+    const fetchTransfers = useCallback(async (status = txStatusFilter) => {
+        setTxLoading(true);
+        try {
+            const qs = status ? `?status=${status}` : '';
+            const res = await api.get(`/transfers/admin${qs}`);
+            setTransfers(res.data);
+        } catch { setTransfers([]); }
+        finally { setTxLoading(false); }
+    }, [txStatusFilter]);
+
     // Load shops for filter dropdown (admin/manager)
     useEffect(() => {
         api.get('/shops').then(r => setShops(r.data)).catch(() => {});
+        fetchTransfers('');
     }, []);
 
     useEffect(() => { loadEntries(page); }, [page, dateFrom, dateTo, shopFilter, statusFilter]);
@@ -315,6 +337,98 @@ const EntriesPage = () => {
                     </div>
                 )}
             </div>
+            {/* ── Cash Transfers ───────────────────────────────── */}
+            <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-2">
+                        <ArrowRightLeft className="h-4 w-4 text-indigo-500" />
+                        <h3 className="text-base font-semibold text-gray-800">Cash Transfers</h3>
+                        <span className="text-xs text-gray-400">({transfers.length})</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <select value={txStatusFilter}
+                            onChange={e => { setTxStatusFilter(e.target.value); fetchTransfers(e.target.value); }}
+                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-gray-700">
+                            <option value="">All Statuses</option>
+                            <option value="pending">Pending</option>
+                            <option value="accepted">Accepted</option>
+                            <option value="rejected">Rejected</option>
+                        </select>
+                        <button onClick={() => fetchTransfers(txStatusFilter)}
+                            className="flex items-center gap-1.5 text-xs text-indigo-600 hover:underline font-medium">
+                            <RefreshCw className={`h-3.5 w-3.5 ${txLoading ? 'animate-spin' : ''}`} />
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+
+                {/* Table */}
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-100 text-sm">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                {['From (Shop User)', 'To (Manager)', 'Amount', 'Note', 'Status', 'Date'].map(h => (
+                                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                        {h}
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {txLoading && (
+                                <tr>
+                                    <td colSpan="6" className="text-center py-10 text-gray-400 text-sm animate-pulse">
+                                        Loading transfers…
+                                    </td>
+                                </tr>
+                            )}
+                            {!txLoading && transfers.length === 0 && (
+                                <tr>
+                                    <td colSpan="6" className="text-center py-10 text-gray-400 text-sm">
+                                        No transfers found.
+                                    </td>
+                                </tr>
+                            )}
+                            {!txLoading && transfers.map(t => {
+                                const sCfg = {
+                                    pending:  { cls: 'bg-amber-100 text-amber-700 border-amber-200', label: 'Pending'  },
+                                    accepted: { cls: 'bg-green-100 text-green-700 border-green-200', label: 'Accepted' },
+                                    rejected: { cls: 'bg-red-100   text-red-700   border-red-200',   label: 'Rejected' },
+                                }[t.status] || { cls: 'bg-gray-100 text-gray-600 border-gray-200', label: t.status };
+                                return (
+                                    <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+                                        <td className="px-4 py-3">
+                                            <p className="font-medium text-gray-800">{t.from_name || '—'}</p>
+                                            <p className="text-xs text-gray-400">{t.from_mobile}</p>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <p className="font-medium text-indigo-600">{t.to_name || '—'}</p>
+                                            <p className="text-xs text-gray-400">{t.to_mobile}</p>
+                                        </td>
+                                        <td className="px-4 py-3 font-bold text-emerald-600 whitespace-nowrap">
+                                            {fmt(t.amount)}
+                                        </td>
+                                        <td className="px-4 py-3 text-xs text-gray-500 max-w-[160px] truncate" title={t.note}>
+                                            {t.note || '—'}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${sCfg.cls}`}>
+                                                {sCfg.label}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                                            {fmtDate(t.created_at)}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
         </Layout>
     );
 };
