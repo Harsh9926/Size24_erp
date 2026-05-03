@@ -239,44 +239,82 @@ exports.updateEntry = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────
-// GET ALL  (role-aware + status filtering)
+// GET ALL  (role-aware, date-range filter, paginated when ?page= set)
 // ─────────────────────────────────────────────────────────────────
 exports.getEntries = async (req, res) => {
     try {
-        const { status } = req.query; // optional filter: PENDING|APPROVED|REJECTED
+        const { status, date_from, date_to, shop_id, page, limit = 20 } = req.query;
 
-        let query  = `
+        const baseSelect = `
             SELECT e.*, s.shop_name, s.shop_address,
                    c.name  AS city_name,
                    au.name AS approved_by_name,
                    su.name AS submitted_by_name,
                    su.mobile AS submitted_by_mobile
             FROM daily_entries e
-            JOIN shops s   ON e.shop_id     = s.id
-            LEFT JOIN cities c  ON s.city_id     = c.id
-            LEFT JOIN users au  ON e.approved_by  = au.id
-            LEFT JOIN users su  ON s.user_id      = su.id
+            JOIN shops s   ON e.shop_id    = s.id
+            LEFT JOIN cities c  ON s.city_id    = c.id
+            LEFT JOIN users au  ON e.approved_by = au.id
+            LEFT JOIN users su  ON s.user_id     = su.id
         `;
+
         const params  = [];
         const clauses = [];
 
-        // shop_user only sees their own entries (all statuses so they know if rejected)
         if (req.user.role === 'shop_user') {
             clauses.push(`e.shop_id = $${params.length + 1}`);
             params.push(req.user.shopId);
         }
-
-        // optional status filter (admin/manager)
         if (status && req.user.role !== 'shop_user') {
             clauses.push(`e.approval_status = $${params.length + 1}`);
             params.push(status.toUpperCase());
         }
+        if (date_from) {
+            clauses.push(`e.date >= $${params.length + 1}`);
+            params.push(date_from);
+        }
+        if (date_to) {
+            clauses.push(`e.date <= $${params.length + 1}`);
+            params.push(date_to);
+        }
+        if (shop_id && req.user.role !== 'shop_user') {
+            clauses.push(`e.shop_id = $${params.length + 1}`);
+            params.push(parseInt(shop_id));
+        }
 
-        if (clauses.length) query += ` WHERE ${clauses.join(' AND ')}`;
-        query += ' ORDER BY e.created_at DESC';
+        const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
+        const order = ' ORDER BY e.date DESC, e.created_at DESC';
 
-        const result = await db.query(query, params);
-        res.json(result.rows);
+        // Without ?page — return flat array (backward compat for AdminApprovalPage)
+        if (!page) {
+            const result = await db.query(baseSelect + where + order, params);
+            return res.json(result.rows);
+        }
+
+        // With ?page — return paginated wrapper
+        const pageNum  = Math.max(1, parseInt(page)  || 1);
+        const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+        const offset   = (pageNum - 1) * limitNum;
+
+        const countResult = await db.query(
+            `SELECT COUNT(*) FROM daily_entries e JOIN shops s ON e.shop_id = s.id${where}`,
+            params,
+        );
+        const total = parseInt(countResult.rows[0].count);
+
+        const dataParams = [...params, limitNum, offset];
+        const result = await db.query(
+            baseSelect + where + order + ` LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`,
+            dataParams,
+        );
+
+        res.json({
+            entries: result.rows,
+            total,
+            page:  pageNum,
+            pages: Math.ceil(total / limitNum) || 1,
+            limit: limitNum,
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
