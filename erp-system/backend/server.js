@@ -97,31 +97,38 @@ app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Allowed CORS origins: ${allowedOrigins.join(', ')}`);
 
-    // Auto-migrate: shop_users junction table (idempotent — safe every restart)
+    // Auto-migrate: shop_users junction table — only creates if missing
     try {
-        // PostgreSQL 15+ revoked CREATE on public schema by default — grant it first
-        try { await db.query('GRANT CREATE ON SCHEMA public TO CURRENT_USER'); } catch (_) {}
-        await db.query(`
-            CREATE TABLE IF NOT EXISTS shop_users (
-                id          SERIAL PRIMARY KEY,
-                shop_id     INT NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-                user_id     INT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-                assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                assigned_by INT REFERENCES users(id) ON DELETE SET NULL,
-                UNIQUE(shop_id, user_id)
-            )
-        `);
-        await db.query('CREATE INDEX IF NOT EXISTS idx_shop_users_shop ON shop_users(shop_id)');
-        await db.query('CREATE INDEX IF NOT EXISTS idx_shop_users_user ON shop_users(user_id)');
-        await db.query(`
-            INSERT INTO shop_users (shop_id, user_id)
-            SELECT id, user_id FROM shops WHERE user_id IS NOT NULL
-            ON CONFLICT (shop_id, user_id) DO NOTHING
-        `);
-        console.log('[migrate] shop_users table ready');
+        const exists = await db.query(
+            `SELECT 1 FROM information_schema.tables
+             WHERE table_schema = 'public' AND table_name = 'shop_users'`
+        );
+        if (exists.rows.length === 0) {
+            try { await db.query('GRANT CREATE ON SCHEMA public TO CURRENT_USER'); } catch (_) {}
+            await db.query(`
+                CREATE TABLE shop_users (
+                    id          SERIAL PRIMARY KEY,
+                    shop_id     INT NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+                    user_id     INT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+                    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    assigned_by INT REFERENCES users(id) ON DELETE SET NULL,
+                    UNIQUE(shop_id, user_id)
+                )
+            `);
+            await db.query('CREATE INDEX idx_shop_users_shop ON shop_users(shop_id)');
+            await db.query('CREATE INDEX idx_shop_users_user ON shop_users(user_id)');
+            await db.query(`
+                INSERT INTO shop_users (shop_id, user_id)
+                SELECT id, user_id FROM shops WHERE user_id IS NOT NULL
+                ON CONFLICT DO NOTHING
+            `);
+            console.log('[migrate] shop_users table created');
+        } else {
+            console.log('[migrate] shop_users table ready');
+        }
     } catch (err) {
         console.error('[migrate] shop_users migration failed:', err.message);
-        console.error('[migrate] Run manually: node db/migrate.js');
+        console.error('[migrate] Run: bash erp-system/backend/db/setup_production.sh');
     }
 
     // Auto-seed Indian states & cities if DB is empty

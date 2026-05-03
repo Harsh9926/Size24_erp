@@ -118,7 +118,12 @@ INSERT INTO shop_users (shop_id, user_id)
     SELECT id, user_id FROM shops WHERE user_id IS NOT NULL
     ON CONFLICT DO NOTHING;
 
--- ── 8. Indexes ────────────────────────────────────────────────
+-- ── 8. Transfer table ownership to app user ───────────────────
+ALTER TABLE shop_users        OWNER TO "$APP_USER";
+ALTER TABLE cash_transfers    OWNER TO "$APP_USER";
+ALTER TABLE manager_transfers OWNER TO "$APP_USER";
+
+-- ── 9. Indexes ────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_shop_users_shop          ON shop_users(shop_id);
 CREATE INDEX IF NOT EXISTS idx_shop_users_user          ON shop_users(user_id);
 CREATE INDEX IF NOT EXISTS idx_daily_entries_approval   ON daily_entries(approval_status);
