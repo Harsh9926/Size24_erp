@@ -97,6 +97,31 @@ app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Allowed CORS origins: ${allowedOrigins.join(', ')}`);
 
+    // Auto-migrate: shop_users junction table (idempotent — safe every restart)
+    try {
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS shop_users (
+                id          SERIAL PRIMARY KEY,
+                shop_id     INT NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+                user_id     INT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+                assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                assigned_by INT REFERENCES users(id) ON DELETE SET NULL,
+                UNIQUE(shop_id, user_id)
+            )
+        `);
+        await db.query('CREATE INDEX IF NOT EXISTS idx_shop_users_shop ON shop_users(shop_id)');
+        await db.query('CREATE INDEX IF NOT EXISTS idx_shop_users_user ON shop_users(user_id)');
+        // Seed from legacy shops.user_id column if junction is empty
+        await db.query(`
+            INSERT INTO shop_users (shop_id, user_id)
+            SELECT id, user_id FROM shops WHERE user_id IS NOT NULL
+            ON CONFLICT (shop_id, user_id) DO NOTHING
+        `);
+        console.log('[migrate] shop_users table ready');
+    } catch (err) {
+        console.error('[migrate] shop_users migration failed:', err.message);
+    }
+
     // Auto-seed Indian states & cities if DB is empty
     try {
         const { seedLocations } = require('./scripts/seed_locations');
