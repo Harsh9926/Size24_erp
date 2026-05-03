@@ -64,6 +64,8 @@ const StatusToggle = ({ userId, status, loading, onToggle }) => {
 const UsersPage = () => {
     const [users,      setUsers]      = useState([]);
     const [shops,      setShops]      = useState([]);
+    const [loading,    setLoading]    = useState(true);
+    const [loadError,  setLoadError]  = useState('');
     const [form,       setForm]       = useState({ name: '', mobile: '', password: '', role: 'shop_user' });
     const [assignForm, setAssignForm] = useState({ userId: '', shopId: '' });
     const [msg,        setMsg]        = useState({ text: '', type: '' });
@@ -81,9 +83,18 @@ const UsersPage = () => {
     // { user, shops: [], loading, addShopId, addLoading }
 
     const loadAll = useCallback(async () => {
-        const [u, s] = await Promise.all([api.get('/users'), api.get('/shops')]);
-        setUsers(u.data);
-        setShops(s.data);
+        setLoading(true);
+        setLoadError('');
+        try {
+            const [u, s] = await Promise.all([api.get('/users'), api.get('/shops')]);
+            setUsers(u.data);
+            setShops(s.data);
+        } catch (err) {
+            const msg = err.response?.data?.error || err.message || 'Failed to load users';
+            setLoadError(msg);
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
     useEffect(() => { loadAll(); }, [loadAll]);
@@ -258,6 +269,22 @@ const UsersPage = () => {
     /* ── Render ─────────────────────────────────────────────────── */
     return (
         <Layout title="User Management">
+
+            {/* Loading / Error state */}
+            {loading && (
+                <div className="flex items-center justify-center py-20 text-gray-400">
+                    <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                    <span className="text-sm">Loading users…</span>
+                </div>
+            )}
+            {!loading && loadError && (
+                <div className="mb-5 px-4 py-3 rounded-xl text-sm font-medium border bg-red-50 border-red-200 text-red-700 flex items-center gap-2">
+                    <XCircle className="h-4 w-4 shrink-0" />
+                    <span>Failed to load users: {loadError}</span>
+                    <button onClick={loadAll} className="ml-auto text-xs underline font-semibold">Retry</button>
+                </div>
+            )}
+            {loading ? null : (<>
 
             {/* Toast notification */}
             {msg.text && (
@@ -686,6 +713,8 @@ const UsersPage = () => {
                     </form>
                 </Modal>
             )}
+
+        </>)}
 
         </Layout>
     );
