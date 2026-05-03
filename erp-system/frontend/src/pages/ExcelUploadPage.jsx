@@ -4,7 +4,7 @@ import {
     Upload, FileSpreadsheet, CheckCircle2, XCircle,
     TrendingUp, Calendar, RefreshCw, History, Eye,
     ChevronDown, ChevronUp, AlertCircle, Loader2,
-    UserCheck, Clock, ShieldAlert,
+    UserCheck, Clock, ShieldAlert, Lock, Wallet,
 } from 'lucide-react';
 import api from '../services/api';
 import Layout from '../components/Layout';
@@ -109,6 +109,90 @@ const AlreadySubmittedBanner = ({ data, isAdmin, onOverride }) => (
                 Override
             </button>
         )}
+    </motion.div>
+);
+
+/* ── Wallet Card (only UI shown to non-admins after upload) ──────── */
+const WalletCard = ({ result, isAdmin, onReupload }) => (
+    <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 280, damping: 24 }}
+        className="rounded-2xl border overflow-hidden shadow-lg"
+        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+
+        {/* Header */}
+        <div className="px-6 py-4 flex items-center justify-between"
+            style={{ background: 'linear-gradient(135deg,#FF6B00 0%,#ff9040 100%)' }}>
+            <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-white/20">
+                    <Wallet className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                    <p className="text-xs font-semibold text-white/70 uppercase tracking-widest">Today's Report</p>
+                    <p className="text-sm font-bold text-white">Submitted Successfully</p>
+                </div>
+            </div>
+            <CheckCircle2 className="h-6 w-6 text-white" />
+        </div>
+
+        {/* Total sale */}
+        <div className="px-6 py-6 text-center border-b" style={{ borderColor: 'var(--border-color)' }}>
+            <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-secondary)' }}>
+                Total Sale
+            </p>
+            <p className="text-4xl font-extrabold" style={{ color: '#10b981' }}>
+                {fmt(result.totalSale)}
+            </p>
+            <p className="text-xs mt-1.5" style={{ color: 'var(--text-secondary)' }}>
+                Auto-read from "Received Amount" column
+            </p>
+        </div>
+
+        {/* Detail row */}
+        <div className="grid grid-cols-2 gap-4 px-6 py-4 border-b" style={{ borderColor: 'var(--border-color)' }}>
+            <div className="p-3 rounded-xl" style={{ background: 'var(--bg-primary)' }}>
+                <div className="flex items-center gap-1.5 mb-1">
+                    <Lock className="h-3.5 w-3.5 text-amber-500" />
+                    <span className="text-xs font-semibold text-amber-600">Date (Locked)</span>
+                </div>
+                <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                    {fmtDate(result.uploadDate)}
+                </p>
+            </div>
+            <div className="p-3 rounded-xl" style={{ background: 'var(--bg-primary)' }}>
+                <div className="flex items-center gap-1.5 mb-1">
+                    <FileSpreadsheet className="h-3.5 w-3.5" style={{ color: '#FF6B00' }} />
+                    <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Rows Parsed</span>
+                </div>
+                <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                    {result.rowCount} rows
+                </p>
+            </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 space-y-3">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: 'var(--bg-primary)' }}>
+                <FileSpreadsheet className="h-4 w-4 flex-shrink-0" style={{ color: '#FF6B00' }} />
+                <span className="text-xs truncate" style={{ color: 'var(--text-secondary)' }} title={result.filename}>
+                    {result.filename}
+                </span>
+            </div>
+            <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-100">
+                <Lock className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700">
+                    Date is locked and cannot be modified. Today's report has been recorded.
+                </p>
+            </div>
+            {isAdmin && (
+                <button onClick={onReupload}
+                    className="w-full py-2.5 text-sm font-bold rounded-xl text-white flex items-center justify-center gap-2 transition-all"
+                    style={{ background: 'linear-gradient(90deg,#FF6B00,#ff9040)', boxShadow: '0 3px 12px rgba(255,107,0,0.3)' }}>
+                    <RefreshCw className="h-4 w-4" /> Upload Again (Admin Override)
+                </button>
+            )}
+        </div>
     </motion.div>
 );
 
@@ -421,7 +505,7 @@ const ExcelUploadPage = () => {
                             Upload an Excel file to extract Total Sale from "Received Amount" column
                         </p>
                     </div>
-                    {result && (
+                    {result && isAdmin && (
                         <motion.button initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
                             onClick={handleReupload}
                             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all"
@@ -492,68 +576,12 @@ const ExcelUploadPage = () => {
                             </AnimatePresence>
                         </motion.div>
                     ) : (
-                        <motion.div key="result" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-5">
-
-                            {/* Success banner */}
-                            <div className="flex items-center gap-3 p-4 rounded-xl border border-green-200 bg-green-50">
-                                <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
-                                <div className="flex-1">
-                                    <p className="text-sm font-semibold text-green-800">File processed successfully!</p>
-                                    <p className="text-xs text-green-600 mt-0.5">
-                                        {result.filename} · {result.rowCount} rows parsed
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* KPI Cards */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.05 }}
-                                    className="rounded-2xl p-6 border shadow-sm"
-                                    style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-                                    <div className="flex items-center gap-3 mb-3">
-                                        <div className="p-2.5 rounded-xl" style={{ background: 'rgba(16,185,129,0.1)' }}>
-                                            <TrendingUp className="h-6 w-6 text-emerald-500" />
-                                        </div>
-                                        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>
-                                            Total Sale
-                                        </span>
-                                    </div>
-                                    <p className="text-3xl font-extrabold" style={{ color: '#10b981' }}>
-                                        {fmt(result.totalSale)}
-                                    </p>
-                                    <p className="text-xs mt-1.5" style={{ color: 'var(--text-secondary)' }}>
-                                        Sum of "Received Amount" column
-                                    </p>
-                                </motion.div>
-
-                                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}
-                                    className="rounded-2xl p-6 border shadow-sm"
-                                    style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-                                    <div className="flex items-center gap-3 mb-3">
-                                        <div className="p-2.5 rounded-xl" style={{ background: 'rgba(255,107,0,0.1)' }}>
-                                            <Calendar className="h-6 w-6" style={{ color: '#FF6B00' }} />
-                                        </div>
-                                        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>
-                                            Date
-                                        </span>
-                                    </div>
-                                    <p className="text-3xl font-extrabold" style={{ color: '#FF6B00' }}>
-                                        {fmtDate(result.uploadDate)}
-                                    </p>
-                                    <p className="text-xs mt-1.5" style={{ color: 'var(--text-secondary)' }}>
-                                        From Date column / filename / today
-                                    </p>
-                                </motion.div>
-                            </div>
-
-                            {/* Data Preview */}
-                            <PreviewTable rows={result.preview} />
-                        </motion.div>
+                        <WalletCard result={result} isAdmin={isAdmin} onReupload={handleReupload} />
                     )}
                 </AnimatePresence>
 
-                {/* Upload History */}
-                <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-color)' }}>
+                {/* Upload History — hidden for non-admins after a successful upload */}
+                {(!result || isAdmin) && <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-color)' }}>
                     <div className="px-5 py-4 border-b flex items-center justify-between"
                         style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
                         <div className="flex items-center gap-2">
@@ -593,7 +621,7 @@ const ExcelUploadPage = () => {
                             </table>
                         </div>
                     )}
-                </div>
+                </div>}
             </div>
         </Layout>
     );

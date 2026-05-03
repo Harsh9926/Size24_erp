@@ -1,15 +1,35 @@
 const db = require('../config/db');
 const bcrypt = require('bcrypt');
 
-// List all users with shop info, approval status, and active/inactive status
+// List all users with all shop assignments
 exports.getUsers = async (req, res) => {
     try {
         const result = await db.query(
-            `SELECT u.id, u.name, u.mobile, u.role, u.is_approved, u.status,
-              s.id as shop_id, s.shop_name
-       FROM users u
-       LEFT JOIN shops s ON s.user_id = u.id
-       ORDER BY u.is_approved ASC, u.id ASC`
+            `SELECT
+                u.id, u.name, u.mobile, u.role, u.is_approved, u.status,
+                -- First assigned shop for backward-compat filter
+                (SELECT su.shop_id
+                 FROM shop_users su
+                 WHERE su.user_id = u.id
+                 ORDER BY su.assigned_at ASC
+                 LIMIT 1) AS shop_id,
+                (SELECT s.shop_name
+                 FROM shop_users su
+                 JOIN shops s ON s.id = su.shop_id
+                 WHERE su.user_id = u.id
+                 ORDER BY su.assigned_at ASC
+                 LIMIT 1) AS shop_name,
+                -- Full list of assigned shops
+                (SELECT COALESCE(json_agg(d), '[]'::json)
+                 FROM (
+                     SELECT json_build_object('id', s2.id, 'name', s2.shop_name) AS d
+                     FROM shop_users su2
+                     JOIN shops s2 ON s2.id = su2.shop_id
+                     WHERE su2.user_id = u.id
+                     ORDER BY su2.assigned_at ASC
+                 ) ordered_shops) AS assigned_shops
+             FROM users u
+             ORDER BY u.is_approved ASC, u.id ASC`
         );
         res.json(result.rows);
     } catch (err) {
@@ -186,29 +206,68 @@ exports.toggleStatus = async (req, res) => {
     }
 };
 
-// Assign a shop to a user (sets primary user on shop AND adds to shop_users junction table)
+// Assign a shop to a user — additive, never removes existing assignments
 exports.assignShop = async (req, res) => {
     try {
         const { userId } = req.params;
-        const { shopId } = req.body;
+        const { shopId }  = req.body;
 
-        // Unset this user as primary on any previous shop they were primary on
-        await db.query('UPDATE shops SET user_id = NULL WHERE user_id = $1', [userId]);
+        if (!shopId) return res.status(400).json({ error: 'shopId is required' });
 
-        // Set as primary user on the new shop
-        const result = await db.query(
-            'UPDATE shops SET user_id = $1 WHERE id = $2 RETURNING *',
-            [userId, shopId]
-        );
-        if (result.rows.length === 0) return res.status(404).json({ error: 'Shop not found' });
+        const shopCheck = await db.query('SELECT id, shop_name FROM shops WHERE id = $1', [shopId]);
+        if (shopCheck.rows.length === 0) return res.status(404).json({ error: 'Shop not found' });
 
-        // Also record in junction table (ON CONFLICT DO NOTHING handles duplicate)
-        await db.query(
-            'INSERT INTO shop_users (shop_id, user_id, assigned_by) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+        const userCheck = await db.query('SELECT id FROM users WHERE id = $1', [userId]);
+        if (userCheck.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+        const ins = await db.query(
+            `INSERT INTO shop_users (shop_id, user_id, assigned_by)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (shop_id, user_id) DO NOTHING
+             RETURNING id`,
             [shopId, userId, req.user.id]
         );
 
-        res.json({ message: 'Shop assigned successfully', shop: result.rows[0] });
+        const alreadyAssigned = ins.rows.length === 0;
+        res.json({
+            message: alreadyAssigned ? 'User already assigned to this shop' : 'Shop assigned successfully',
+            shop: shopCheck.rows[0],
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get all shops assigned to a specific user
+exports.getUserShops = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const result = await db.query(
+            `SELECT s.id, s.shop_name, su.assigned_at, ab.name AS assigned_by_name
+             FROM shop_users su
+             JOIN shops s       ON s.id  = su.shop_id
+             LEFT JOIN users ab ON ab.id = su.assigned_by
+             WHERE su.user_id = $1
+             ORDER BY su.assigned_at ASC`,
+            [userId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Remove a single shop assignment from a user
+exports.unassignShop = async (req, res) => {
+    try {
+        const { userId, shopId } = req.params;
+        const result = await db.query(
+            'DELETE FROM shop_users WHERE user_id = $1 AND shop_id = $2 RETURNING id',
+            [userId, shopId]
+        );
+        if (result.rows.length === 0)
+            return res.status(404).json({ error: 'Assignment not found' });
+        res.json({ message: 'Shop unassigned successfully' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

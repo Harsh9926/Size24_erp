@@ -18,31 +18,42 @@ exports.uploadExcel = multer({
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
 });
 
-/* ── Helper: extract date from filename ─────────────────────────── */
-function extractDateFromFilename(filename) {
-    // Match patterns like 2025-04-15, 15-04-2025, 15/04/2025, 20250415
-    const patterns = [
-        /(\d{4}[-\/]\d{2}[-\/]\d{2})/,   // YYYY-MM-DD
-        /(\d{2}[-\/]\d{2}[-\/]\d{4})/,   // DD-MM-YYYY
-        /(\d{8})/,                         // YYYYMMDD
-    ];
-    for (const re of patterns) {
-        const m = filename.match(re);
-        if (m) {
-            const raw = m[1].replace(/\//g, '-');
-            // Check DD-MM-YYYY
-            if (/^\d{2}-\d{2}-\d{4}$/.test(raw)) {
-                const [d, mo, y] = raw.split('-');
-                return `${y}-${mo}-${d}`;
-            }
-            // Check YYYYMMDD
-            if (/^\d{8}$/.test(raw)) {
-                return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
-            }
-            return raw; // YYYY-MM-DD
-        }
+/* ── Helper: parse a date value from various Excel formats ───────── */
+function parseExcelDate(raw) {
+    if (raw == null) return null;
+    if (raw instanceof Date) return isNaN(raw.getTime()) ? null : raw.toISOString().split('T')[0];
+
+    const str = String(raw).trim();
+
+    // DD/MM/YYYY or DD-MM-YYYY
+    const dmy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (dmy) {
+        const iso = `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}`;
+        return isNaN(new Date(iso).getTime()) ? null : iso;
     }
-    return null;
+
+    // YYYY-MM-DD or YYYY/MM/DD
+    const ymd = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+    if (ymd) {
+        const iso = `${ymd[1]}-${ymd[2].padStart(2,'0')}-${ymd[3].padStart(2,'0')}`;
+        return isNaN(new Date(iso).getTime()) ? null : iso;
+    }
+
+    // YYYYMMDD (8 digits)
+    if (/^\d{8}$/.test(str)) {
+        const iso = `${str.slice(0,4)}-${str.slice(4,6)}-${str.slice(6,8)}`;
+        return isNaN(new Date(iso).getTime()) ? null : iso;
+    }
+
+    // Generic JS Date fallback (handles ISO strings, etc.)
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+}
+
+/* ── Helper: today's date in IST (UTC +5:30) ─────────────────────── */
+function getTodayIST() {
+    const ist = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+    return ist.toISOString().split('T')[0];
 }
 
 /* ── GET /api/excel/check-today ─────────────────────────────────── */
@@ -157,49 +168,39 @@ exports.processExcel = async (req, res) => {
             if (!isNaN(val)) totalSale += val;
         }
 
-        /* Extract date: prefer the raw "Date" row above headers, then filename, then today */
+        /* ── Date validation: read ONLY from the "Date" column in data rows ──
+           Pre-header row scanning is intentionally absent — a report-generation
+           timestamp or title row could contain today's date and falsely pass
+           validation even when the transaction rows carry an old date.           The "Date" column is MANDATORY. Missing column or empty values → 422. */
+        const dateKey = headers.find(h => h.trim().toLowerCase() === 'date');
+
+        if (!dateKey) {
+            return res.status(422).json({
+                success: false,
+                message: "Upload failed: 'Date' column is missing from the Excel file.",
+            });
+        }
+
         let uploadDate = null;
-
-        /* Look for a date value in rows above the header row */
-        for (let i = 0; i < headerRowIndex; i++) {
-            const row = rawRows[i];
-            if (!Array.isArray(row)) continue;
-            for (const cell of row) {
-                if (cell instanceof Date) {
-                    uploadDate = cell.toISOString().split('T')[0];
-                    break;
-                }
-                if (typeof cell === 'string' || typeof cell === 'number') {
-                    const d = new Date(cell);
-                    if (!isNaN(d.getTime()) && String(cell).length >= 8) {
-                        uploadDate = d.toISOString().split('T')[0];
-                        break;
-                    }
-                }
-            }
-            if (uploadDate) break;
-        }
-
-        /* Also check "Date" column in data rows as fallback */
-        if (!uploadDate) {
-            const dateKey = headers.find(h => h.trim().toLowerCase() === 'date');
-            if (dateKey && rows[0][dateKey]) {
-                const raw = rows[0][dateKey];
-                if (raw instanceof Date) {
-                    uploadDate = raw.toISOString().split('T')[0];
-                } else {
-                    const d = new Date(raw);
-                    if (!isNaN(d.getTime())) uploadDate = d.toISOString().split('T')[0];
-                }
-            }
+        for (const row of rows) {
+            const parsed = parseExcelDate(row[dateKey]);
+            if (parsed) { uploadDate = parsed; break; }
         }
 
         if (!uploadDate) {
-            uploadDate = extractDateFromFilename(req.file.originalname);
+            return res.status(422).json({
+                success: false,
+                message: "Upload failed: 'Date' column found but contains no valid date value. " +
+                         "Ensure dates are in DD/MM/YYYY or YYYY-MM-DD format.",
+            });
         }
 
-        if (!uploadDate) {
-            uploadDate = new Date().toISOString().split('T')[0];
+        const todayIST = getTodayIST();
+        if (uploadDate !== todayIST) {
+            return res.status(422).json({
+                success: false,
+                message: "Upload failed: Excel date must match today's date.",
+            });
         }
 
         /* Limit row_data to 500 rows to avoid huge JSONB */

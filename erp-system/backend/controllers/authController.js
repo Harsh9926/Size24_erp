@@ -19,14 +19,22 @@ exports.login = async (req, res) => {
         }
 
         if (user.status === 'inactive') {
-            return res.status(403).json({ error: 'Your account has been deactivated. Please contact admin.' });
+            return res.status(403).json({ error: 'Your account is inactive. Please contact the admin.' });
         }
 
         // Fetch assigned shop for shop_user
         let shopId = null;
         let shopName = null;
         if (user.role === 'shop_user') {
-            const shopResult = await db.query('SELECT id, shop_name FROM shops WHERE user_id = $1', [user.id]);
+            const shopResult = await db.query(
+                `SELECT s.id, s.shop_name
+                 FROM shop_users su
+                 JOIN shops s ON s.id = su.shop_id
+                 WHERE su.user_id = $1
+                 ORDER BY su.assigned_at ASC
+                 LIMIT 1`,
+                [user.id]
+            );
             if (shopResult.rows.length > 0) {
                 shopId = shopResult.rows[0].id;
                 shopName = shopResult.rows[0].shop_name;

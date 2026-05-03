@@ -3,9 +3,11 @@ const router = express.Router();
 const userController = require('../controllers/userController');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 
-router.get('/',                        authenticateToken, requireRole('admin'), userController.getUsers);
-router.post('/',                       authenticateToken, requireRole('admin'), userController.createUser);
-router.put('/:userId/assign-shop',     authenticateToken, requireRole('admin'), userController.assignShop);
+router.get('/',                              authenticateToken, requireRole('admin'), userController.getUsers);
+router.post('/',                             authenticateToken, requireRole('admin'), userController.createUser);
+router.put('/:userId/assign-shop',           authenticateToken, requireRole('admin'), userController.assignShop);
+router.get('/:userId/shops',                 authenticateToken, requireRole('admin'), userController.getUserShops);
+router.delete('/:userId/shops/:shopId',      authenticateToken, requireRole('admin'), userController.unassignShop);
 router.put('/:id/approve',             authenticateToken, requireRole('admin'), userController.approveUser);
 router.patch('/:id/toggle-status',     authenticateToken, requireRole('admin'), userController.toggleStatus);
 router.put('/:id/reset-password',      authenticateToken, requireRole('admin'), userController.resetPassword);

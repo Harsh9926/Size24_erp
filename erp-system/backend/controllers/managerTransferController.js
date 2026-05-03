@@ -383,11 +383,15 @@ exports.approveTransfer = async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────
    PUT /api/manager-transfers/:id/reject
-   Admin rejects — no balance change.
+   Admin rejects — no balance change. rejection_note is required.
 ───────────────────────────────────────────────────────────────── */
 exports.rejectTransfer = async (req, res) => {
-    const { id }            = req.params;
-    const { rejection_note } = req.body;
+    const { id }             = req.params;
+    const { rejection_note } = req.body || {};
+
+    if (!rejection_note || !rejection_note.trim())
+        return res.status(400).json({ error: 'Rejection note is required.' });
+
     try {
         const tQ = await db.query('SELECT * FROM manager_transfers WHERE id = $1', [id]);
         if (!tQ.rows.length)
@@ -399,10 +403,34 @@ exports.rejectTransfer = async (req, res) => {
             `UPDATE manager_transfers
              SET status = 'rejected', rejection_note = $1, approved_by = $2, approved_at = NOW()
              WHERE id = $3 RETURNING *`,
-            [rejection_note || null, req.user.id, id]
+            [rejection_note.trim(), req.user.id, id]
         );
         console.log('[ManagerTransfer] Rejected ID:', id);
         res.json({ message: 'Transfer rejected.', transfer: result.rows[0] });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+/* ─────────────────────────────────────────────────────────────────
+   GET /api/manager-transfers/store-wallets
+   Admin: all shops with their assigned user wallet balance.
+───────────────────────────────────────────────────────────────── */
+exports.getStoreWallets = async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT
+                s.id           AS shop_id,
+                s.shop_name,
+                u.id           AS user_id,
+                u.name         AS user_name,
+                u.mobile       AS user_mobile,
+                COALESCE(u.wallet_balance, 0) AS wallet_balance
+             FROM shops s
+             LEFT JOIN users u ON u.id = s.user_id
+             ORDER BY s.shop_name`
+        );
+        res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

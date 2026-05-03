@@ -183,8 +183,8 @@ const ShopsPage = () => {
                                     <td className="px-5 py-3 text-sm text-gray-600">{shop.manager_name || '—'}</td>
                                     <td className="px-5 py-3 text-sm text-gray-600">{shop.mobile_number || '—'}</td>
                                     <td className="px-5 py-3">
-                                        <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${shop.user_id ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                            {shop.user_id ? 'Assigned' : 'Unassigned'}
+                                        <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${parseInt(shop.user_count) > 0 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                            {parseInt(shop.user_count) > 0 ? `${shop.user_count} User${shop.user_count > 1 ? 's' : ''}` : 'Unassigned'}
                                         </span>
                                     </td>
                                     <td className="px-5 py-3">

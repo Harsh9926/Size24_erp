@@ -12,6 +12,7 @@ router.post('/',                   authenticateToken, requireRole('manager'),   
 
 // Admin endpoints
 router.get('/managers',            authenticateToken, requireRole('admin'),          ctrl.getManagersList);
+router.get('/store-wallets',       authenticateToken, requireRole('admin'),          ctrl.getStoreWallets);
 router.get('/all',                 authenticateToken, requireRole('admin'),          ctrl.getAllTransfers);
 router.get('/summary/:managerId',  authenticateToken, requireRole('admin'),          ctrl.getManagerSummary);
 router.put('/:id/approve',         authenticateToken, requireRole('admin'),          ctrl.approveTransfer);

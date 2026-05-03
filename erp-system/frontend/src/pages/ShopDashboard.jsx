@@ -135,10 +135,17 @@ function parseExcelFile(file) {
                     return;
                 }
 
-                // ── Step 4: find the "Date" key (optional) ───────────────
+                // ── Step 4: find the "Date" key (required) ───────────────
                 const dateKey = Object.keys(rows[0] ?? {}).find(
                     (k) => normalKey(k) === 'date',
                 );
+                if (!dateKey) {
+                    reject(new Error(
+                        "'Date' column not found in Excel. " +
+                        'Ensure the column header is exactly "Date".',
+                    ));
+                    return;
+                }
 
                 const parseDate = (v) => {
                     if (!v) return null;
@@ -189,16 +196,23 @@ function parseExcelFile(file) {
                     return;
                 }
 
-                // Validate date — only if Excel has an explicit date column
-                if (excelDate && excelDate !== today) {
+                // Validate date — Date column is mandatory; must match today
+                if (!excelDate) {
                     reject(new Error(
-                        `Excel date (${excelDate}) is not today (${today}). ` +
-                        "Only today's data is allowed.",
+                        "'Date' column found but all values are empty or unreadable. " +
+                        'Ensure dates are in DD/MM/YYYY or YYYY-MM-DD format.',
+                    ));
+                    return;
+                }
+                if (excelDate !== today) {
+                    reject(new Error(
+                        `Upload failed: Excel date must match today's date. ` +
+                        `Found ${excelDate}, today is ${today}.`,
                     ));
                     return;
                 }
 
-                resolve({ date: excelDate || today, totalSale, previewRows });
+                resolve({ date: excelDate, totalSale, previewRows });
             } catch (err) {
                 reject(new Error('Failed to parse Excel file. ' + err.message));
             }
@@ -528,21 +542,8 @@ const ShopDashboard = () => {
 
             <div className="max-w-7xl mx-auto px-4 py-8">
 
-                {/* Summary Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                    {[
-                        ['Sales (month)',  data.summary?.total_sales,  'text-teal-600'],
-                        ['Cash (month)',   data.summary?.total_cash,   'text-blue-600'],
-                        ['Online (month)', data.summary?.total_online, 'text-purple-600'],
-                    ].map(([l, v, c]) => (
-                        <div key={l} className="rounded-xl p-4 shadow-sm border"
-                            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-                            <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>{l}</p>
-                            <p className={`text-xl font-bold ${c}`}>₹{Number(v || 0).toLocaleString('en-IN')}</p>
-                        </div>
-                    ))}
-
-                    {/* Wallet Balance Card */}
+                {/* Wallet Balance Card */}
+                <div className="mb-4">
                     <div className="rounded-xl p-4 shadow-sm border flex flex-col justify-between"
                         style={{ background: 'linear-gradient(135deg,#0f766e,#14b8a6)', borderColor: 'transparent' }}>
                         <div className="flex items-center justify-between mb-1">

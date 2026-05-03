@@ -37,14 +37,14 @@ exports.createShop = async (req, res) => {
 exports.getShops = async (req, res) => {
     try {
         let query = `
-            SELECT s.*, c.name as city_name, st.name as state_name
+            SELECT s.*, c.name as city_name, st.name as state_name,
+                (SELECT COUNT(*) FROM shop_users su WHERE su.shop_id = s.id) AS user_count
             FROM shops s
             LEFT JOIN cities c  ON s.city_id  = c.id
             LEFT JOIN states st ON s.state_id = st.id`;
         let params = [];
 
         if (req.user.role === 'shop_user') {
-            // Return all shops the user is assigned to via junction table
             query += `
             JOIN shop_users su ON su.shop_id = s.id
             WHERE su.user_id = $1`;
