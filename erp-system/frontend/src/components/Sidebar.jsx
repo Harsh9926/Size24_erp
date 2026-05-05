@@ -16,7 +16,6 @@ const adminLinks = [
     { to: '/admin/shops',          label: 'Shops',         icon: Store },
     { to: '/admin/users',          label: 'Users',         icon: Users },
     { to: '/admin/entries',        label: 'Entries',       icon: ClipboardList },
-    { to: '/admin/cashflow',       label: 'Cash Flow',     icon: Banknote },
     { to: '/admin/manager-funds',  label: 'Manager Funds', icon: Wallet },
     { to: '/admin/reports',        label: 'Reports',       icon: BarChart3 },
     { to: '/admin/new-entry',      label: 'New Entry',     icon: PlusCircle },

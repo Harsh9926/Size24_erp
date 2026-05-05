@@ -136,6 +136,168 @@ exports.addUserToShop = async (req, res) => {
     }
 };
 
+// DELETE /api/shops/:shopId/data — full shop reset (admin only)
+// Deletes all entries, transfers, cash flows, excel uploads for the shop
+// and recalculates wallet balances for all affected users from remaining data.
+exports.deleteShopData = async (req, res) => {
+    const { shopId } = req.params;
+    const client = await db.pool.connect();
+    try {
+        // 1. Verify shop exists
+        const shopResult = await db.query(
+            'SELECT id, shop_name, user_id FROM shops WHERE id = $1',
+            [shopId]
+        );
+        if (shopResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Shop not found' });
+        }
+        const shop = shopResult.rows[0];
+
+        // 2. Collect ALL user IDs linked to this shop:
+        //    - primary user (shops.user_id) — receives wallet credits from approved entries
+        //    - all users in shop_users junction table — may have sent transfers
+        const shopUsersResult = await db.query(
+            'SELECT user_id FROM shop_users WHERE shop_id = $1',
+            [shopId]
+        );
+        const shopUserIds = [...new Set([
+            ...(shop.user_id ? [shop.user_id] : []),
+            ...shopUsersResult.rows.map(r => r.user_id),
+        ])];
+
+        // 3. Find managers who received accepted transfers from this shop's users
+        //    (their wallets need recalculation after we delete those transfers)
+        let affectedManagerIds = [];
+        if (shopUserIds.length > 0) {
+            const mgrsResult = await db.query(
+                `SELECT DISTINCT to_user_id
+                 FROM cash_transfers
+                 WHERE from_user_id = ANY($1::int[]) AND status = 'accepted'`,
+                [shopUserIds]
+            );
+            affectedManagerIds = mgrsResult.rows.map(r => r.to_user_id);
+        }
+
+        // 4. Snapshot counts before deletion (for the response + audit log)
+        const [entriesRes, flowsRes, uploadsRes, transfersRes] = await Promise.all([
+            db.query('SELECT COUNT(*) FROM daily_entries  WHERE shop_id = $1', [shopId]),
+            db.query('SELECT COUNT(*) FROM cash_flows     WHERE shop_id = $1', [shopId]),
+            db.query('SELECT COUNT(*) FROM excel_uploads  WHERE shop_id = $1', [shopId]),
+            shopUserIds.length > 0
+                ? db.query(
+                    'SELECT COUNT(*) FROM cash_transfers WHERE from_user_id = ANY($1::int[])',
+                    [shopUserIds]
+                  )
+                : Promise.resolve({ rows: [{ count: '0' }] }),
+        ]);
+        const deletedCounts = {
+            daily_entries:  parseInt(entriesRes.rows[0].count),
+            cash_flows:     parseInt(flowsRes.rows[0].count),
+            excel_uploads:  parseInt(uploadsRes.rows[0].count),
+            cash_transfers: parseInt(transfersRes.rows[0].count),
+        };
+
+        // ── BEGIN ATOMIC TRANSACTION ──────────────────────────────────
+        await client.query('BEGIN');
+
+        // 5a. Delete all shop-scoped records
+        await client.query('DELETE FROM daily_entries WHERE shop_id = $1', [shopId]);
+        await client.query('DELETE FROM cash_flows    WHERE shop_id = $1', [shopId]);
+        await client.query('DELETE FROM excel_uploads WHERE shop_id = $1', [shopId]);
+
+        // 5b. Delete ALL transfers initiated by this shop's users
+        //     (covers pending, accepted, and rejected statuses)
+        if (shopUserIds.length > 0) {
+            await client.query(
+                'DELETE FROM cash_transfers WHERE from_user_id = ANY($1::int[])',
+                [shopUserIds]
+            );
+        }
+
+        // 5c. Recalculate shop users' wallet balances from remaining DB data.
+        //     Formula (derived, not stored):
+        //       credits = SUM(approved entry.cash) for all shops where user is primary user
+        //       debits  = SUM(accepted outgoing transfers from this user)
+        //     After deletion: credits = entries from other shops only; debits = 0
+        if (shopUserIds.length > 0) {
+            await client.query(
+                `UPDATE users u
+                 SET wallet_balance = (
+                     SELECT COALESCE(SUM(de.cash), 0)
+                     FROM daily_entries de
+                     JOIN shops s ON s.id = de.shop_id
+                     WHERE s.user_id = u.id
+                       AND de.approval_status = 'APPROVED'
+                 ) - (
+                     SELECT COALESCE(SUM(ct.amount), 0)
+                     FROM cash_transfers ct
+                     WHERE ct.from_user_id = u.id
+                       AND ct.status = 'accepted'
+                 )
+                 WHERE u.id = ANY($1::int[])`,
+                [shopUserIds]
+            );
+        }
+
+        // 5d. Recalculate affected managers' wallet balances from remaining accepted transfers.
+        //     After deletion: only transfers from OTHER shops' users remain.
+        if (affectedManagerIds.length > 0) {
+            await client.query(
+                `UPDATE users u
+                 SET wallet_balance = (
+                     SELECT COALESCE(SUM(ct.amount), 0)
+                     FROM cash_transfers ct
+                     WHERE ct.to_user_id = u.id
+                       AND ct.status = 'accepted'
+                 )
+                 WHERE u.id = ANY($1::int[])`,
+                [affectedManagerIds]
+            );
+        }
+
+        // 5e. Audit log
+        await client.query(
+            `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
+             VALUES ('shops', $1, $2, NULL, $3)`,
+            [
+                shopId,
+                JSON.stringify({
+                    action:                  'full_shop_reset',
+                    shop_name:               shop.shop_name,
+                    records_deleted:         deletedCounts,
+                    shop_user_ids_reset:     shopUserIds,
+                    manager_ids_recalculated: affectedManagerIds,
+                    deleted_at:              new Date().toISOString(),
+                }),
+                req.user.id,
+            ]
+        );
+
+        await client.query('COMMIT');
+        // ── END TRANSACTION ──────────────────────────────────────────
+
+        console.log(
+            `[SHOP RESET] User ${req.user.id} fully reset shop "${shop.shop_name}" (id=${shopId}) ` +
+            `at ${new Date().toISOString()}. Deleted: ${JSON.stringify(deletedCounts)}. ` +
+            `Users reset: [${shopUserIds}]. Managers recalculated: [${affectedManagerIds}].`
+        );
+
+        res.json({
+            message:                `Full reset complete for "${shop.shop_name}". All financial data cleared and wallets recalculated.`,
+            shop_name:              shop.shop_name,
+            deleted:                deletedCounts,
+            wallets_reset:          shopUserIds.length,
+            managers_recalculated:  affectedManagerIds.length,
+        });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[deleteShopData] Transaction rolled back:', err.message);
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+};
+
 // DELETE /api/shops/:shopId/users/:userId — remove a user from a shop
 exports.removeUserFromShop = async (req, res) => {
     try {

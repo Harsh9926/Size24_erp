@@ -12,7 +12,6 @@ import AdminApprovalPage from './pages/AdminApprovalPage';
 import ShopsPage        from './pages/ShopsPage';
 import UsersPage        from './pages/UsersPage';
 import EntriesPage      from './pages/EntriesPage';
-import CashFlowPage     from './pages/CashFlowPage';
 import AuditLogsPage    from './pages/AuditLogsPage';
 import ReportsPage      from './pages/ReportsPage';
 import ExcelUploadPage  from './pages/ExcelUploadPage';
@@ -43,7 +42,7 @@ function App() {
         <Route path="/admin/shops"      element={<PrivateRoute allowedRoles={['admin']}><ShopsPage /></PrivateRoute>} />
         <Route path="/admin/users"      element={<PrivateRoute allowedRoles={['admin']}><UsersPage /></PrivateRoute>} />
         <Route path="/admin/entries"    element={<PrivateRoute allowedRoles={['admin', 'manager']}><EntriesPage /></PrivateRoute>} />
-        <Route path="/admin/cashflow"   element={<PrivateRoute allowedRoles={['admin', 'manager']}><CashFlowPage /></PrivateRoute>} />
+        {/* /admin/cashflow removed */}
         <Route path="/admin/reports"    element={<PrivateRoute allowedRoles={['admin', 'manager']}><ReportsPage /></PrivateRoute>} />
         <Route path="/admin/audit"      element={<PrivateRoute allowedRoles={['admin']}><AuditLogsPage /></PrivateRoute>} />
         <Route path="/admin/excel"      element={<PrivateRoute allowedRoles={['shop_user']}><ExcelUploadPage /></PrivateRoute>} />

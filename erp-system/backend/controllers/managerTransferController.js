@@ -56,10 +56,27 @@ exports.createTransfer = async (req, res) => {
         return res.status(400).json({ error: 'Receipt upload is mandatory for bank deposits.' });
 
     try {
-        const balQ    = await db.query('SELECT wallet_balance FROM users WHERE id = $1', [managerId]);
-        const balance = parseFloat(balQ.rows[0]?.wallet_balance || 0);
-        if (balance < amt)
-            return res.status(400).json({ error: `Insufficient wallet balance. Available: ₹${balance.toFixed(2)}` });
+        // Compute available balance from transactions (not stored value).
+        // Subtract both approved AND pending outgoing transfers so the manager
+        // cannot queue multiple requests that together exceed their earned funds.
+        const balQ = await db.query(
+            `SELECT
+                COALESCE((
+                    SELECT SUM(amount) FROM cash_transfers
+                    WHERE to_user_id = $1 AND status IN ('accepted', 'approved')
+                ), 0)
+                -
+                COALESCE((
+                    SELECT SUM(amount) FROM manager_transfers
+                    WHERE manager_id = $1 AND status IN ('approved', 'pending')
+                ), 0) AS available`,
+            [managerId]
+        );
+        const available = parseFloat(balQ.rows[0].available);
+        if (available < amt)
+            return res.status(400).json({
+                error: `Insufficient balance. Available after pending transfers: ₹${available.toFixed(2)}`,
+            });
 
         const result = await db.query(
             `INSERT INTO manager_transfers (manager_id, to_admin_id, amount, type, note, receipt_url, status)
@@ -257,7 +274,17 @@ exports.getManagerSummary = async (req, res) => {
         const receivedFromUsers   = parseFloat(receivedQ.rows[0].total);
         const transferredToAdmin  = parseFloat(toAdminQ.rows[0].total);
         const depositedToBank     = parseFloat(toBankQ.rows[0].total);
-        const walletBalance       = parseFloat(manager.wallet_balance);
+
+        // Derive remaining cash from transaction records — the stored wallet_balance
+        // may be stale; this formula is always accurate.
+        const remainingCash = receivedFromUsers - transferredToAdmin - depositedToBank;
+
+        // Sync the stored balance in case it drifted (read-only side-effect of summary)
+        const storedBalance = parseFloat(manager.wallet_balance);
+        if (Math.abs(storedBalance - remainingCash) > 0.01) {
+            await db.query('UPDATE users SET wallet_balance = $1 WHERE id = $2', [remainingCash, managerId]);
+            console.log(`[ManagerSummary] Corrected wallet for manager ${managerId}: stored ₹${storedBalance} → computed ₹${remainingCash}`);
+        }
 
         // Unified history: incoming (user→mgr) + outgoing (mgr→admin/bank)
         const historyQ = await db.query(
@@ -298,11 +325,11 @@ exports.getManagerSummary = async (req, res) => {
         res.json({
             manager: { id: manager.id, name: manager.name, mobile: manager.mobile },
             summary: {
-                wallet_balance:        walletBalance,
+                wallet_balance:        remainingCash,
                 received_from_users:   receivedFromUsers,
                 transferred_to_admin:  transferredToAdmin,
                 deposited_to_bank:     depositedToBank,
-                remaining_cash:        walletBalance,
+                remaining_cash:        remainingCash,
             },
             history: historyQ.rows,
         });
@@ -325,6 +352,7 @@ exports.approveTransfer = async (req, res) => {
     try {
         await client.query('BEGIN');
 
+        // Lock the transfer row — prevents duplicate approvals from concurrent requests
         const tQ = await client.query(
             'SELECT * FROM manager_transfers WHERE id = $1 FOR UPDATE', [id]
         );
@@ -335,26 +363,49 @@ exports.approveTransfer = async (req, res) => {
         const transfer = tQ.rows[0];
         if (transfer.status !== 'pending') {
             await client.query('ROLLBACK');
-            return res.status(400).json({ error: `Transfer is already ${transfer.status}.` });
+            return res.status(400).json({ error: `Transfer is already ${transfer.status}. Each transfer can only be approved once.` });
         }
 
-        const amt  = parseFloat(transfer.amount);
-        const mgrQ = await client.query(
-            'SELECT wallet_balance FROM users WHERE id = $1 FOR UPDATE', [transfer.manager_id]
+        const amt = parseFloat(transfer.amount);
+
+        // Lock the manager row to block any concurrent approval of another transfer
+        // for the same manager from slipping through before this one commits.
+        await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [transfer.manager_id]);
+
+        // Compute TRUE balance from transaction records — not the stored wallet_balance.
+        // This is the only value we trust: (total received) - (total already approved out).
+        // We deliberately exclude the current pending transfer being approved so it appears
+        // in the "approved" total only after this transaction commits.
+        const trueBalQ = await client.query(
+            `SELECT
+                COALESCE((
+                    SELECT SUM(amount) FROM cash_transfers
+                    WHERE to_user_id = $1 AND status IN ('accepted', 'approved')
+                ), 0)
+                -
+                COALESCE((
+                    SELECT SUM(amount) FROM manager_transfers
+                    WHERE manager_id = $1 AND status = 'approved'
+                ), 0) AS true_balance`,
+            [transfer.manager_id]
         );
-        const balance = parseFloat(mgrQ.rows[0]?.wallet_balance || 0);
-        if (balance < amt) {
+        const trueBalance = parseFloat(trueBalQ.rows[0].true_balance);
+
+        if (trueBalance < amt) {
             await client.query('ROLLBACK');
-            return res.status(400).json({ error: `Manager balance (₹${balance.toFixed(2)}) is insufficient.` });
+            return res.status(400).json({
+                error: `Insufficient balance. Manager has ₹${trueBalance.toFixed(2)} available; transfer requests ₹${amt.toFixed(2)}.`,
+            });
         }
 
-        // Debit manager wallet
+        // Set manager wallet to exact computed value (self-heals any stored corruption)
+        const newManagerBalance = trueBalance - amt;
         await client.query(
-            'UPDATE users SET wallet_balance = wallet_balance - $1 WHERE id = $2',
-            [amt, transfer.manager_id]
+            'UPDATE users SET wallet_balance = $1 WHERE id = $2',
+            [newManagerBalance, transfer.manager_id]
         );
 
-        // Credit admin wallet only for manager→admin transfers
+        // Credit admin wallet for manager_to_admin transfers
         if (transfer.type === 'manager_to_admin') {
             await client.query(
                 'UPDATE users SET wallet_balance = wallet_balance + $1 WHERE id = $2',
@@ -370,7 +421,10 @@ exports.approveTransfer = async (req, res) => {
         );
 
         await client.query('COMMIT');
-        console.log('[ManagerTransfer] Approved ID:', id, '| Type:', transfer.type, '| Amount: ₹', amt);
+        console.log(
+            `[ManagerTransfer] Approved ID:${id} | Type:${transfer.type} | ` +
+            `Amount:₹${amt} | True balance was:₹${trueBalance} | New balance:₹${newManagerBalance}`
+        );
         res.json({ message: 'Transfer approved.', transfer: updated.rows[0] });
     } catch (err) {
         await client.query('ROLLBACK');

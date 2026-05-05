@@ -7,6 +7,9 @@ router.post('/',                        authenticateToken, requireRole('admin'),
 router.get('/',                         authenticateToken, shopController.getShops);
 router.get('/:id',                      authenticateToken, shopController.getShopById);
 
+// Bulk data deletion — admin only, permanently removes all shop records
+router.delete('/:shopId/data',          authenticateToken, requireRole('admin'), shopController.deleteShopData);
+
 // Multi-user assignment (admin only)
 router.get('/:shopId/users',            authenticateToken, requireRole('admin'), shopController.getShopUsers);
 router.post('/:shopId/users',           authenticateToken, requireRole('admin'), shopController.addUserToShop);
