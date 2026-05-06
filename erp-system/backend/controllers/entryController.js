@@ -56,8 +56,8 @@ exports.createEntry = async (req, res) => {
             const result = await client.query(
                 `INSERT INTO daily_entries
                     (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay,
-                     approval_status, locked, approved_by, approved_at)
-                 VALUES ($1, $2, $3, $3, $4, $5, $6, 'APPROVED', true, $7, NOW())
+                     approval_status, locked, approved_by, approved_at, wallet_credited)
+                 VALUES ($1, $2, $3, $3, $4, $5, $6, 'APPROVED', true, $7, NOW(), true)
                  RETURNING *`,
                 [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0, req.user.id],
             );
@@ -92,18 +92,37 @@ exports.createEntry = async (req, res) => {
         }
     }
 
-    // ── Shop user path: save as PENDING ───────────────────────────
+    // ── Shop user path: save as PENDING + credit CASH to wallet ──
+    const client = await db.pool.connect();
     try {
-        const result = await db.query(
+        await client.query('BEGIN');
+
+        const result = await client.query(
             `INSERT INTO daily_entries
                 (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay,
-                 approval_status)
-             VALUES ($1, $2, $3, $3, $4, $5, $6, 'PENDING')
+                 approval_status, wallet_credited)
+             VALUES ($1, $2, $3, $3, $4, $5, $6, 'PENDING', true)
              RETURNING *`,
             [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0],
         );
+
+        // Credit ONLY the cash portion to the shop user's wallet immediately on submission
+        const shopResult = await client.query(
+            'SELECT user_id FROM shops WHERE id = $1', [shop_id],
+        );
+        if (shopResult.rows[0]?.user_id) {
+            const cashAmt = parseFloat(cash || 0);
+            await client.query(
+                'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
+                [cashAmt, shopResult.rows[0].user_id],
+            );
+            console.log(`[createEntry] ₹${cashAmt} credited to user #${shopResult.rows[0].user_id} wallet on submission.`);
+        }
+
+        await client.query('COMMIT');
         res.status(201).json(result.rows[0]);
     } catch (err) {
+        await client.query('ROLLBACK');
         if (err.constraint === 'daily_entries_shop_id_date_key') {
             const existing = await db.query(
                 'SELECT * FROM daily_entries WHERE shop_id = $1 AND date = $2',
@@ -115,6 +134,8 @@ exports.createEntry = async (req, res) => {
             });
         }
         res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
     }
 };
 
@@ -216,6 +237,23 @@ exports.updateEntry = async (req, res) => {
                         [cashDelta, shopRes.rows[0].user_id],
                     );
                     console.log(`[updateEntry] Wallet adjusted by ₹${cashDelta} for user #${shopRes.rows[0].user_id}`);
+                }
+            }
+        }
+
+        // ── Wallet delta for shop user edits on PENDING wallet_credited entries ─
+        if (!isAdmin && entry.wallet_credited && entry.approval_status === 'PENDING') {
+            const cashDelta = newCash - parseFloat(entry.cash || 0);
+            if (Math.abs(cashDelta) > 0.001) {
+                const shopRes = await client.query(
+                    'SELECT user_id FROM shops WHERE id = $1', [entry.shop_id],
+                );
+                if (shopRes.rows[0]?.user_id) {
+                    await client.query(
+                        'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
+                        [cashDelta, shopRes.rows[0].user_id],
+                    );
+                    console.log(`[updateEntry] Wallet adjusted by ₹${cashDelta} for user #${shopRes.rows[0].user_id} (PENDING update)`);
                 }
             }
         }
@@ -389,6 +427,7 @@ exports.approveEntry = async (req, res) => {
         // 2. Credit ONLY the cash portion to the shop user's wallet_balance.
         //    wallet_balance is the sole source of truth for transferable funds —
         //    it must never be edited manually or topped up any other way.
+        //    Skip if already credited at submission time (wallet_credited = true).
         const shopResult = await client.query(
             'SELECT user_id FROM shops WHERE id = $1',
             [entry.shop_id],
@@ -398,14 +437,19 @@ exports.approveEntry = async (req, res) => {
             const shopUserId = shopResult.rows[0].user_id;
             const cashAmt    = parseFloat(entry.cash || 0);
 
-            await client.query(
-                'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
-                [cashAmt, shopUserId],
-            );
-
-            console.log(
-                `[approveEntry] Entry #${id} approved. ₹${cashAmt} credited to user #${shopUserId} wallet.`,
-            );
+            if (!entry.wallet_credited) {
+                await client.query(
+                    'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
+                    [cashAmt, shopUserId],
+                );
+                console.log(
+                    `[approveEntry] Entry #${id} approved. ₹${cashAmt} credited to user #${shopUserId} wallet.`,
+                );
+            } else {
+                console.log(
+                    `[approveEntry] Entry #${id} approved. Wallet already credited at submission (₹${cashAmt}), skipping.`,
+                );
+            }
         }
 
         // 3. Audit log
@@ -429,24 +473,33 @@ exports.approveEntry = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────
 // REJECT  (admin only)
+// Reverses wallet credit if it was credited at submission time.
 // ─────────────────────────────────────────────────────────────────
 exports.rejectEntry = async (req, res) => {
+    const { id } = req.params;
+    const { rejection_note } = req.body;
+    const client = await db.pool.connect();
     try {
-        const { id }            = req.params;
-        const { rejection_note } = req.body;
+        await client.query('BEGIN');
 
-        const entryResult = await db.query(
-            'SELECT * FROM daily_entries WHERE id = $1', [id],
+        const entryResult = await client.query(
+            'SELECT * FROM daily_entries WHERE id = $1 FOR UPDATE', [id],
         );
-        if (entryResult.rows.length === 0)
+        if (entryResult.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Entry not found' });
+        }
 
-        if (entryResult.rows[0].approval_status !== 'PENDING')
+        const entry = entryResult.rows[0];
+
+        if (entry.approval_status !== 'PENDING') {
+            await client.query('ROLLBACK');
             return res.status(400).json({
-                error: `Entry is already ${entryResult.rows[0].approval_status.toLowerCase()}. Only PENDING entries can be rejected.`,
+                error: `Entry is already ${entry.approval_status.toLowerCase()}. Only PENDING entries can be rejected.`,
             });
+        }
 
-        const result = await db.query(
+        const result = await client.query(
             `UPDATE daily_entries
              SET approval_status = 'REJECTED',
                  approved_by     = $1,
@@ -457,16 +510,35 @@ exports.rejectEntry = async (req, res) => {
             [req.user.id, rejection_note || null, id],
         );
 
+        // Reverse wallet credit if it was credited at submission time
+        if (entry.wallet_credited) {
+            const shopResult = await client.query(
+                'SELECT user_id FROM shops WHERE id = $1', [entry.shop_id],
+            );
+            if (shopResult.rows[0]?.user_id) {
+                const cashAmt = parseFloat(entry.cash || 0);
+                await client.query(
+                    'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) - $1 WHERE id = $2',
+                    [cashAmt, shopResult.rows[0].user_id],
+                );
+                console.log(`[rejectEntry] ₹${cashAmt} reversed from user #${shopResult.rows[0].user_id} wallet on rejection.`);
+            }
+        }
+
         // Audit
-        await db.query(
+        await client.query(
             `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
-             VALUES ('daily_entries', $1, $2, $3, $4)`,
-            [id, entryResult.rows[0], result.rows[0], req.user.id],
+             VALUES ('daily_entries', $1, $2::jsonb, $3::jsonb, $4)`,
+            [id, JSON.stringify(entry), JSON.stringify(result.rows[0]), req.user.id],
         );
 
+        await client.query('COMMIT');
         res.json({ message: 'Entry rejected.', entry: result.rows[0] });
     } catch (err) {
+        await client.query('ROLLBACK');
         res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
     }
 };
 
@@ -490,8 +562,8 @@ exports.deleteEntry = async (req, res) => {
 
         const entry = entryResult.rows[0];
 
-        // Reverse the cash that was credited to the shop wallet on approval
-        if (entry.approval_status === 'APPROVED') {
+        // Reverse the cash that was credited to the shop wallet (at submission or approval)
+        if (entry.wallet_credited) {
             const shopResult = await client.query(
                 'SELECT user_id FROM shops WHERE id = $1', [entry.shop_id],
             );
