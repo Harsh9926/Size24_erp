@@ -341,30 +341,30 @@ const AdminDashboard = () => {
             )}
 
             {/* ── KPI Cards (clickable) ──────────────────────────── */}
-            <div className="grid grid-cols-2 xl:grid-cols-5 gap-5 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
                 {cards.map(({ label, value, icon: Icon, color, bg, isCurrency, filterKey }) => {
                     const isActive = cardFilter === filterKey;
                     return (
                         <div key={label}
                             onClick={() => setCardFilter(prev => prev === filterKey ? null : filterKey)}
-                            className="rounded-xl p-5 shadow-sm border transition-all cursor-pointer hover:shadow-md select-none"
+                            className="rounded-xl p-4 shadow-sm border transition-all cursor-pointer hover:shadow-md select-none flex flex-col justify-between min-h-[108px]"
                             style={{
                                 background: 'var(--bg-surface)',
                                 borderColor: isActive ? '#FF6B00' : 'var(--border-color)',
                                 boxShadow: isActive ? '0 0 0 2px #FF6B00' : undefined,
-                                transform: isActive ? 'translateY(-1px)' : undefined,
+                                transform: isActive ? 'translateY(-2px)' : undefined,
                             }}>
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-secondary)' }}>
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5 leading-tight" style={{ color: 'var(--text-secondary)' }}>
                                         {label}
                                     </p>
-                                    <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                                    <p className="text-xl font-bold leading-none truncate" style={{ color: 'var(--text-primary)' }}>
                                         {isCurrency ? fmt(value) : Number(value || 0)}
                                     </p>
                                 </div>
-                                <div className={`p-3 rounded-xl ${bg} ${isActive ? 'ring-2 ring-orange-400' : ''}`}>
-                                    <Icon className={`h-6 w-6 ${color}`} />
+                                <div className={`p-2.5 rounded-xl ${bg} flex-shrink-0 ${isActive ? 'ring-2 ring-orange-400' : ''}`}>
+                                    <Icon className={`h-5 w-5 ${color}`} />
                                 </div>
                             </div>
                             {isActive && (
