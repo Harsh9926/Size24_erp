@@ -570,11 +570,6 @@ const AdminDashboard = () => {
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="flex items-center gap-1.5">
-                                                {/* Edit button — admin only, always available */}
-                                                <button onClick={() => setEditTarget(entry)}
-                                                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium border border-blue-200 px-2 py-1 rounded-md hover:bg-blue-50 transition-colors">
-                                                    <Pencil className="h-3 w-3" /> Edit
-                                                </button>
                                                 {entry.locked && status === 'APPROVED' && (
                                                     <button onClick={() => handleUnlock(entry.id)}
                                                         className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium border border-indigo-200 px-2 py-1 rounded-md hover:bg-indigo-50 transition-colors">
