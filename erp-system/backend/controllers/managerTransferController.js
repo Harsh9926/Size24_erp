@@ -489,3 +489,86 @@ exports.getStoreWallets = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
+/* ─────────────────────────────────────────────────────────────────
+   POST /api/manager-transfers/sync-store-wallets
+   Admin: recalculate wallet_balance for ALL shop users from the
+   actual transaction records (APPROVED entries + accepted transfers).
+
+   Fixes wallets that were never credited because the historical
+   migrate_wallet_credited_flag.sql backfill set wallet_credited=true
+   on existing APPROVED entries without crediting wallet_balance.
+
+   Formula:
+     credits = SUM(cash) from APPROVED entries
+     debits  = SUM(amount) from accepted/approved outgoing cash_transfers
+     wallet  = credits − debits
+
+   Idempotent — safe to run multiple times.
+───────────────────────────────────────────────────────────────── */
+exports.syncStoreWallets = async (req, res) => {
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Snapshot before recalculation for the audit report
+        const beforeQ = await client.query(
+            `SELECT u.id, u.name, COALESCE(u.wallet_balance, 0) AS wallet_balance
+             FROM users u WHERE u.role = 'shop_user' ORDER BY u.id`
+        );
+        const beforeMap = {};
+        for (const row of beforeQ.rows) beforeMap[row.id] = parseFloat(row.wallet_balance);
+
+        // Recalculate: credits from approved/pending-credited entries minus accepted transfers
+        await client.query(
+            `UPDATE users u
+             SET wallet_balance = COALESCE((
+                 SELECT SUM(de.cash)
+                 FROM daily_entries de
+                 JOIN shops s ON s.id = de.shop_id
+                 WHERE s.user_id = u.id
+                   AND de.approval_status = 'APPROVED'
+             ), 0)
+             - COALESCE((
+                 SELECT SUM(ct.amount)
+                 FROM cash_transfers ct
+                 WHERE ct.from_user_id = u.id
+                   AND ct.status IN ('accepted', 'approved')
+             ), 0)
+             WHERE u.role = 'shop_user'`
+        );
+
+        // Snapshot after
+        const afterQ = await client.query(
+            `SELECT u.id, u.name, COALESCE(u.wallet_balance, 0) AS wallet_balance
+             FROM users u WHERE u.role = 'shop_user' ORDER BY u.id`
+        );
+
+        await client.query('COMMIT');
+
+        const changes = afterQ.rows.map(row => {
+            const after  = parseFloat(row.wallet_balance);
+            const before = beforeMap[row.id] ?? 0;
+            return { user_id: row.id, name: row.name, before, after, delta: after - before };
+        });
+
+        const affected = changes.filter(c => Math.abs(c.delta) > 0.001);
+        console.log(
+            `[syncStoreWallets] Admin ${req.user.id} recalculated wallets for ` +
+            `${changes.length} shop users (${affected.length} changed).`
+        );
+
+        res.json({
+            message:       'Store wallet balances recalculated from transaction records.',
+            users_updated: changes.length,
+            users_changed: affected.length,
+            changes,
+        });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[syncStoreWallets] error:', err.message);
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+};
