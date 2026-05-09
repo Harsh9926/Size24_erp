@@ -262,13 +262,35 @@ exports.getMyTransfers = async (req, res) => {
 ───────────────────────────────────────────────────────────────── */
 exports.getBalance = async (req, res) => {
     try {
-        const shopId = req.user.shopId;
-        if (!shopId) return res.json({ balance: 0 });
-        const result = await db.query(
-            'SELECT wallet_balance FROM shops WHERE id = $1',
-            [shopId]
-        );
-        res.json({ balance: parseFloat(result.rows[0]?.wallet_balance || 0) });
+        // Shop users → shared shop wallet
+        if (req.user.role === 'shop_user') {
+            const shopId = req.user.shopId;
+            if (!shopId) return res.json({ balance: 0 });
+            const result = await db.query(
+                'SELECT wallet_balance FROM shops WHERE id = $1', [shopId]
+            );
+            return res.json({ balance: parseFloat(result.rows[0]?.wallet_balance || 0) });
+        }
+
+        // Managers → compute from transaction records (self-healing)
+        if (req.user.role === 'manager') {
+            const result = await db.query(
+                `SELECT
+                    COALESCE((
+                        SELECT SUM(amount) FROM cash_transfers
+                        WHERE to_user_id = $1 AND status IN ('accepted', 'approved')
+                    ), 0)
+                    -
+                    COALESCE((
+                        SELECT SUM(amount) FROM manager_transfers
+                        WHERE manager_id = $1 AND status = 'approved'
+                    ), 0) AS balance`,
+                [req.user.id]
+            );
+            return res.json({ balance: parseFloat(result.rows[0]?.balance || 0) });
+        }
+
+        res.json({ balance: 0 });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
