@@ -474,14 +474,18 @@ exports.getStoreWallets = async (req, res) => {
     try {
         const result = await db.query(
             `SELECT
-                s.id           AS shop_id,
+                s.id AS shop_id,
                 s.shop_name,
-                u.id           AS user_id,
-                u.name         AS user_name,
-                u.mobile       AS user_mobile,
-                COALESCE(u.wallet_balance, 0) AS wallet_balance
+                COALESCE(s.wallet_balance, 0) AS wallet_balance,
+                COALESCE((
+                    SELECT json_agg(json_build_object(
+                        'id', u.id, 'name', u.name, 'mobile', u.mobile
+                    ) ORDER BY su.assigned_at)
+                    FROM shop_users su
+                    JOIN users u ON u.id = su.user_id
+                    WHERE su.shop_id = s.id
+                ), '[]'::json) AS users
              FROM shops s
-             LEFT JOIN users u ON u.id = s.user_id
              ORDER BY s.shop_name`
         );
         res.json(result.rows);
@@ -511,37 +515,33 @@ exports.syncStoreWallets = async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // Snapshot before recalculation for the audit report
+        // Snapshot before recalculation
         const beforeQ = await client.query(
-            `SELECT u.id, u.name, COALESCE(u.wallet_balance, 0) AS wallet_balance
-             FROM users u WHERE u.role = 'shop_user' ORDER BY u.id`
+            `SELECT id, shop_name, COALESCE(wallet_balance, 0) AS wallet_balance FROM shops ORDER BY id`
         );
         const beforeMap = {};
         for (const row of beforeQ.rows) beforeMap[row.id] = parseFloat(row.wallet_balance);
 
-        // Recalculate: credits from approved/pending-credited entries minus accepted transfers
+        // Recalculate: credits from APPROVED entries minus accepted/approved transfers out
         await client.query(
-            `UPDATE users u
+            `UPDATE shops s
              SET wallet_balance = COALESCE((
                  SELECT SUM(de.cash)
                  FROM daily_entries de
-                 JOIN shops s ON s.id = de.shop_id
-                 WHERE s.user_id = u.id
+                 WHERE de.shop_id = s.id
                    AND de.approval_status = 'APPROVED'
              ), 0)
              - COALESCE((
                  SELECT SUM(ct.amount)
                  FROM cash_transfers ct
-                 WHERE ct.from_user_id = u.id
+                 WHERE ct.shop_id = s.id
                    AND ct.status IN ('accepted', 'approved')
-             ), 0)
-             WHERE u.role = 'shop_user'`
+             ), 0)`
         );
 
         // Snapshot after
         const afterQ = await client.query(
-            `SELECT u.id, u.name, COALESCE(u.wallet_balance, 0) AS wallet_balance
-             FROM users u WHERE u.role = 'shop_user' ORDER BY u.id`
+            `SELECT id, shop_name, COALESCE(wallet_balance, 0) AS wallet_balance FROM shops ORDER BY id`
         );
 
         await client.query('COMMIT');
@@ -549,19 +549,19 @@ exports.syncStoreWallets = async (req, res) => {
         const changes = afterQ.rows.map(row => {
             const after  = parseFloat(row.wallet_balance);
             const before = beforeMap[row.id] ?? 0;
-            return { user_id: row.id, name: row.name, before, after, delta: after - before };
+            return { shop_id: row.id, name: row.shop_name, before, after, delta: after - before };
         });
 
         const affected = changes.filter(c => Math.abs(c.delta) > 0.001);
         console.log(
             `[syncStoreWallets] Admin ${req.user.id} recalculated wallets for ` +
-            `${changes.length} shop users (${affected.length} changed).`
+            `${changes.length} shops (${affected.length} changed).`
         );
 
         res.json({
-            message:       'Store wallet balances recalculated from transaction records.',
-            users_updated: changes.length,
-            users_changed: affected.length,
+            message:        'Store wallet balances recalculated from transaction records.',
+            shops_updated:  changes.length,
+            shops_changed:  affected.length,
             changes,
         });
     } catch (err) {

@@ -320,8 +320,8 @@ const AdminManagerFundsPage = () => {
                                 <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
                                     {sw.shop_name}
                                 </p>
-                                <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
-                                    {sw.user_name || 'No user assigned'}
+                                <p className="text-xs mb-2 truncate" style={{ color: 'var(--text-secondary)' }}>
+                                    {sw.users?.length > 0 ? sw.users.map(u => u.name).join(', ') : 'No user assigned'}
                                 </p>
                                 <p className="text-lg font-extrabold text-teal-600">
                                     ₹{parseFloat(sw.wallet_balance || 0).toLocaleString('en-IN')}

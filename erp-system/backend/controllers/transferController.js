@@ -24,9 +24,12 @@ exports.createTransfer = async (req, res) => {
         if (recipientQ.rows[0].role !== 'manager')
             return res.status(400).json({ error: 'Cash can only be transferred to a manager.' });
 
+        const shopId = req.user.shopId;
+        if (!shopId) return res.status(400).json({ error: 'No shop assigned to your account.' });
+
         const senderQ = await db.query(
-            'SELECT wallet_balance FROM users WHERE id = $1',
-            [fromUserId]
+            'SELECT wallet_balance FROM shops WHERE id = $1',
+            [shopId]
         );
         const balance = parseFloat(senderQ.rows[0]?.wallet_balance || 0);
         if (balance < amt) {
@@ -36,10 +39,10 @@ exports.createTransfer = async (req, res) => {
         }
 
         const result = await db.query(
-            `INSERT INTO cash_transfers (from_user_id, to_user_id, amount, note, status)
-             VALUES ($1, $2, $3, $4, 'pending')
+            `INSERT INTO cash_transfers (from_user_id, to_user_id, amount, note, status, shop_id)
+             VALUES ($1, $2, $3, $4, 'pending', $5)
              RETURNING *`,
-            [fromUserId, to_user_id, amt, note || null]
+            [fromUserId, to_user_id, amt, note || null, shopId]
         );
 
         console.log('[Transfer] Created:', result.rows[0]);
@@ -80,21 +83,22 @@ exports.acceptTransfer = async (req, res) => {
 
         const amt = parseFloat(transfer.amount);
 
+        if (!transfer.shop_id) throw { status: 400, message: 'Transfer has no shop linked. Cannot process.' };
         const senderQ = await client.query(
-            'SELECT wallet_balance FROM users WHERE id = $1 FOR UPDATE',
-            [transfer.from_user_id]
+            'SELECT wallet_balance FROM shops WHERE id = $1 FOR UPDATE',
+            [transfer.shop_id]
         );
         const senderBalance = parseFloat(senderQ.rows[0]?.wallet_balance || 0);
         if (senderBalance < amt) {
             throw {
                 status: 400,
-                message: `Sender's balance (₹${senderBalance.toFixed(2)}) is less than transfer amount (₹${amt.toFixed(2)}).`,
+                message: `Shop balance (₹${senderBalance.toFixed(2)}) is less than transfer amount (₹${amt.toFixed(2)}).`,
             };
         }
 
         await client.query(
-            'UPDATE users SET wallet_balance = wallet_balance - $1 WHERE id = $2',
-            [amt, transfer.from_user_id]
+            'UPDATE shops SET wallet_balance = wallet_balance - $1 WHERE id = $2',
+            [amt, transfer.shop_id]
         );
         await client.query(
             'UPDATE users SET wallet_balance = wallet_balance + $1 WHERE id = $2',
@@ -233,15 +237,19 @@ exports.getManagerTransfers = async (req, res) => {
 ───────────────────────────────────────────────────────────────── */
 exports.getMyTransfers = async (req, res) => {
     try {
+        const shopId = req.user.shopId;
+        if (!shopId) return res.json([]);
         const result = await db.query(
             `SELECT ct.*,
                     'user_to_manager' AS type,
-                    tu.name AS to_name, tu.mobile AS to_mobile
+                    tu.name AS to_name,   tu.mobile AS to_mobile,
+                    fu.name AS from_name, fu.mobile AS from_mobile
              FROM cash_transfers ct
-             JOIN users tu ON ct.to_user_id = tu.id
-             WHERE ct.from_user_id = $1
+             JOIN users tu ON ct.to_user_id   = tu.id
+             JOIN users fu ON ct.from_user_id = fu.id
+             WHERE ct.shop_id = $1
              ORDER BY ct.created_at DESC`,
-            [req.user.id]
+            [shopId]
         );
         res.json(result.rows);
     } catch (err) {
@@ -254,9 +262,11 @@ exports.getMyTransfers = async (req, res) => {
 ───────────────────────────────────────────────────────────────── */
 exports.getBalance = async (req, res) => {
     try {
+        const shopId = req.user.shopId;
+        if (!shopId) return res.json({ balance: 0 });
         const result = await db.query(
-            'SELECT wallet_balance FROM users WHERE id = $1',
-            [req.user.id]
+            'SELECT wallet_balance FROM shops WHERE id = $1',
+            [shopId]
         );
         res.json({ balance: parseFloat(result.rows[0]?.wallet_balance || 0) });
     } catch (err) {

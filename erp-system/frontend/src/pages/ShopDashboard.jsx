@@ -639,10 +639,10 @@ const ShopDashboard = () => {
                                 </button>
                             </form>
 
-                            {/* My Transfer History */}
+                            {/* Shop Transfer History */}
                             <div>
                                 <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-secondary)' }}>
-                                    My Transfer History
+                                    Shop Transfer History
                                 </p>
                                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                                     {myTransfers.length === 0 && (
@@ -662,6 +662,7 @@ const ShopDashboard = () => {
                                                     <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>
                                                         ₹{parseFloat(t.amount).toLocaleString('en-IN')} → {t.to_name || t.to_mobile}
                                                     </p>
+                                                    <p className="text-gray-400">by {t.from_name || 'Unknown'}</p>
                                                     {t.note && <p className="text-gray-400 truncate max-w-[160px]">{t.note}</p>}
                                                     <p className="text-gray-400">{new Date(t.created_at).toLocaleDateString('en-IN')}</p>
                                                 </div>

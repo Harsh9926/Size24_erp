@@ -62,16 +62,11 @@ exports.createEntry = async (req, res) => {
                 [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0, req.user.id],
             );
 
-            // Credit cash portion to shop user's wallet
-            const shopResult = await client.query(
-                'SELECT user_id FROM shops WHERE id = $1', [shop_id],
+            // Credit cash portion to shop wallet
+            await client.query(
+                'UPDATE shops SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
+                [parseFloat(cash || 0), shop_id],
             );
-            if (shopResult.rows[0]?.user_id) {
-                await client.query(
-                    'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
-                    [parseFloat(cash || 0), shopResult.rows[0].user_id],
-                );
-            }
 
             await client.query(
                 `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
@@ -106,18 +101,13 @@ exports.createEntry = async (req, res) => {
             [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0],
         );
 
-        // Credit ONLY the cash portion to the shop user's wallet immediately on submission
-        const shopResult = await client.query(
-            'SELECT user_id FROM shops WHERE id = $1', [shop_id],
+        // Credit ONLY the cash portion to the shop wallet immediately on submission
+        const cashAmt = parseFloat(cash || 0);
+        await client.query(
+            'UPDATE shops SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
+            [cashAmt, shop_id],
         );
-        if (shopResult.rows[0]?.user_id) {
-            const cashAmt = parseFloat(cash || 0);
-            await client.query(
-                'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
-                [cashAmt, shopResult.rows[0].user_id],
-            );
-            console.log(`[createEntry] ₹${cashAmt} credited to user #${shopResult.rows[0].user_id} wallet on submission.`);
-        }
+        console.log(`[createEntry] ₹${cashAmt} credited to shop #${shop_id} wallet on submission.`);
 
         await client.query('COMMIT');
         res.status(201).json(result.rows[0]);
@@ -228,16 +218,11 @@ exports.updateEntry = async (req, res) => {
         if (isAdmin && entry.approval_status === 'APPROVED') {
             const cashDelta = newCash - parseFloat(entry.cash || 0);
             if (Math.abs(cashDelta) > 0.001) {
-                const shopRes = await client.query(
-                    'SELECT user_id FROM shops WHERE id = $1', [entry.shop_id],
+                await client.query(
+                    'UPDATE shops SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
+                    [cashDelta, entry.shop_id],
                 );
-                if (shopRes.rows[0]?.user_id) {
-                    await client.query(
-                        'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
-                        [cashDelta, shopRes.rows[0].user_id],
-                    );
-                    console.log(`[updateEntry] Wallet adjusted by ₹${cashDelta} for user #${shopRes.rows[0].user_id}`);
-                }
+                console.log(`[updateEntry] Shop #${entry.shop_id} wallet adjusted by ₹${cashDelta}`);
             }
         }
 
@@ -245,16 +230,11 @@ exports.updateEntry = async (req, res) => {
         if (!isAdmin && entry.wallet_credited && entry.approval_status === 'PENDING') {
             const cashDelta = newCash - parseFloat(entry.cash || 0);
             if (Math.abs(cashDelta) > 0.001) {
-                const shopRes = await client.query(
-                    'SELECT user_id FROM shops WHERE id = $1', [entry.shop_id],
+                await client.query(
+                    'UPDATE shops SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
+                    [cashDelta, entry.shop_id],
                 );
-                if (shopRes.rows[0]?.user_id) {
-                    await client.query(
-                        'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
-                        [cashDelta, shopRes.rows[0].user_id],
-                    );
-                    console.log(`[updateEntry] Wallet adjusted by ₹${cashDelta} for user #${shopRes.rows[0].user_id} (PENDING update)`);
-                }
+                console.log(`[updateEntry] Shop #${entry.shop_id} wallet adjusted by ₹${cashDelta} (PENDING update)`);
             }
         }
 
@@ -428,28 +408,15 @@ exports.approveEntry = async (req, res) => {
         //    wallet_balance is the sole source of truth for transferable funds —
         //    it must never be edited manually or topped up any other way.
         //    Skip if already credited at submission time (wallet_credited = true).
-        const shopResult = await client.query(
-            'SELECT user_id FROM shops WHERE id = $1',
-            [entry.shop_id],
-        );
-
-        if (shopResult.rows.length > 0 && shopResult.rows[0].user_id) {
-            const shopUserId = shopResult.rows[0].user_id;
-            const cashAmt    = parseFloat(entry.cash || 0);
-
-            if (!entry.wallet_credited) {
-                await client.query(
-                    'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
-                    [cashAmt, shopUserId],
-                );
-                console.log(
-                    `[approveEntry] Entry #${id} approved. ₹${cashAmt} credited to user #${shopUserId} wallet.`,
-                );
-            } else {
-                console.log(
-                    `[approveEntry] Entry #${id} approved. Wallet already credited at submission (₹${cashAmt}), skipping.`,
-                );
-            }
+        const cashAmt = parseFloat(entry.cash || 0);
+        if (!entry.wallet_credited) {
+            await client.query(
+                'UPDATE shops SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
+                [cashAmt, entry.shop_id],
+            );
+            console.log(`[approveEntry] Entry #${id} approved. ₹${cashAmt} credited to shop #${entry.shop_id} wallet.`);
+        } else {
+            console.log(`[approveEntry] Entry #${id} approved. Wallet already credited at submission (₹${cashAmt}), skipping.`);
         }
 
         // 3. Audit log
@@ -512,17 +479,12 @@ exports.rejectEntry = async (req, res) => {
 
         // Reverse wallet credit if it was credited at submission time
         if (entry.wallet_credited) {
-            const shopResult = await client.query(
-                'SELECT user_id FROM shops WHERE id = $1', [entry.shop_id],
+            const cashAmt = parseFloat(entry.cash || 0);
+            await client.query(
+                'UPDATE shops SET wallet_balance = COALESCE(wallet_balance, 0) - $1 WHERE id = $2',
+                [cashAmt, entry.shop_id],
             );
-            if (shopResult.rows[0]?.user_id) {
-                const cashAmt = parseFloat(entry.cash || 0);
-                await client.query(
-                    'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) - $1 WHERE id = $2',
-                    [cashAmt, shopResult.rows[0].user_id],
-                );
-                console.log(`[rejectEntry] ₹${cashAmt} reversed from user #${shopResult.rows[0].user_id} wallet on rejection.`);
-            }
+            console.log(`[rejectEntry] ₹${cashAmt} reversed from shop #${entry.shop_id} wallet on rejection.`);
         }
 
         // Audit
@@ -564,15 +526,10 @@ exports.deleteEntry = async (req, res) => {
 
         // Reverse the cash that was credited to the shop wallet (at submission or approval)
         if (entry.wallet_credited) {
-            const shopResult = await client.query(
-                'SELECT user_id FROM shops WHERE id = $1', [entry.shop_id],
+            await client.query(
+                'UPDATE shops SET wallet_balance = COALESCE(wallet_balance, 0) - $1 WHERE id = $2',
+                [parseFloat(entry.cash || 0), entry.shop_id],
             );
-            if (shopResult.rows[0]?.user_id) {
-                await client.query(
-                    'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) - $1 WHERE id = $2',
-                    [parseFloat(entry.cash || 0), shopResult.rows[0].user_id],
-                );
-            }
         }
 
         // Audit log before deletion
