@@ -391,11 +391,6 @@ const AdminDashboard = () => {
                         <p className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>
                             {fmt(data.shopWallet.balance)}
                         </p>
-                        {data.shopWallet.userName && (
-                            <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                                Owner: {data.shopWallet.userName}
-                            </p>
-                        )}
                     </div>
                     <div className="text-xs font-semibold px-3 py-1 rounded-full"
                         style={{
