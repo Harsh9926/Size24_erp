@@ -23,6 +23,8 @@ const adminLinks = [
 
 const managerLinks = [
     { to: '/manager',               label: 'Dashboard',     icon: LayoutDashboard },
+    { to: '/admin/approvals',       label: 'Approvals',     icon: ShieldCheck },
+    { to: '/admin/entries',         label: 'Entries',       icon: ClipboardList },
     { to: '/manager/cash-transfer', label: 'Cash Transfer', icon: Banknote },
 ];
 
@@ -175,7 +177,7 @@ const Sidebar = () => {
 
     /* Poll pending count every 60 s for admin / manager */
     useEffect(() => {
-        if (user?.role !== 'admin') return;
+        if (user?.role !== 'admin' && user?.role !== 'manager') return;
 
         const fetchPending = async () => {
             try {
