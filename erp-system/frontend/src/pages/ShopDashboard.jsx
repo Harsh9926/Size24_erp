@@ -135,33 +135,8 @@ function parseExcelFile(file) {
                     return;
                 }
 
-                // ── Step 4: find the "Date" key (required) ───────────────
-                const dateKey = Object.keys(rows[0] ?? {}).find(
-                    (k) => normalKey(k) === 'date',
-                );
-                if (!dateKey) {
-                    reject(new Error(
-                        "'Date' column not found in Excel. " +
-                        'Ensure the column header is exactly "Date".',
-                    ));
-                    return;
-                }
-
-                const parseDate = (v) => {
-                    if (!v) return null;
-                    if (v instanceof Date) return v.toISOString().split('T')[0];
-                    const s = String(v).trim();
-                    // dd/mm/yyyy or dd-mm-yyyy
-                    const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-                    if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
-                    const d = new Date(s);
-                    return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
-                };
-
-                // ── Step 5: iterate rows, skip summary/empty rows ────────
-                const today    = getTodayISO();
+                // ── Step 4: iterate rows, skip summary/empty rows ────────
                 let totalSale  = 0;
-                let excelDate  = null;
                 const previewRows = [];
 
                 for (const row of rows) {
@@ -178,14 +153,8 @@ function parseExcelFile(file) {
                     // Skip rows where value couldn't be parsed as a number
                     if (amt === null) continue;
 
-                    // Extract date (take first non-null date found)
-                    if (dateKey && !excelDate) {
-                        excelDate = parseDate(row[dateKey]);
-                    }
-
-                    // ✅ Only accumulate from "Received Amount" column
                     totalSale += amt;
-                    previewRows.push({ date: excelDate, receivedAmount: amt });
+                    previewRows.push({ receivedAmount: amt });
                 }
 
                 if (previewRows.length === 0) {
@@ -196,23 +165,7 @@ function parseExcelFile(file) {
                     return;
                 }
 
-                // Validate date — Date column is mandatory; must match today
-                if (!excelDate) {
-                    reject(new Error(
-                        "'Date' column found but all values are empty or unreadable. " +
-                        'Ensure dates are in DD/MM/YYYY or YYYY-MM-DD format.',
-                    ));
-                    return;
-                }
-                if (excelDate !== today) {
-                    reject(new Error(
-                        `Upload failed: Excel date must match today's date. ` +
-                        `Found ${excelDate}, today is ${today}.`,
-                    ));
-                    return;
-                }
-
-                resolve({ date: excelDate, totalSale, previewRows });
+                resolve({ totalSale, previewRows });
             } catch (err) {
                 reject(new Error('Failed to parse Excel file. ' + err.message));
             }
@@ -251,7 +204,7 @@ const ShopDashboard = () => {
     const [xlError,     setXlError]     = useState('');
     const [xlSuccess,   setXlSuccess]   = useState('');
     const [showPreview, setShowPreview] = useState(false);
-    const [previewData, setPreviewData] = useState({ date: '', totalSale: 0, previewRows: [] });
+    const [previewData, setPreviewData] = useState({ totalSale: 0, previewRows: [] });
     const [excelLoaded, setExcelLoaded] = useState(false);
 
     const [dateFilter,   setDateFilter]   = useState('');
@@ -475,13 +428,13 @@ const ShopDashboard = () => {
         }
     };
 
-    // Confirms Excel preview — sets ONLY date + totalSale; breakdown is filled manually
+    // Confirms Excel preview — sets totalSale; date is always today
     const confirmExcel = () => {
-        const { date, totalSale, previewRows } = previewData;
+        const { totalSale, previewRows } = previewData;
         setShowPreview(false);
         setExcelLoaded(true);
         setForm({
-            date:             date || getTodayISO(),
+            date:             getTodayISO(),
             excel_total_sale: String(totalSale.toFixed(2)),
             cash:             '',
             online:           '',
@@ -707,11 +660,11 @@ const ShopDashboard = () => {
 
                         <form onSubmit={handleSubmit} className="space-y-3 mt-4">
 
-                            {/* ── Date (read-only, from Excel) ───────── */}
+                            {/* ── Date (always today, read-only) ─────── */}
                             <div>
                                 <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
                                     Date
-                                    <span className="ml-1 text-[10px] font-normal text-amber-600">(from Excel · read-only)</span>
+                                    <span className="ml-1 text-[10px] font-normal text-teal-600">(today · read-only)</span>
                                 </label>
                                 <div className="relative">
                                     <input id="field-date" type="date"
@@ -827,17 +780,20 @@ const ShopDashboard = () => {
                                 </div>
                             )}
 
-                            {/* Photo */}
+                            {/* Bank / Paytm Screenshot */}
                             {!isFormLocked && (
                                 <div>
-                                    <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Photo Proof (optional)</label>
+                                    <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                                        Bank / Paytm Screenshot
+                                        <span className="ml-1 text-[10px] font-normal text-gray-400">(optional)</span>
+                                    </label>
                                     <div className="flex items-center gap-2">
                                         <button type="button" onClick={() => fileRef.current?.click()}
                                             className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
                                             <Camera className="h-3.5 w-3.5" />
-                                            {photoFile ? 'Change Photo' : 'Upload Photo'}
+                                            {photoFile ? 'Change Screenshot' : 'Upload Screenshot'}
                                         </button>
-                                        {photoPreview && <img src={photoPreview} alt="preview" className="h-10 w-10 object-cover rounded-md border" />}
+                                        {photoPreview && <img src={photoPreview} alt="bank screenshot preview" className="h-10 w-10 object-cover rounded-md border" />}
                                     </div>
                                     <input ref={fileRef} type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
                                 </div>
@@ -1016,7 +972,7 @@ const ShopDashboard = () => {
                             <table className="min-w-full text-sm">
                                 <thead className="sticky top-0" style={{ background: 'var(--bg-primary)' }}>
                                     <tr>
-                                        {['#', 'Date', 'Received Amount (₹)'].map((h) => (
+                                        {['#', 'Received Amount (₹)'].map((h) => (
                                             <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
                                                 style={{ color: 'var(--text-secondary)' }}>{h}</th>
                                         ))}
@@ -1026,9 +982,6 @@ const ShopDashboard = () => {
                                     {previewData.previewRows.map((r, i) => (
                                         <tr key={i} style={{ borderTop: '1px solid var(--border-color)' }} className="hover:opacity-80">
                                             <td className="px-4 py-2.5 text-xs text-gray-400">{i + 1}</td>
-                                            <td className="px-4 py-2.5 font-medium whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
-                                                {r.date ? fmtDate(r.date) : <span className="text-gray-400 italic">—</span>}
-                                            </td>
                                             <td className="px-4 py-2.5 font-bold text-teal-700">
                                                 ₹{r.receivedAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                             </td>

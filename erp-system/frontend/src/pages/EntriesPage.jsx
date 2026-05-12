@@ -3,7 +3,7 @@ import api from '../services/api';
 import Layout from '../components/Layout';
 import {
     Lock, Unlock, ChevronLeft, ChevronRight,
-    Search, Filter, RefreshCw, Calendar, ArrowRightLeft,
+    Search, Filter, RefreshCw, Calendar, ArrowRightLeft, Pencil, X,
 } from 'lucide-react';
 
 const fmt = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
@@ -99,6 +99,45 @@ const EntriesPage = () => {
 
     const isEditable = (entry) =>
         entry.locked && entry.edit_enabled_till && new Date() < new Date(entry.edit_enabled_till);
+
+    // ── Edit modal state ─────────────────────────────────────────
+    const [editEntry,   setEditEntry]   = useState(null);
+    const [editForm,    setEditForm]    = useState({});
+    const [editLoading, setEditLoading] = useState(false);
+    const [editError,   setEditError]   = useState('');
+
+    const openEdit = (entry) => {
+        setEditEntry(entry);
+        setEditForm({
+            date:             entry.date ? entry.date.split('T')[0] : '',
+            total_sale:       entry.excel_total_sale ?? entry.total_sale ?? '',
+            cash:             entry.cash     ?? '',
+            online:           entry.online   ?? entry.paytm ?? '',
+            razorpay:         entry.razorpay ?? '',
+        });
+        setEditError('');
+    };
+
+    const handleEditSave = async () => {
+        setEditLoading(true);
+        setEditError('');
+        try {
+            await api.put(`/entries/${editEntry.id}`, {
+                date:             editForm.date,
+                total_sale:       parseFloat(editForm.total_sale  || 0),
+                excel_total_sale: parseFloat(editForm.total_sale  || 0),
+                cash:             parseFloat(editForm.cash        || 0),
+                online:           parseFloat(editForm.online      || 0),
+                razorpay:         parseFloat(editForm.razorpay    || 0),
+            });
+            setEditEntry(null);
+            loadEntries(page);
+        } catch (e) {
+            setEditError(e.response?.data?.error || 'Update failed.');
+        } finally {
+            setEditLoading(false);
+        }
+    };
 
     const hasFilters = dateFrom || dateTo || shopFilter || statusFilter;
 
@@ -277,12 +316,18 @@ const EntriesPage = () => {
 
                                     {/* Action */}
                                     <td className="px-4 py-3">
-                                        {e.locked && !isEditable(e) && (
-                                            <button onClick={() => handleUnlock(e.id)}
-                                                className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium border border-indigo-200 px-2 py-1 rounded-md hover:bg-indigo-50 transition-colors">
-                                                <Unlock className="h-3 w-3" /> Unlock
+                                        <div className="flex items-center gap-1.5">
+                                            {e.locked && !isEditable(e) && (
+                                                <button onClick={() => handleUnlock(e.id)}
+                                                    className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium border border-indigo-200 px-2 py-1 rounded-md hover:bg-indigo-50 transition-colors">
+                                                    <Unlock className="h-3 w-3" /> Unlock
+                                                </button>
+                                            )}
+                                            <button onClick={() => openEdit(e)}
+                                                className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 font-medium border border-amber-200 px-2 py-1 rounded-md hover:bg-amber-50 transition-colors">
+                                                <Pencil className="h-3 w-3" /> Edit
                                             </button>
-                                        )}
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -428,6 +473,65 @@ const EntriesPage = () => {
                     </table>
                 </div>
             </div>
+
+            {/* ── Edit Entry Modal ─────────────────────────────── */}
+            {editEntry && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+
+                        {/* Header */}
+                        <div className="flex items-center justify-between mb-5">
+                            <div>
+                                <h2 className="text-base font-bold text-gray-800">Edit Entry</h2>
+                                <p className="text-xs text-gray-400 mt-0.5">{editEntry.shop_name}</p>
+                            </div>
+                            <button onClick={() => setEditEntry(null)}
+                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        {/* Fields */}
+                        <div className="space-y-3">
+                            {[
+                                { label: 'Date',            key: 'date',       type: 'date'   },
+                                { label: 'Total Sale (₹)',  key: 'total_sale', type: 'number' },
+                                { label: 'Cash (₹)',        key: 'cash',       type: 'number' },
+                                { label: 'QR/Card/Bank (₹)',key: 'online',     type: 'number' },
+                                { label: 'RazorPay (₹)',    key: 'razorpay',   type: 'number' },
+                            ].map(({ label, key, type }) => (
+                                <div key={key}>
+                                    <label className="block text-xs font-semibold text-gray-500 mb-1">{label}</label>
+                                    <input
+                                        type={type}
+                                        value={editForm[key]}
+                                        onChange={e => setEditForm(f => ({ ...f, [key]: e.target.value }))}
+                                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+
+                        {editError && (
+                            <p className="mt-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                                {editError}
+                            </p>
+                        )}
+
+                        {/* Footer */}
+                        <div className="flex gap-2 mt-5">
+                            <button onClick={() => setEditEntry(null)}
+                                className="flex-1 px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">
+                                Cancel
+                            </button>
+                            <button onClick={handleEditSave} disabled={editLoading}
+                                className="flex-1 px-4 py-2 text-sm bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-50">
+                                {editLoading ? 'Saving…' : 'Save Changes'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
         </Layout>
     );
