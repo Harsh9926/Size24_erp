@@ -10,7 +10,7 @@ const Layout = ({ children, title }) => {
     return (
         <div className="flex min-h-screen" style={{ background: 'var(--bg-primary)' }}>
 
-            {/* Mobile backdrop */}
+            {/* Mobile backdrop — closes sidebar on outside tap */}
             {sidebarOpen && (
                 <div
                     className="fixed inset-0 z-20 bg-black/50 md:hidden"
@@ -18,9 +18,15 @@ const Layout = ({ children, title }) => {
                 />
             )}
 
+            {/* Desktop spacer — reserves sidebar width so content shifts right */}
+            <div className="hidden md:block w-64 flex-shrink-0" />
+
+            {/* Sidebar — always fixed, slides in/out on mobile, always visible on desktop */}
             <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
+            {/* Main area */}
             <div className="flex-1 flex flex-col min-w-0">
+
                 {/* Topbar */}
                 <header
                     className="sticky top-0 z-10 px-4 sm:px-8 py-4 flex items-center justify-between shadow-sm border-b"
@@ -38,7 +44,7 @@ const Layout = ({ children, title }) => {
                         </button>
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#FF6B00' }}>SIZE24 ERP</p>
-                            <h1 className="text-lg md:text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{title}</h1>
+                            <h1 className="text-base sm:text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{title}</h1>
                         </div>
                     </div>
                     <div className="flex items-center gap-2 sm:gap-3">
