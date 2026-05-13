@@ -5,7 +5,7 @@ import Layout from '../components/Layout';
 import {
     CheckCircle2, XCircle, Clock, Loader2, RefreshCw,
     Eye, AlertCircle, Building2, ArrowUpRight, ArrowDownRight,
-    Wallet, Users, Store,
+    Wallet, Users, Store, Receipt,
 } from 'lucide-react';
 
 /* ── Badges ───────────────────────────────────────────────────────── */
@@ -28,6 +28,7 @@ const TypeBadge = ({ type }) => {
         user_to_manager: { cls: 'bg-teal-100 text-teal-700',     Icon: ArrowDownRight, label: 'User → Manager'   },
         manager_to_admin:{ cls: 'bg-blue-100 text-blue-700',     Icon: ArrowUpRight,   label: 'Manager → Admin'  },
         manager_to_bank: { cls: 'bg-purple-100 text-purple-700', Icon: Building2,      label: 'Manager → Bank'   },
+        manager_expense: { cls: 'bg-red-100 text-red-700',       Icon: Receipt,        label: 'Expense'          },
     };
     const { cls, Icon, label } = map[type] || { cls: 'bg-gray-100 text-gray-600', Icon: Clock, label: type };
     return (

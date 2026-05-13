@@ -43,22 +43,21 @@ exports.getAdmins = async (req, res) => {
 };
 
 exports.createTransfer = async (req, res) => {
-    const { amount, type, note, to_admin_id } = req.body;
+    const { amount, type, note, to_admin_id, category } = req.body;
     const managerId  = req.user.id;
     const receiptUrl = req.file ? `/uploads/${req.file.filename}` : null;
 
     const amt = parseFloat(amount);
-    if (!type || !['manager_to_admin', 'manager_to_bank'].includes(type))
-        return res.status(400).json({ error: 'type must be manager_to_admin or manager_to_bank.' });
+    if (!type || !['manager_to_admin', 'manager_to_bank', 'manager_expense'].includes(type))
+        return res.status(400).json({ error: 'Invalid transfer type.' });
     if (isNaN(amt) || amt <= 0)
         return res.status(400).json({ error: 'A positive amount is required.' });
     if (type === 'manager_to_bank' && !receiptUrl)
         return res.status(400).json({ error: 'Receipt upload is mandatory for bank deposits.' });
+    if (type === 'manager_expense' && !note?.trim())
+        return res.status(400).json({ error: 'Description is required for expenses.' });
 
     try {
-        // Compute available balance from transactions (not stored value).
-        // Subtract both approved AND pending outgoing transfers so the manager
-        // cannot queue multiple requests that together exceed their earned funds.
         const balQ = await db.query(
             `SELECT
                 COALESCE((
@@ -79,9 +78,9 @@ exports.createTransfer = async (req, res) => {
             });
 
         const result = await db.query(
-            `INSERT INTO manager_transfers (manager_id, to_admin_id, amount, type, note, receipt_url, status)
-             VALUES ($1, $2, $3, $4, $5, $6, 'pending') RETURNING *`,
-            [managerId, to_admin_id ? parseInt(to_admin_id) : null, amt, type, note || null, receiptUrl]
+            `INSERT INTO manager_transfers (manager_id, to_admin_id, amount, type, note, receipt_url, category, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING *`,
+            [managerId, to_admin_id ? parseInt(to_admin_id) : null, amt, type, note || null, receiptUrl, category || null]
         );
         res.status(201).json(result.rows[0]);
     } catch (err) {

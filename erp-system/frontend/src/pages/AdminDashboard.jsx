@@ -666,8 +666,8 @@ const AdminDashboard = () => {
                                         <td className="px-4 py-3 font-bold text-emerald-600 whitespace-nowrap">
                                             {fmt(t.amount)}
                                         </td>
-                                        <td className="px-4 py-3 text-xs max-w-[140px] truncate"
-                                            style={{ color: 'var(--text-secondary)' }} title={t.note}>
+                                        <td className="px-4 py-3 text-xs max-w-[200px] break-words whitespace-normal"
+                                            style={{ color: 'var(--text-secondary)' }}>
                                             {t.note || '—'}
                                         </td>
                                         <td className="px-4 py-3">

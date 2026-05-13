@@ -458,7 +458,7 @@ const EntriesPage = () => {
                                         <td className="px-4 py-3 font-bold text-emerald-600 whitespace-nowrap">
                                             {fmt(t.amount)}
                                         </td>
-                                        <td className="px-4 py-3 text-xs text-gray-500 max-w-[160px] truncate" title={t.note}>
+                                        <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] break-words whitespace-normal">
                                             {t.note || '—'}
                                         </td>
                                         <td className="px-4 py-3">

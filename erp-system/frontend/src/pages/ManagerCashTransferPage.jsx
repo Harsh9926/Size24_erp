@@ -3,7 +3,7 @@ import api from '../services/api';
 import Layout from '../components/Layout';
 import {
     ArrowUpRight, Building2, Upload, CheckCircle2, XCircle,
-    Clock, AlertCircle, Loader2, RefreshCw, X, Wallet, FileText,
+    Clock, AlertCircle, Loader2, RefreshCw, X, Wallet, FileText, Receipt,
 } from 'lucide-react';
 
 /* ── Badges ───────────────────────────────────────────────────────── */
@@ -22,15 +22,19 @@ const StatusBadge = ({ status }) => {
     );
 };
 
-const TypeBadge = ({ type }) => (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full ${
-        type === 'manager_to_admin' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-    }`}>
-        {type === 'manager_to_admin'
-            ? <><ArrowUpRight className="h-3 w-3" />To Admin</>
-            : <><Building2    className="h-3 w-3" />To Bank</>}
-    </span>
-);
+const TypeBadge = ({ type }) => {
+    const map = {
+        manager_to_admin: { cls: 'bg-blue-100 text-blue-700',   Icon: ArrowUpRight, label: 'To Admin' },
+        manager_to_bank:  { cls: 'bg-purple-100 text-purple-700', Icon: Building2,  label: 'To Bank'  },
+        manager_expense:  { cls: 'bg-red-100 text-red-700',     Icon: Receipt,      label: 'Expense'  },
+    };
+    const { cls, Icon, label } = map[type] || { cls: 'bg-gray-100 text-gray-600', Icon: Receipt, label: type };
+    return (
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full ${cls}`}>
+            <Icon className="h-3 w-3" />{label}
+        </span>
+    );
+};
 
 /* ── Page ─────────────────────────────────────────────────────────── */
 const ManagerCashTransferPage = () => {
@@ -44,8 +48,9 @@ const ManagerCashTransferPage = () => {
     const [toast,              setToast]              = useState(null);
 
     const [admins,    setAdmins]     = useState([]);
-    const [adminForm, setAdminForm] = useState({ amount: '', note: '', to_admin_id: '' });
-    const [bankForm,  setBankForm]  = useState({ amount: '', note: '' });
+    const [adminForm,   setAdminForm]   = useState({ amount: '', note: '', to_admin_id: '' });
+    const [bankForm,    setBankForm]    = useState({ amount: '', note: '' });
+    const [expenseForm, setExpenseForm] = useState({ amount: '', note: '', category: 'Other' });
     const [receiptFile,    setReceiptFile]    = useState(null);
     const [receiptPreview, setReceiptPreview] = useState(null);
 
@@ -125,6 +130,31 @@ const ManagerCashTransferPage = () => {
             fetchData();
         } catch (err) {
             showToast('error', err.response?.data?.error || 'Failed to send transfer.');
+        } finally { setSubmitting(false); }
+    };
+
+    /* ── Submit: Log Expense ──────────────────────────────────────── */
+    const handleExpenseSubmit = async (e) => {
+        e.preventDefault();
+        const amt = parseFloat(expenseForm.amount);
+        if (!amt || amt <= 0) return showToast('error', 'Enter a valid amount.');
+        if (amt > walletBalance)
+            return showToast('error', `Amount exceeds wallet balance (₹${walletBalance.toFixed(2)}).`);
+        if (!expenseForm.note.trim()) return showToast('error', 'Description is required.');
+
+        setSubmitting(true);
+        try {
+            await api.post('/manager-transfers', {
+                amount:   amt,
+                type:     'manager_expense',
+                note:     expenseForm.note,
+                category: expenseForm.category,
+            });
+            showToast('success', 'Expense logged. Awaiting admin approval.');
+            setExpenseForm({ amount: '', note: '', category: 'Other' });
+            fetchData();
+        } catch (err) {
+            showToast('error', err.response?.data?.error || 'Failed to log expense.');
         } finally { setSubmitting(false); }
     };
 
@@ -303,15 +333,16 @@ const ManagerCashTransferPage = () => {
                     {/* Tab buttons */}
                     <div className="flex border-b" style={{ borderColor: 'var(--border-color)' }}>
                         {[
-                            { id: 'admin', label: 'Transfer to Admin', Icon: ArrowUpRight },
-                            { id: 'bank',  label: 'Deposit to Bank',   Icon: Building2   },
+                            { id: 'admin',   label: 'Transfer to Admin', Icon: ArrowUpRight },
+                            { id: 'bank',    label: 'Deposit to Bank',   Icon: Building2   },
+                            { id: 'expense', label: 'Log Expense',       Icon: Receipt     },
                         ].map(({ id, label, Icon }) => (
                             <button key={id} onClick={() => setActiveTab(id)}
-                                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3.5 text-sm font-bold transition-all ${
+                                className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-3.5 text-xs sm:text-sm font-bold transition-all ${
                                     activeTab === id ? 'text-white' : 'text-gray-500 hover:text-gray-800'
                                 }`}
-                                style={activeTab === id ? { background: '#FF6B00' } : {}}>
-                                <Icon className="h-4 w-4" />{label}
+                                style={activeTab === id ? { background: id === 'expense' ? '#dc2626' : '#FF6B00' } : {}}>
+                                <Icon className="h-4 w-4 flex-shrink-0" />{label}
                             </button>
                         ))}
                     </div>
@@ -435,6 +466,52 @@ const ManagerCashTransferPage = () => {
                             </button>
                         </form>
                     )}
+
+                    {/* ── Expense form ─────────────────────────────────── */}
+                    {activeTab === 'expense' && (
+                        <form onSubmit={handleExpenseSubmit} className="p-6 space-y-4">
+                            <p className="text-sm text-gray-500 mb-2">
+                                Log a business expense from your wallet. Admin will verify and approve the deduction.
+                            </p>
+                            <div>
+                                <label className={labelCls} style={{ color: 'var(--text-secondary)' }}>Category</label>
+                                <select
+                                    value={expenseForm.category}
+                                    onChange={e => setExpenseForm(f => ({ ...f, category: e.target.value }))}
+                                    className={inputCls} style={inputStyle}>
+                                    {['Travel & Transport', 'Food & Meals', 'Office Supplies', 'Utilities', 'Maintenance & Repair', 'Marketing', 'Other'].map(c => (
+                                        <option key={c} value={c}>{c}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className={labelCls} style={{ color: 'var(--text-secondary)' }}>Amount (₹)</label>
+                                <input type="number" min="1" step="0.01" required
+                                    value={expenseForm.amount}
+                                    onChange={e => setExpenseForm(f => ({ ...f, amount: e.target.value }))}
+                                    placeholder="e.g. 500"
+                                    className={inputCls} style={inputStyle} />
+                            </div>
+                            <div>
+                                <label className={labelCls} style={{ color: 'var(--text-secondary)' }}>
+                                    Description <span className="text-red-500 normal-case font-normal">* required</span>
+                                </label>
+                                <textarea rows={3} required
+                                    value={expenseForm.note}
+                                    onChange={e => setExpenseForm(f => ({ ...f, note: e.target.value }))}
+                                    placeholder="Describe what this expense was for…"
+                                    className={inputCls} style={inputStyle} />
+                            </div>
+                            <button type="submit" disabled={submitting}
+                                className="w-full py-3 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2 transition-all"
+                                style={{ background: submitting ? '#9ca3af' : '#dc2626' }}>
+                                {submitting
+                                    ? <Loader2  className="h-4 w-4 animate-spin" />
+                                    : <Receipt  className="h-4 w-4" />}
+                                {submitting ? 'Submitting…' : 'Log Expense'}
+                            </button>
+                        </form>
+                    )}
                 </div>
 
                 {/* ── Summary Sidebar (2 cols) ───────────────────────── */}
@@ -515,9 +592,12 @@ const ManagerCashTransferPage = () => {
                                     <td className="px-4 py-3 font-bold" style={{ color: 'var(--text-primary)' }}>
                                         ₹{parseFloat(t.amount).toLocaleString('en-IN')}
                                     </td>
-                                    <td className="px-4 py-3 text-xs max-w-[140px] truncate"
-                                        style={{ color: 'var(--text-secondary)' }} title={t.note}>
-                                        {t.note || '—'}
+                                    <td className="px-4 py-3 text-xs max-w-[180px]"
+                                        style={{ color: 'var(--text-secondary)' }}>
+                                        {t.category && (
+                                            <span className="block font-semibold text-gray-500 mb-0.5">{t.category}</span>
+                                        )}
+                                        <span className="break-words whitespace-normal">{t.note || '—'}</span>
                                     </td>
                                     <td className="px-4 py-3">
                                         {t.receipt_url
