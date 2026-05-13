@@ -378,6 +378,7 @@ const AdminManagerFundsPage = () => {
                             <option value="user_to_manager">User → Manager</option>
                             <option value="manager_to_admin">Manager → Admin</option>
                             <option value="manager_to_bank">Manager → Bank</option>
+                            <option value="manager_expense">Expense</option>
                         </select>
 
                         <select
@@ -428,18 +429,23 @@ const AdminManagerFundsPage = () => {
                                             <TypeBadge type={t.type} />
                                         </td>
 
-                                        <td className="px-4 py-3 max-w-[140px]">
+                                        <td className="px-4 py-3 max-w-[180px]">
                                             {t.from_name && (
                                                 <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
                                                     {t.from_name}
                                                 </p>
                                             )}
+                                            {t.category && (
+                                                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                                                    {t.category}
+                                                </p>
+                                            )}
                                             {t.note && (
-                                                <p className="text-xs truncate text-gray-400" title={t.note}>
+                                                <p className="text-xs text-gray-400 break-words whitespace-normal">
                                                     {t.note}
                                                 </p>
                                             )}
-                                            {!t.from_name && !t.note && (
+                                            {!t.from_name && !t.note && !t.category && (
                                                 <span className="text-xs text-gray-400">—</span>
                                             )}
                                         </td>
