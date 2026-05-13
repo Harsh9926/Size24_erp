@@ -145,25 +145,28 @@ const EntriesPage = () => {
         <Layout title="Daily Entries">
 
             {/* ── Filter bar ───────────────────────────────────── */}
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 mb-5">
-                <div className="flex flex-wrap items-end gap-3">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 sm:px-5 py-4 mb-5">
+                <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3">
 
-                    {/* Date From */}
-                    <div className="flex flex-col gap-1 min-w-0">
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
-                            <Calendar className="h-3 w-3" /> From
-                        </label>
-                        <input type="date" className={inputCls} value={dateFrom}
-                            onChange={e => setDateFrom(e.target.value)} />
-                    </div>
+                    {/* Date row — side by side on mobile */}
+                    <div className="grid grid-cols-2 sm:contents gap-3">
+                        {/* Date From */}
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                                <Calendar className="h-3 w-3" /> From
+                            </label>
+                            <input type="date" className={inputCls + ' w-full'} value={dateFrom}
+                                onChange={e => setDateFrom(e.target.value)} />
+                        </div>
 
-                    {/* Date To */}
-                    <div className="flex flex-col gap-1 min-w-0">
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
-                            <Calendar className="h-3 w-3" /> To
-                        </label>
-                        <input type="date" className={inputCls} value={dateTo}
-                            onChange={e => setDateTo(e.target.value)} />
+                        {/* Date To */}
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                                <Calendar className="h-3 w-3" /> To
+                            </label>
+                            <input type="date" className={inputCls + ' w-full'} value={dateTo}
+                                onChange={e => setDateTo(e.target.value)} />
+                        </div>
                     </div>
 
                     {/* Shop filter */}
@@ -172,7 +175,7 @@ const EntriesPage = () => {
                             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
                                 <Filter className="h-3 w-3" /> Shop
                             </label>
-                            <select className={inputCls} value={shopFilter}
+                            <select className={inputCls + ' w-full sm:w-auto'} value={shopFilter}
                                 onChange={e => setShopFilter(e.target.value)}>
                                 <option value="">All Shops</option>
                                 {shops.map(s => (
@@ -187,7 +190,7 @@ const EntriesPage = () => {
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
                             <Filter className="h-3 w-3" /> Status
                         </label>
-                        <select className={inputCls} value={statusFilter}
+                        <select className={inputCls + ' w-full sm:w-auto'} value={statusFilter}
                             onChange={e => setStatusFilter(e.target.value)}>
                             <option value="">All Status</option>
                             <option value="APPROVED">Approved</option>
@@ -197,15 +200,15 @@ const EntriesPage = () => {
                     </div>
 
                     {/* Action buttons */}
-                    <div className="flex gap-2 ml-auto items-end pb-0.5">
+                    <div className="flex gap-2 sm:ml-auto items-center">
                         {hasFilters && (
                             <button onClick={clearFilters}
-                                className="px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors">
+                                className="flex-1 sm:flex-none px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors">
                                 Clear
                             </button>
                         )}
                         <button onClick={() => applyFilters()}
-                            className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg flex items-center gap-1.5 transition-colors">
+                            className="flex-1 sm:flex-none px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors">
                             <Search className="h-3.5 w-3.5" /> Search
                         </button>
                         <button onClick={() => loadEntries(page)} title="Refresh"
@@ -220,7 +223,7 @@ const EntriesPage = () => {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
 
                 {/* Header row */}
-                <div className="px-6 py-3.5 border-b border-gray-100 flex items-center justify-between">
+                <div className="px-4 sm:px-6 py-3.5 border-b border-gray-100 flex items-center justify-between">
                     <p className="text-sm font-semibold text-gray-700">
                         {loading ? 'Loading…' : (
                             <>
@@ -337,7 +340,7 @@ const EntriesPage = () => {
 
                 {/* ── Pagination bar ───────────────────────────── */}
                 {pages > 1 && (
-                    <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+                    <div className="px-4 sm:px-6 py-4 border-t border-gray-100 flex items-center justify-between flex-wrap gap-2">
                         <p className="text-xs text-gray-500">
                             Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, total)} of {total.toLocaleString('en-IN')}
                         </p>
@@ -386,7 +389,7 @@ const EntriesPage = () => {
             <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
 
                 {/* Header */}
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+                <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
                     <div className="flex items-center gap-2">
                         <ArrowRightLeft className="h-4 w-4 text-indigo-500" />
                         <h3 className="text-base font-semibold text-gray-800">Cash Transfers</h3>

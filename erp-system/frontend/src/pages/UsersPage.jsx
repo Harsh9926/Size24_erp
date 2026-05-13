@@ -300,15 +300,15 @@ const UsersPage = () => {
             )}
 
             {/* ── Stats ─────────────────────────────────────────── */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-6">
                 {[
                     { label: 'Total Users', value: approved.length, color: 'text-indigo-600', bg: 'bg-indigo-50 border-indigo-100' },
                     { label: 'Active',      value: activeCount,     color: 'text-green-600',  bg: 'bg-green-50  border-green-100'  },
                     { label: 'Inactive',    value: inactiveCount,   color: 'text-gray-500',   bg: 'bg-gray-50   border-gray-100'   },
                 ].map(({ label, value, color, bg }) => (
-                    <div key={label} className={`rounded-xl p-4 border ${bg}`}>
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{label}</p>
-                        <p className={`text-2xl font-extrabold mt-0.5 ${color}`}>{value}</p>
+                    <div key={label} className={`rounded-xl p-3 sm:p-4 border ${bg}`}>
+                        <p className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider leading-tight">{label}</p>
+                        <p className={`text-xl sm:text-2xl font-extrabold mt-0.5 ${color}`}>{value}</p>
                     </div>
                 ))}
             </div>
@@ -322,14 +322,14 @@ const UsersPage = () => {
                     <div className="space-y-2">
                         {pending.map(u => (
                             <div key={u.id}
-                                className="flex items-center justify-between bg-white rounded-lg px-4 py-3 border border-amber-100 shadow-sm">
-                                <div>
-                                    <p className="text-sm font-semibold text-gray-800">{u.name || '(No Name)'}</p>
-                                    <p className="text-xs text-gray-500 font-mono">
+                                className="flex items-center justify-between gap-3 bg-white rounded-lg px-4 py-3 border border-amber-100 shadow-sm">
+                                <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-gray-800 truncate">{u.name || '(No Name)'}</p>
+                                    <p className="text-xs text-gray-500 font-mono truncate">
                                         {u.mobile} · <span className="font-semibold">{u.role}</span>
                                     </p>
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 flex-shrink-0">
                                     <button onClick={() => handleApprove(u.id)}
                                         className="text-xs font-bold text-white bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors">
                                         <CheckCircle2 className="h-3.5 w-3.5" /> Approve
@@ -437,7 +437,7 @@ const UsersPage = () => {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
 
                 {/* Table toolbar */}
-                <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
+                <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                         <Users className="h-4 w-4 text-indigo-500 shrink-0" />
                         <h3 className="text-sm font-bold text-gray-800 truncate">

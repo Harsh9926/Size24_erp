@@ -504,7 +504,7 @@ const AdminApprovalPage = () => {
                 {/* ── Tabs + Search ───────────────────────────────── */}
                 <div className="flex flex-wrap items-center gap-3">
                     {/* Status tabs */}
-                    <div className="flex items-center gap-1 p-1 rounded-xl border"
+                    <div className="flex items-center gap-1 p-1 rounded-xl border overflow-x-auto max-w-full"
                         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
                         {TABS.map(({ key, label, color }) => {
                             const count    = countFor(key);

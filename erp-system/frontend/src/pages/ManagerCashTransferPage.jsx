@@ -204,7 +204,7 @@ const ManagerCashTransferPage = () => {
             )}
 
             {/* Wallet Balance banner */}
-            <div className="flex items-center justify-between mb-6 px-6 py-4 rounded-2xl text-white"
+            <div className="flex items-center justify-between mb-6 px-4 sm:px-6 py-4 rounded-2xl text-white"
                 style={{ background: 'linear-gradient(135deg,#FF6B00,#ff9a00)' }}>
                 <div>
                     <p className="text-xs font-semibold text-orange-100 uppercase tracking-wide">Available Balance</p>
@@ -225,7 +225,7 @@ const ManagerCashTransferPage = () => {
             {incomingTransfers.length > 0 && (
                 <div className="rounded-xl border shadow-sm overflow-hidden mb-6"
                     style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-                    <div className="px-6 py-4 border-b flex items-center gap-2"
+                    <div className="px-4 sm:px-6 py-4 border-b flex items-center gap-2"
                         style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
                         <Clock className="h-4 w-4 text-amber-500" />
                         <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
@@ -487,7 +487,7 @@ const ManagerCashTransferPage = () => {
             {/* ── Transfer History ───────────────────────────────────── */}
             <div className="rounded-xl border shadow-sm overflow-hidden"
                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-                <div className="px-6 py-4 border-b flex items-center justify-between"
+                <div className="px-4 sm:px-6 py-4 border-b flex items-center justify-between"
                     style={{ borderColor: 'var(--border-color)' }}>
                     <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
                         Transfer History

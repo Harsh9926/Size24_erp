@@ -107,7 +107,7 @@ const ManagerDashboard = () => {
             )}
 
             {/* Header */}
-            <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+            <div className="flex items-start sm:items-center justify-between mb-6 flex-wrap gap-3">
                 <div>
                     <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>My Wallet</h2>
                     <p className="text-sm mt-0.5" style={{ color: 'var(--text-secondary)' }}>Cash flow overview</p>
@@ -177,7 +177,7 @@ const ManagerDashboard = () => {
             {/* ── Pending User → Manager Requests ────────────────────── */}
             <div className="rounded-xl border shadow-sm overflow-hidden mb-6"
                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-                <div className="px-6 py-4 border-b flex items-center justify-between"
+                <div className="px-4 sm:px-6 py-4 border-b flex items-center justify-between flex-wrap gap-2"
                     style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
                     <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4 text-amber-500" />

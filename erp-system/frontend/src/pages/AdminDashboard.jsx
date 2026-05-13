@@ -404,14 +404,14 @@ const AdminDashboard = () => {
             )}
 
             {/* ── Store Filter Bar ───────────────────────────────── */}
-            <div className="mb-4 flex flex-wrap items-center gap-3 px-5 py-3.5 rounded-xl border shadow-sm"
+            <div className="mb-4 flex flex-wrap items-center gap-3 px-3 sm:px-5 py-3 sm:py-3.5 rounded-xl border shadow-sm"
                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
                 <Store className="h-4 w-4 flex-shrink-0" style={{ color: '#FF6B00' }} />
                 <span className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>Select Store:</span>
                 <select
                     value={filters.shop_id}
                     onChange={e => setFilters(f => ({ ...f, shop_id: e.target.value }))}
-                    className="flex-1 min-w-[180px] max-w-xs px-3 py-1.5 text-sm border rounded-lg outline-none"
+                    className="flex-1 min-w-0 max-w-xs px-3 py-1.5 text-sm border rounded-lg outline-none"
                     style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
                     <option value="">All Stores</option>
                     {shops.map(s => <option key={s.id} value={s.id}>{s.shop_name}</option>)}
@@ -441,7 +441,7 @@ const AdminDashboard = () => {
             </div>
 
             {/* ── Date Range Filter Bar ──────────────────────────── */}
-            <div className="mb-6 flex flex-wrap items-center gap-3 px-5 py-3.5 rounded-xl border shadow-sm"
+            <div className="mb-6 flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3 sm:py-3.5 rounded-xl border shadow-sm"
                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
                 <Calendar className="h-4 w-4 flex-shrink-0" style={{ color: '#FF6B00' }} />
                 <span className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>Date Range:</span>
@@ -471,8 +471,8 @@ const AdminDashboard = () => {
             </div>
 
             {/* ── Chart ──────────────────────────────────────────── */}
-            <div className="rounded-xl shadow-sm border p-6 mb-6" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-                <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
+            <div className="rounded-xl shadow-sm border p-4 sm:p-6 mb-6" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-5">
                     <h3 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Sales Analytics</h3>
                     <div className="flex items-center gap-2 flex-wrap">
                         {['daily', 'weekly', 'monthly'].map(p => (
@@ -504,7 +504,7 @@ const AdminDashboard = () => {
 
             {/* ── Entries Table ──────────────────────────────────── */}
             <div className="rounded-xl shadow-sm border overflow-hidden" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-                <div className="px-6 py-4 border-b flex items-center justify-between flex-wrap gap-3"
+                <div className="px-4 sm:px-6 py-4 border-b flex items-center justify-between flex-wrap gap-3"
                     style={{ borderColor: 'var(--border-color)' }}>
                     <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
@@ -605,7 +605,7 @@ const AdminDashboard = () => {
             {/* ── Cash Transfers ─────────────────────────────────── */}
             <div className="mt-8 rounded-xl shadow-sm border overflow-hidden"
                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-                <div className="px-6 py-4 border-b flex items-center justify-between flex-wrap gap-3"
+                <div className="px-4 sm:px-6 py-4 border-b flex items-center justify-between flex-wrap gap-3"
                     style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
                     <div className="flex items-center gap-2">
                         <ArrowRightLeft className="h-4 w-4 text-indigo-500" />
