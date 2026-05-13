@@ -347,7 +347,7 @@ const AdminDashboard = () => {
                     return (
                         <div key={label}
                             onClick={() => setCardFilter(prev => prev === filterKey ? null : filterKey)}
-                            className="rounded-xl p-4 shadow-sm border transition-all cursor-pointer hover:shadow-md select-none flex flex-col justify-between min-h-[108px]"
+                            className="rounded-xl p-3 sm:p-4 shadow-sm border transition-all cursor-pointer hover:shadow-md select-none flex flex-col justify-between min-h-[100px] sm:min-h-[108px]"
                             style={{
                                 background: 'var(--bg-surface)',
                                 borderColor: isActive ? '#FF6B00' : 'var(--border-color)',
@@ -359,7 +359,7 @@ const AdminDashboard = () => {
                                     <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5 leading-tight" style={{ color: 'var(--text-secondary)' }}>
                                         {label}
                                     </p>
-                                    <p className="text-xl font-bold leading-none truncate" style={{ color: 'var(--text-primary)' }}>
+                                    <p className="text-base sm:text-xl font-bold leading-tight" style={{ color: 'var(--text-primary)' }}>
                                         {isCurrency ? fmt(value) : Number(value || 0)}
                                     </p>
                                 </div>
