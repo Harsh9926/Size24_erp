@@ -505,7 +505,7 @@ const LoginPage = () => {
             </div>
 
             {/* ──── RIGHT: AUTH FORM (Login ↔ Signup with slide) ─────── */}
-            <div className="flex items-center justify-center w-full lg:w-[460px] flex-shrink-0 px-8 py-12 relative overflow-hidden"
+            <div className="flex items-center justify-center w-full lg:w-[460px] flex-shrink-0 px-4 sm:px-8 py-10 sm:py-12 relative overflow-hidden"
                 style={{ background: '#ffffff' }}>
                 {/* Glow top-right */}
                 <div className="absolute top-0 right-0 w-44 h-44 rounded-full opacity-10 blur-2xl pointer-events-none" style={{ background: '#FF6B00' }} />

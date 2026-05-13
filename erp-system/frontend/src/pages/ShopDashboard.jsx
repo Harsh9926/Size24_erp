@@ -471,29 +471,30 @@ const ShopDashboard = () => {
         <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
 
             {/* Navbar */}
-            <nav className="bg-teal-700 px-8 py-4 flex items-center justify-between shadow-md">
-                <div>
-                    <h1 className="text-white text-lg font-bold tracking-wide">Shop Dashboard</h1>
-                    <p className="text-teal-200 text-xs mt-0.5 flex items-center gap-1.5">
-                        {user?.name || user?.mobile}
-                        {user?.shopName && <><span>·</span><Store className="h-3 w-3" />{user.shopName}</>}
+            <nav className="bg-teal-700 px-4 sm:px-8 py-3 sm:py-4 flex items-center justify-between shadow-md">
+                <div className="min-w-0">
+                    <h1 className="text-white text-base sm:text-lg font-bold tracking-wide">Shop Dashboard</h1>
+                    <p className="text-teal-200 text-xs mt-0.5 flex items-center gap-1 truncate">
+                        <span className="truncate max-w-[120px] sm:max-w-none">{user?.name || user?.mobile}</span>
+                        {user?.shopName && <><span>·</span><Store className="h-3 w-3 flex-shrink-0" /><span className="truncate max-w-[80px] sm:max-w-none">{user.shopName}</span></>}
                     </p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
                     <div className="text-center">
-                        <p className="text-teal-300 text-xs">Locks in</p>
-                        <p className={`font-mono font-bold text-sm ${countdown < '00:30:00' ? 'text-red-300' : 'text-white'}`}>{countdown}</p>
+                        <p className="text-teal-300 text-[10px] sm:text-xs">Locks in</p>
+                        <p className={`font-mono font-bold text-xs sm:text-sm ${countdown < '00:30:00' ? 'text-red-300' : 'text-white'}`}>{countdown}</p>
                     </div>
                     <button
                         onClick={() => { logout(); navigate('/login'); }}
-                        className="flex items-center gap-2 text-sm text-teal-200 hover:text-white border border-teal-500 px-3 py-1.5 rounded-lg transition-all"
+                        className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-teal-200 hover:text-white border border-teal-500 px-2 sm:px-3 py-1.5 rounded-lg transition-all"
                     >
-                        <LogOut className="h-4 w-4" /> Logout
+                        <LogOut className="h-4 w-4" />
+                        <span className="hidden sm:inline">Logout</span>
                     </button>
                 </div>
             </nav>
 
-            <div className="max-w-7xl mx-auto px-4 py-8">
+            <div className="max-w-7xl mx-auto px-4 py-4 sm:py-8">
 
                 {/* Wallet Balance Card */}
                 <div className="mb-4">

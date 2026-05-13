@@ -163,7 +163,7 @@ const ChangePasswordModal = ({ onClose }) => {
 /* ══════════════════════════════════════════════════════════════
    SIDEBAR
 ══════════════════════════════════════════════════════════════ */
-const Sidebar = () => {
+const Sidebar = ({ isOpen, onClose }) => {
     const { logout, user } = useContext(AuthContext);
     const navigate = useNavigate();
     const [dark, setDark]               = useState(() => localStorage.getItem('erp_theme') === 'dark');
@@ -198,20 +198,32 @@ const Sidebar = () => {
 
     return (
         <>
-            <div className="w-64 min-h-screen flex flex-col shadow-2xl flex-shrink-0" style={{ background: 'var(--bg-sidebar)' }}>
+            <div
+                className={`fixed md:static inset-y-0 left-0 z-30 w-64 min-h-screen flex flex-col shadow-2xl flex-shrink-0 transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
+                style={{ background: 'var(--bg-sidebar)' }}
+            >
                 {/* Brand Header */}
                 <div className="px-5 py-5 border-b border-white/10 flex items-center gap-3">
                     <img src="/logo.avif" alt="SIZE24 Logo" className="h-9 w-auto object-contain flex-shrink-0" />
-                    <div>
+                    <div className="flex-1">
                         <h1 className="text-lg font-extrabold tracking-tight" style={{ color: '#FF6B00' }}>SIZE24</h1>
                         <p className="text-xs text-gray-500 leading-none">Smart Retail ERP</p>
                     </div>
+                    {/* Close button — mobile only */}
+                    <button
+                        className="md:hidden p-1.5 rounded-lg hover:bg-white/10 text-gray-400 flex-shrink-0"
+                        onClick={onClose}
+                        aria-label="Close navigation"
+                    >
+                        <X className="h-5 w-5" />
+                    </button>
                 </div>
 
                 {/* Nav Links */}
                 <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
                     {links.map(({ to, label, icon: Icon }) => (
                         <NavLink key={to} to={to} end={to === '/admin' || to === '/manager'}
+                            onClick={() => { if (onClose) onClose(); }}
                             className={({ isActive }) =>
                                 `flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${isActive
                                     ? 'text-white shadow-lg'

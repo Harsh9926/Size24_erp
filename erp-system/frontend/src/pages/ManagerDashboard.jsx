@@ -137,7 +137,7 @@ const ManagerDashboard = () => {
             </div>
 
             {/* ── Main Wallet Balance Card ────────────────────────────── */}
-            <div className="rounded-2xl p-8 mb-6 text-white relative overflow-hidden"
+            <div className="rounded-2xl p-5 sm:p-8 mb-6 text-white relative overflow-hidden"
                 style={{ background: 'linear-gradient(135deg,#FF6B00,#ff9a00)' }}>
                 {/* decorative icon */}
                 <Wallet className="absolute -top-4 -right-4 h-40 w-40 opacity-10" />
@@ -151,7 +151,7 @@ const ManagerDashboard = () => {
                                 : 'Total Wallet Balance'}
                         </p>
                     </div>
-                    <p className="text-5xl font-extrabold tracking-tight mb-1">
+                    <p className="text-3xl sm:text-5xl font-extrabold tracking-tight mb-1">
                         ₹{walletBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </p>
                     <p className="text-sm text-orange-100 mt-1">Cash available in hand</p>
