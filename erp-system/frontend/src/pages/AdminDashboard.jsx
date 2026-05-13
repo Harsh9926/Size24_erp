@@ -13,6 +13,13 @@ import {
 /* ─── tiny helpers ─────────────────────────────────────────────── */
 const fmt = (v) => `₹${Number(v || 0).toLocaleString('en-IN')}`;
 const fmtDate = (d) => { try { return new Date(d).toLocaleDateString('en-IN'); } catch { return '—'; } };
+const fmtShort = (v) => {
+    const n = Number(v || 0);
+    if (n >= 1_00_00_000) return `₹${(n / 1_00_00_000).toFixed(2)}Cr`;
+    if (n >= 1_00_000)    return `₹${(n / 1_00_000).toFixed(2)}L`;
+    if (n >= 1_000)       return `₹${(n / 1_000).toFixed(1)}K`;
+    return `₹${n.toLocaleString('en-IN')}`;
+};
 
 /* ─── EDIT MODAL ───────────────────────────────────────────────── */
 const EditModal = ({ entry, onClose, onSaved }) => {
@@ -359,8 +366,8 @@ const AdminDashboard = () => {
                                     <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5 leading-tight" style={{ color: 'var(--text-secondary)' }}>
                                         {label}
                                     </p>
-                                    <p className="text-base sm:text-xl font-bold leading-tight" style={{ color: 'var(--text-primary)' }}>
-                                        {isCurrency ? fmt(value) : Number(value || 0)}
+                                    <p className="text-xl font-bold leading-tight" title={isCurrency ? fmt(value) : undefined} style={{ color: 'var(--text-primary)' }}>
+                                        {isCurrency ? fmtShort(value) : Number(value || 0)}
                                     </p>
                                 </div>
                                 <div className={`p-2.5 rounded-xl ${bg} flex-shrink-0 ${isActive ? 'ring-2 ring-orange-400' : ''}`}>
