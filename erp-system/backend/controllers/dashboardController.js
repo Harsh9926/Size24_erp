@@ -91,17 +91,15 @@ exports.getAdminDashboard = async (req, res) => {
         let shopWallet = null;
         if (shop_id) {
             const walletQ = await db.query(
-                `SELECT u.wallet_balance, u.name AS user_name, s.shop_name
+                `SELECT s.wallet_balance, s.shop_name
                  FROM shops s
-                 JOIN users u ON s.user_id = u.id
                  WHERE s.id = $1`,
                 [shop_id]
             );
             if (walletQ.rows.length > 0) {
                 shopWallet = {
-                    balance:   parseFloat(walletQ.rows[0].wallet_balance || 0),
-                    userName:  walletQ.rows[0].user_name,
-                    shopName:  walletQ.rows[0].shop_name,
+                    balance:  parseFloat(walletQ.rows[0].wallet_balance || 0),
+                    shopName: walletQ.rows[0].shop_name,
                 };
             }
         }
