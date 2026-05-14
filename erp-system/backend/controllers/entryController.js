@@ -159,14 +159,10 @@ exports.updateEntry = async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(403).json({ error: 'This entry does not belong to your shop.' });
         }
-        if (entry.approval_status === 'APPROVED' && !isAdmin) {
-            await client.query('ROLLBACK');
-            return res.status(403).json({ error: 'Approved entries cannot be edited.' });
-        }
-        if (!isAdmin && entry.locked) {
+        if (!isAdmin) {
             const unlockActive =
                 entry.edit_enabled_till && new Date() < new Date(entry.edit_enabled_till);
-            if (!unlockActive) {
+            if ((entry.approval_status === 'APPROVED' || entry.locked) && !unlockActive) {
                 await client.query('ROLLBACK');
                 return res.status(403).json({ error: 'Entry is locked. Request admin to unlock.' });
             }

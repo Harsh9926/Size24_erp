@@ -347,7 +347,7 @@ const ShopDashboard = () => {
     const loadEntryForEdit = useCallback((entry) => {
         const unlockActive = entry.edit_enabled_till && new Date() < new Date(entry.edit_enabled_till);
         setEditId(entry.id);
-        setEditLocked((entry.locked && !unlockActive) || entry.approval_status === 'APPROVED');
+        setEditLocked((entry.locked || entry.approval_status === 'APPROVED') && !unlockActive);
         setExcelLoaded(true);
         setForm({
             date:             normDate(entry.date) || getTodayISO(),
