@@ -22,9 +22,19 @@ exports.downloadCSV = async (req, res) => {
     try {
         const { where, params } = buildQuery(req.query, req.user.role, req.user.id);
         const result = await db.query(
-            `SELECT de.date, s.shop_name, de.total_sale, de.cash, de.paytm, de.razorpay, de.expense, de.difference
-       FROM daily_entries de JOIN shops s ON de.shop_id = s.id ${where}
-       ORDER BY de.date DESC LIMIT 5000`,
+            `SELECT
+                de.date, s.shop_name, COALESCE(c.name,'—') AS city_name, de.approval_status,
+                COALESCE(de.total_sale,0) AS total_sale,
+                COALESCE(de.cash,0) AS cash,
+                COALESCE(de.online, de.paytm, 0) AS online,
+                COALESCE(de.razorpay,0) AS razorpay,
+                COALESCE(de.expense,0) AS expense,
+                COALESCE(de.difference,0) AS difference
+             FROM daily_entries de
+             JOIN shops s ON de.shop_id = s.id
+             LEFT JOIN cities c ON s.city_id = c.id
+             ${where}
+             ORDER BY de.date DESC, de.id DESC LIMIT 10000`,
             params
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'No data found' });
@@ -43,20 +53,31 @@ exports.getReportData = async (req, res) => {
     try {
         const { where, params } = buildQuery(req.query, req.user.role, req.user.id);
         const result = await db.query(
-            `SELECT de.id, de.date, s.shop_name, c.name as city_name,
-              de.total_sale, de.cash, de.paytm, de.razorpay, de.expense, de.difference, de.photo_url
-       FROM daily_entries de
-       JOIN shops s ON de.shop_id = s.id
-       JOIN cities c ON s.city_id = c.id
-       ${where}
-       ORDER BY de.date DESC LIMIT 5000`,
+            `SELECT
+                de.id,
+                de.date,
+                s.shop_name,
+                COALESCE(c.name, '—') AS city_name,
+                de.approval_status,
+                COALESCE(de.total_sale, 0)                          AS total_sale,
+                COALESCE(de.cash, 0)                                AS cash,
+                COALESCE(de.online, de.paytm, 0)                    AS online,
+                COALESCE(de.razorpay, 0)                            AS razorpay,
+                COALESCE(de.expense, 0)                             AS expense,
+                COALESCE(de.difference, 0)                          AS difference
+             FROM daily_entries de
+             JOIN shops s ON de.shop_id = s.id
+             LEFT JOIN cities c ON s.city_id = c.id
+             ${where}
+             ORDER BY de.date DESC, de.id DESC
+             LIMIT 10000`,
             params
         );
         const summary = result.rows.reduce((acc, r) => ({
-            total_sale: (acc.total_sale || 0) + parseFloat(r.total_sale || 0),
-            total_cash: (acc.total_cash || 0) + parseFloat(r.cash || 0),
-            total_online: (acc.total_online || 0) + parseFloat(r.paytm || 0) + parseFloat(r.razorpay || 0),
-            total_expense: (acc.total_expense || 0) + parseFloat(r.expense || 0),
+            total_sale:    (acc.total_sale    || 0) + parseFloat(r.total_sale || 0),
+            total_cash:    (acc.total_cash    || 0) + parseFloat(r.cash       || 0),
+            total_online:  (acc.total_online  || 0) + parseFloat(r.online     || 0) + parseFloat(r.razorpay || 0),
+            total_expense: (acc.total_expense || 0) + parseFloat(r.expense    || 0),
         }), {});
         res.json({ data: result.rows, summary, count: result.rows.length });
     } catch (err) {

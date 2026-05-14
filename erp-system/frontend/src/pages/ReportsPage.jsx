@@ -34,15 +34,16 @@ const ReportsPage = () => {
 
     const downloadCSV = () => {
         const csv = Papa.unparse(reportData.map(r => ({
-            Date: r.date?.split('T')[0],
-            Shop: r.shop_name,
-            City: r.city_name,
-            'Total Sale': r.total_sale,
-            Cash: r.cash,
-            Paytm: r.paytm,
-            Razorpay: r.razorpay,
-            Expense: r.expense,
-            Difference: r.difference,
+            Date:        r.date?.split('T')[0],
+            Shop:        r.shop_name,
+            City:        r.city_name,
+            Status:      r.approval_status,
+            'Total Sale':r.total_sale,
+            Cash:        r.cash,
+            'QR/Card':   r.online,
+            Razorpay:    r.razorpay,
+            Expense:     r.expense,
+            Difference:  r.difference,
         })));
         const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
@@ -65,10 +66,10 @@ const ReportsPage = () => {
         doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, 10, 26);
         autoTable(doc, {
             startY: 32,
-            head: [['Date', 'Shop', 'City', 'Total Sale', 'Cash', 'Paytm', 'Razorpay', 'Expense', 'Diff']],
+            head: [['Date', 'Shop', 'City', 'Status', 'Total Sale', 'Cash', 'QR/Card', 'Razorpay', 'Expense', 'Diff']],
             body: reportData.map(r => [
-                r.date?.split('T')[0], r.shop_name, r.city_name,
-                `Rs${r.total_sale}`, `Rs${r.cash}`, `Rs${r.paytm}`, `Rs${r.razorpay}`, `Rs${r.expense}`, `Rs${r.difference}`
+                r.date?.split('T')[0], r.shop_name, r.city_name, r.approval_status,
+                `Rs${r.total_sale}`, `Rs${r.cash}`, `Rs${r.online}`, `Rs${r.razorpay}`, `Rs${r.expense}`, `Rs${r.difference}`
             ]),
             styles: { fontSize: 8 },
             headStyles: { fillColor: [255, 107, 0], textColor: 255 },
@@ -136,26 +137,38 @@ const ReportsPage = () => {
                         <div className="overflow-x-auto">
                             <table className="min-w-full divide-y">
                                 <thead style={{ background: 'var(--bg-primary)' }}>
-                                    <tr>{['Date', 'Shop', 'City', 'Total Sale', 'Cash', 'Paytm', 'Razorpay', 'Expense', 'Diff'].map(h => (
+                                    <tr>{['Date', 'Shop', 'City', 'Status', 'Total Sale', 'Cash', 'QR/Card', 'Razorpay', 'Expense', 'Diff'].map(h => (
                                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase" style={{ color: 'var(--text-secondary)' }}>{h}</th>
                                     ))}</tr>
                                 </thead>
                                 <tbody>
-                                    {reportData.map((r, i) => (
-                                        <tr key={i} style={{ borderTop: '1px solid var(--border-color)' }}>
-                                            <td className="px-4 py-2 text-sm" style={{ color: 'var(--text-primary)' }}>{r.date?.split('T')[0]}</td>
-                                            <td className="px-4 py-2 text-sm font-medium text-indigo-600">{r.shop_name}</td>
-                                            <td className="px-4 py-2 text-sm" style={{ color: 'var(--text-secondary)' }}>{r.city_name}</td>
-                                            <td className="px-4 py-2 text-sm font-bold" style={{ color: 'var(--text-primary)' }}>₹{r.total_sale}</td>
-                                            <td className="px-4 py-2 text-sm" style={{ color: 'var(--text-secondary)' }}>₹{r.cash}</td>
-                                            <td className="px-4 py-2 text-sm" style={{ color: 'var(--text-secondary)' }}>₹{r.paytm}</td>
-                                            <td className="px-4 py-2 text-sm" style={{ color: 'var(--text-secondary)' }}>₹{r.razorpay}</td>
-                                            <td className="px-4 py-2 text-sm text-red-500">₹{r.expense}</td>
-                                            <td className="px-4 py-2 text-sm">
-                                                <span className={`font-semibold ${+r.difference === 0 ? 'text-green-600' : 'text-red-600'}`}>₹{r.difference}</span>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {reportData.map((r, i) => {
+                                        const statusCls = {
+                                            APPROVED: 'bg-green-100 text-green-700',
+                                            PENDING:  'bg-amber-100 text-amber-700',
+                                            REJECTED: 'bg-red-100 text-red-700',
+                                        }[r.approval_status] || 'bg-gray-100 text-gray-600';
+                                        return (
+                                            <tr key={i} style={{ borderTop: '1px solid var(--border-color)' }}>
+                                                <td className="px-4 py-2 text-sm whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>{r.date?.split('T')[0]}</td>
+                                                <td className="px-4 py-2 text-sm font-medium text-indigo-600 whitespace-nowrap">{r.shop_name}</td>
+                                                <td className="px-4 py-2 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>{r.city_name}</td>
+                                                <td className="px-4 py-2">
+                                                    <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${statusCls}`}>
+                                                        {r.approval_status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-2 text-sm font-bold whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>₹{Number(r.total_sale).toLocaleString('en-IN')}</td>
+                                                <td className="px-4 py-2 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>₹{Number(r.cash).toLocaleString('en-IN')}</td>
+                                                <td className="px-4 py-2 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>₹{Number(r.online).toLocaleString('en-IN')}</td>
+                                                <td className="px-4 py-2 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>₹{Number(r.razorpay).toLocaleString('en-IN')}</td>
+                                                <td className="px-4 py-2 text-sm text-red-500 whitespace-nowrap">₹{Number(r.expense).toLocaleString('en-IN')}</td>
+                                                <td className="px-4 py-2 text-sm whitespace-nowrap">
+                                                    <span className={`font-semibold ${+r.difference === 0 ? 'text-green-600' : 'text-red-600'}`}>₹{Number(r.difference).toLocaleString('en-IN')}</span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                     {reportData.length === 0 && <tr><td colSpan="9" className="text-center py-10 text-gray-400">No records found for selected filters</td></tr>}
                                 </tbody>
                             </table>
