@@ -414,10 +414,25 @@ const AdminManagerFundsPage = () => {
             {/* ── Store Wallet Cards ────────────────────────────────── */}
             {showStores && (
                 <>
-                    <p className="text-xs font-medium mb-2 flex items-center gap-1.5"
-                        style={{ color: 'var(--text-secondary)' }}>
-                        <Store className="h-3.5 w-3.5" /> Store Wallets
-                    </p>
+                    <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-medium flex items-center gap-1.5"
+                            style={{ color: 'var(--text-secondary)' }}>
+                            <Store className="h-3.5 w-3.5" /> Store Wallets
+                        </p>
+                        <button
+                            onClick={async () => {
+                                try {
+                                    const r = await api.post('/manager-transfers/sync-store-wallets');
+                                    showToast('success', `Wallets synced — ${r.data.shops_changed} shop(s) updated.`);
+                                    fetchAll();
+                                } catch (err) {
+                                    showToast('error', err.response?.data?.error || 'Sync failed.');
+                                }
+                            }}
+                            className="flex items-center gap-1 text-xs text-teal-600 hover:underline font-medium">
+                            <RefreshCw className="h-3 w-3" /> Sync Wallets
+                        </button>
+                    </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
                         {storeWallets.map(sw => (
                             <div key={sw.shop_id}
