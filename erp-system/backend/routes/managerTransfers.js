@@ -16,6 +16,7 @@ router.get('/store-wallets',       authenticateToken, requireRole('admin'),     
 router.post('/sync-store-wallets', authenticateToken, requireRole('admin'),          ctrl.syncStoreWallets);
 router.get('/all',                 authenticateToken, requireRole('admin'),          ctrl.getAllTransfers);
 router.get('/summary/:managerId',  authenticateToken, requireRole('admin'),          ctrl.getManagerSummary);
+router.post('/admin-to-manager',   authenticateToken, requireRole('admin'),          ctrl.adminSendToManager);
 router.put('/:id/approve',         authenticateToken, requireRole('admin'),          ctrl.approveTransfer);
 router.put('/:id/reject',          authenticateToken, requireRole('admin'),          ctrl.rejectTransfer);
 

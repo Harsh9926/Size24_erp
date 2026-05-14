@@ -5,7 +5,7 @@ import Layout from '../components/Layout';
 import {
     CheckCircle2, XCircle, Clock, Loader2, RefreshCw,
     Eye, AlertCircle, Building2, ArrowUpRight, ArrowDownRight,
-    Wallet, Users, Store, Receipt,
+    Wallet, Users, Store, Receipt, ArrowDownLeft,
 } from 'lucide-react';
 
 /* ── Badges ───────────────────────────────────────────────────────── */
@@ -28,7 +28,8 @@ const TypeBadge = ({ type }) => {
         user_to_manager: { cls: 'bg-teal-100 text-teal-700',     Icon: ArrowDownRight, label: 'User → Manager'   },
         manager_to_admin:{ cls: 'bg-blue-100 text-blue-700',     Icon: ArrowUpRight,   label: 'Manager → Admin'  },
         manager_to_bank: { cls: 'bg-purple-100 text-purple-700', Icon: Building2,      label: 'Manager → Bank'   },
-        manager_expense: { cls: 'bg-red-100 text-red-700',       Icon: Receipt,        label: 'Expense'          },
+        manager_expense:  { cls: 'bg-red-100 text-red-700',       Icon: Receipt,        label: 'Expense'          },
+        admin_to_manager: { cls: 'bg-orange-100 text-orange-700', Icon: ArrowDownLeft,  label: 'Admin → Manager'  },
     };
     const { cls, Icon, label } = map[type] || { cls: 'bg-gray-100 text-gray-600', Icon: Clock, label: type };
     return (
@@ -88,6 +89,83 @@ const RejectModal = ({ open, onClose, onConfirm, acting }) => {
     );
 };
 
+/* ── Send to Manager Modal ────────────────────────────────────────── */
+const SendToManagerModal = ({ open, onClose, onConfirm, managers, acting }) => {
+    const [form, setForm] = useState({ manager_id: '', amount: '', note: '' });
+
+    useEffect(() => {
+        if (open) setForm({ manager_id: '', amount: '', note: '' });
+    }, [open]);
+
+    if (!open) return null;
+
+    const valid = form.manager_id && form.amount && parseFloat(form.amount) > 0;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+                <div className="flex items-center gap-3 mb-5">
+                    <div className="p-2 bg-orange-100 rounded-xl">
+                        <ArrowDownLeft className="h-5 w-5 text-orange-600" />
+                    </div>
+                    <div>
+                        <h3 className="text-base font-bold text-gray-900">Send Money to Manager</h3>
+                        <p className="text-xs text-gray-400">Credits manager wallet immediately</p>
+                    </div>
+                </div>
+                <div className="space-y-3">
+                    <div>
+                        <label className="text-xs font-semibold text-gray-500 block mb-1">Select Manager</label>
+                        <select
+                            value={form.manager_id}
+                            onChange={e => setForm(f => ({ ...f, manager_id: e.target.value }))}
+                            className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400">
+                            <option value="">Choose manager…</option>
+                            {managers.map(m => (
+                                <option key={m.id} value={m.id}>
+                                    {m.name} — ₹{parseFloat(m.wallet_balance || 0).toLocaleString('en-IN')} balance
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-xs font-semibold text-gray-500 block mb-1">Amount (₹)</label>
+                        <input
+                            type="number" min="1" step="1"
+                            value={form.amount}
+                            onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+                            placeholder="Enter amount"
+                            className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                    </div>
+                    <div>
+                        <label className="text-xs font-semibold text-gray-500 block mb-1">Note (optional)</label>
+                        <input
+                            type="text"
+                            value={form.note}
+                            onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
+                            placeholder="Reason / purpose"
+                            className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                    </div>
+                </div>
+                <div className="flex gap-3 mt-5 justify-end">
+                    <button onClick={onClose} disabled={acting}
+                        className="px-4 py-2 text-sm border border-gray-300 rounded-xl hover:bg-gray-50 font-medium transition-colors">
+                        Cancel
+                    </button>
+                    <button
+                        onClick={() => onConfirm(form)}
+                        disabled={!valid || acting}
+                        className="px-4 py-2 text-sm font-bold rounded-xl text-white transition-all disabled:opacity-50 flex items-center gap-2"
+                        style={{ background: (!valid || acting) ? '#9ca3af' : 'linear-gradient(135deg,#FF6B00,#ff8c00)' }}>
+                        {acting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        Send Money
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 /* ── Page ─────────────────────────────────────────────────────────── */
 const AdminManagerFundsPage = () => {
     const navigate = useNavigate();
@@ -103,8 +181,9 @@ const AdminManagerFundsPage = () => {
     const [filterManager, setFilterManager] = useState('');
     const [walletView,    setWalletView]    = useState('all'); // 'all' | 'manager' | 'store'
 
-    // Reject modal state
-    const [rejectModal, setRejectModal] = useState({ open: false, id: null });
+    const [rejectModal,  setRejectModal]  = useState({ open: false, id: null });
+    const [sendModal,    setSendModal]    = useState(false);
+    const [sendActing,   setSendActing]   = useState(false);
 
     /* ── Data fetching ─────────────────────────────────────────────── */
     const fetchAll = useCallback(async () => {
@@ -159,6 +238,25 @@ const AdminManagerFundsPage = () => {
         } finally { setActing(null); }
     };
 
+    /* ── Send to Manager ───────────────────────────────────────────── */
+    const handleSendToManager = async (form) => {
+        setSendActing(true);
+        try {
+            await api.post('/manager-transfers/admin-to-manager', {
+                manager_id: form.manager_id,
+                amount:     form.amount,
+                note:       form.note || undefined,
+            });
+            showToast('success', 'Money sent to manager wallet successfully.');
+            setSendModal(false);
+            fetchAll();
+        } catch (err) {
+            showToast('error', err.response?.data?.error || 'Failed to send money.');
+        } finally {
+            setSendActing(false);
+        }
+    };
+
     /* ── Filter logic ──────────────────────────────────────────────── */
     const filtered = transfers.filter(t => {
         const normalStatus = t.status === 'accepted' ? 'approved' : t.status;
@@ -193,12 +291,18 @@ const AdminManagerFundsPage = () => {
     return (
         <Layout title="Manager Funds">
 
-            {/* Reject Modal */}
             <RejectModal
                 open={rejectModal.open}
                 onClose={closeRejectModal}
                 onConfirm={handleRejectConfirm}
                 acting={acting !== null}
+            />
+            <SendToManagerModal
+                open={sendModal}
+                onClose={() => setSendModal(false)}
+                onConfirm={handleSendToManager}
+                managers={managers}
+                acting={sendActing}
             />
 
             {/* Toast */}
@@ -241,6 +345,14 @@ const AdminManagerFundsPage = () => {
             <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold uppercase tracking-wide"
                     style={{ color: 'var(--text-secondary)' }}>Wallets</h3>
+                <div className="flex items-center gap-2">
+                <button
+                    onClick={() => setSendModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white rounded-lg transition-all hover:opacity-90"
+                    style={{ background: 'linear-gradient(135deg,#FF6B00,#ff8c00)' }}>
+                    <ArrowDownLeft className="h-3.5 w-3.5" />
+                    Send to Manager
+                </button>
                 <div className="flex gap-1 p-1 rounded-lg border"
                     style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
                     {[
@@ -257,6 +369,7 @@ const AdminManagerFundsPage = () => {
                             {label}
                         </button>
                     ))}
+                </div>
                 </div>
             </div>
 
@@ -379,6 +492,7 @@ const AdminManagerFundsPage = () => {
                             <option value="manager_to_admin">Manager → Admin</option>
                             <option value="manager_to_bank">Manager → Bank</option>
                             <option value="manager_expense">Expense</option>
+                            <option value="admin_to_manager">Admin → Manager</option>
                         </select>
 
                         <select

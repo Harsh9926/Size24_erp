@@ -466,6 +466,56 @@ exports.rejectTransfer = async (req, res) => {
 };
 
 /* ─────────────────────────────────────────────────────────────────
+   POST /api/manager-transfers/admin-to-manager
+   Admin directly credits a manager's wallet (no approval needed).
+───────────────────────────────────────────────────────────────── */
+exports.adminSendToManager = async (req, res) => {
+    const { manager_id, amount, note } = req.body;
+    const adminId = req.user.id;
+
+    const amt = parseFloat(amount);
+    if (!manager_id)          return res.status(400).json({ error: 'Please select a manager.' });
+    if (isNaN(amt) || amt <= 0) return res.status(400).json({ error: 'A positive amount is required.' });
+
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const mgrQ = await client.query(
+            `SELECT id, name FROM users WHERE id = $1 AND role = 'manager' AND is_approved = true`,
+            [parseInt(manager_id)]
+        );
+        if (!mgrQ.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Manager not found.' });
+        }
+
+        await client.query(
+            'UPDATE users SET wallet_balance = wallet_balance + $1 WHERE id = $2',
+            [amt, parseInt(manager_id)]
+        );
+
+        const result = await client.query(
+            `INSERT INTO manager_transfers
+                (manager_id, to_admin_id, amount, type, note, status, approved_by, approved_at)
+             VALUES ($1, $2, $3, 'admin_to_manager', $4, 'approved', $5, NOW())
+             RETURNING *`,
+            [parseInt(manager_id), adminId, amt, note || null, adminId]
+        );
+
+        await client.query('COMMIT');
+        console.log(`[ManagerTransfer] Admin ${adminId} sent ₹${amt} to manager ${manager_id}`);
+        res.status(201).json({ message: 'Money sent to manager wallet.', transfer: result.rows[0] });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[ManagerTransfer] adminSendToManager:', err.message);
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+};
+
+/* ─────────────────────────────────────────────────────────────────
    GET /api/manager-transfers/store-wallets
    Admin: all shops with their assigned user wallet balance.
 ───────────────────────────────────────────────────────────────── */
