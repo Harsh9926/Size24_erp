@@ -395,20 +395,21 @@ exports.getWalletHistory = async (req, res) => {
         });
 
         // Apply date filter AFTER computing balances
+        const toDateStr = (val) => new Date(val).toISOString().split('T')[0];
         let filtered = withBalance;
-        const today = new Date().toISOString().split('T')[0];
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        const today = toDateStr(new Date());
+        const yesterday = toDateStr(new Date(Date.now() - 86400000));
 
         if (period === 'today') {
-            filtered = withBalance.filter(r => r.created_at.toISOString().split('T')[0] === today);
+            filtered = withBalance.filter(r => toDateStr(r.created_at) === today);
         } else if (period === 'yesterday') {
-            filtered = withBalance.filter(r => r.created_at.toISOString().split('T')[0] === yesterday);
+            filtered = withBalance.filter(r => toDateStr(r.created_at) === yesterday);
         } else if (period === 'last7') {
-            const cutoff = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
-            filtered = withBalance.filter(r => r.created_at.toISOString().split('T')[0] >= cutoff);
+            const cutoff = toDateStr(new Date(Date.now() - 6 * 86400000));
+            filtered = withBalance.filter(r => toDateStr(r.created_at) >= cutoff);
         } else if (from_date || to_date) {
             filtered = withBalance.filter(r => {
-                const d = r.created_at.toISOString().split('T')[0];
+                const d = toDateStr(r.created_at);
                 if (from_date && d < from_date) return false;
                 if (to_date   && d > to_date)   return false;
                 return true;

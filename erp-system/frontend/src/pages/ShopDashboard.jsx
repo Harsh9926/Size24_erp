@@ -224,6 +224,7 @@ const ShopDashboard = () => {
     const [showWalletHistory,    setShowWalletHistory]    = useState(false);
     const [walletHistory,        setWalletHistory]        = useState(null);
     const [walletHistoryLoading, setWalletHistoryLoading] = useState(false);
+    const [walletHistoryError,   setWalletHistoryError]   = useState(null);
     const [walletHistoryFilter,  setWalletHistoryFilter]  = useState('all');
     const [walletCustomFrom,     setWalletCustomFrom]     = useState('');
     const [walletCustomTo,       setWalletCustomTo]       = useState('');
@@ -253,6 +254,7 @@ const ShopDashboard = () => {
     const fetchWalletHistory = useCallback(async (filter, customFrom, customTo) => {
         if (!user?.shopId) return;
         setWalletHistoryLoading(true);
+        setWalletHistoryError(null);
         try {
             const params = {};
             if (filter === 'custom') {
@@ -263,8 +265,9 @@ const ShopDashboard = () => {
             }
             const res = await api.get(`/shops/${user.shopId}/wallet-history`, { params });
             setWalletHistory(res.data);
-        } catch {
+        } catch (err) {
             setWalletHistory(null);
+            setWalletHistoryError(err.response?.data?.error || err.message || 'Failed to load wallet history');
         } finally {
             setWalletHistoryLoading(false);
         }
@@ -1183,11 +1186,24 @@ const ShopDashboard = () => {
                                 <div className="flex items-center justify-center py-12">
                                     <Loader2 className="h-6 w-6 animate-spin text-teal-500" />
                                 </div>
+                            ) : walletHistoryError ? (
+                                <div className="text-center py-12">
+                                    <AlertCircle className="h-10 w-10 mx-auto mb-3 text-red-300" />
+                                    <p className="text-sm font-semibold text-red-500">Failed to load history</p>
+                                    <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">{walletHistoryError}</p>
+                                    <button onClick={() => fetchWalletHistory(walletHistoryFilter, walletCustomFrom, walletCustomTo)}
+                                        className="mt-3 px-4 py-1.5 text-xs font-semibold rounded-lg bg-teal-600 text-white hover:bg-teal-700 transition-colors">
+                                        Retry
+                                    </button>
+                                </div>
                             ) : !walletHistory || walletHistory.transactions.length === 0 ? (
                                 <div className="text-center py-12">
                                     <Wallet className="h-10 w-10 mx-auto mb-3 text-gray-300" />
-                                    <p className="text-sm font-semibold text-gray-400">No transactions found</p>
-                                    <p className="text-xs text-gray-300 mt-1">Try a different filter</p>
+                                    <p className="text-sm font-semibold text-gray-400">No cash transactions in this period</p>
+                                    <p className="text-xs text-gray-300 mt-1">
+                                        Only entries with cash &gt; ₹0 appear here.
+                                        {walletHistoryFilter !== 'all' && <> Try <button onClick={() => { setWalletHistoryFilter('all'); fetchWalletHistory('all', '', ''); }} className="underline text-teal-500 font-semibold">All</button> to see full history.</>}
+                                    </p>
                                 </div>
                             ) : (
                                 <div className="space-y-2">
