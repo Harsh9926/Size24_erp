@@ -13,7 +13,8 @@ router.post('/',                   authenticateToken, requireRole('manager'),   
 // Admin endpoints
 router.get('/managers',            authenticateToken, requireRole('admin'),          ctrl.getManagersList);
 router.get('/store-wallets',       authenticateToken, requireRole('admin'),          ctrl.getStoreWallets);
-router.post('/sync-store-wallets', authenticateToken, requireRole('admin'),          ctrl.syncStoreWallets);
+router.post('/sync-store-wallets',   authenticateToken, requireRole('admin'),          ctrl.syncStoreWallets);
+router.post('/sync-manager-wallets', authenticateToken, requireRole('admin'),          ctrl.syncManagerWallets);
 router.get('/all',                 authenticateToken, requireRole('admin'),          ctrl.getAllTransfers);
 router.get('/summary/:managerId',  authenticateToken, requireRole('admin'),          ctrl.getManagerSummary);
 router.post('/admin-to-manager',   authenticateToken, requireRole('admin'),          ctrl.adminSendToManager);

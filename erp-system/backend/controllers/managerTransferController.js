@@ -254,12 +254,15 @@ exports.getManagerSummary = async (req, res) => {
 
         const manager = managerQ.rows[0];
 
-        const [receivedQ, toAdminQ, toBankQ] = await Promise.all([
-            // Handle both legacy 'accepted' and new 'approved'
+        const [receivedQ, fromAdminQ, toAdminQ, toBankQ, toExpenseQ] = await Promise.all([
             db.query(
                 `SELECT COALESCE(SUM(amount),0) AS total
                  FROM cash_transfers
                  WHERE to_user_id = $1 AND status IN ('accepted', 'approved')`, [managerId]),
+            db.query(
+                `SELECT COALESCE(SUM(amount),0) AS total
+                 FROM manager_transfers
+                 WHERE manager_id = $1 AND type = 'admin_to_manager' AND status = 'approved'`, [managerId]),
             db.query(
                 `SELECT COALESCE(SUM(amount),0) AS total
                  FROM manager_transfers
@@ -268,17 +271,24 @@ exports.getManagerSummary = async (req, res) => {
                 `SELECT COALESCE(SUM(amount),0) AS total
                  FROM manager_transfers
                  WHERE manager_id = $1 AND type = 'manager_to_bank' AND status = 'approved'`, [managerId]),
+            db.query(
+                `SELECT COALESCE(SUM(amount),0) AS total
+                 FROM manager_transfers
+                 WHERE manager_id = $1 AND type = 'manager_expense' AND status = 'approved'`, [managerId]),
         ]);
 
         const receivedFromUsers   = parseFloat(receivedQ.rows[0].total);
+        const receivedFromAdmin   = parseFloat(fromAdminQ.rows[0].total);
         const transferredToAdmin  = parseFloat(toAdminQ.rows[0].total);
         const depositedToBank     = parseFloat(toBankQ.rows[0].total);
+        const expensesLogged      = parseFloat(toExpenseQ.rows[0].total);
 
-        // Derive remaining cash from transaction records — the stored wallet_balance
-        // may be stale; this formula is always accurate.
-        const remainingCash = receivedFromUsers - transferredToAdmin - depositedToBank;
+        // credits = shop cash received + admin top-ups
+        // debits  = sent to admin + deposited to bank + expenses
+        const remainingCash = receivedFromUsers + receivedFromAdmin
+                            - transferredToAdmin - depositedToBank - expensesLogged;
 
-        // Sync the stored balance in case it drifted (read-only side-effect of summary)
+        // Sync stored balance so admin panel is always consistent
         const storedBalance = parseFloat(manager.wallet_balance);
         if (Math.abs(storedBalance - remainingCash) > 0.01) {
             await db.query('UPDATE users SET wallet_balance = $1 WHERE id = $2', [remainingCash, managerId]);
@@ -326,8 +336,10 @@ exports.getManagerSummary = async (req, res) => {
             summary: {
                 wallet_balance:        remainingCash,
                 received_from_users:   receivedFromUsers,
+                received_from_admin:   receivedFromAdmin,
                 transferred_to_admin:  transferredToAdmin,
                 deposited_to_bank:     depositedToBank,
+                expenses_logged:       expensesLogged,
                 remaining_cash:        remainingCash,
             },
             history: historyQ.rows,
@@ -381,10 +393,17 @@ exports.approveTransfer = async (req, res) => {
                     SELECT SUM(amount) FROM cash_transfers
                     WHERE to_user_id = $1 AND status IN ('accepted', 'approved')
                 ), 0)
+                +
+                COALESCE((
+                    SELECT SUM(amount) FROM manager_transfers
+                    WHERE manager_id = $1 AND type = 'admin_to_manager' AND status = 'approved'
+                ), 0)
                 -
                 COALESCE((
                     SELECT SUM(amount) FROM manager_transfers
-                    WHERE manager_id = $1 AND status = 'approved'
+                    WHERE manager_id = $1
+                      AND type IN ('manager_to_admin', 'manager_to_bank', 'manager_expense')
+                      AND status = 'approved'
                 ), 0) AS true_balance`,
             [transfer.manager_id]
         );
@@ -616,6 +635,53 @@ exports.syncStoreWallets = async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK');
         console.error('[syncStoreWallets] error:', err.message);
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+};
+
+/* ─────────────────────────────────────────────────────────────────
+   POST /api/manager-transfers/sync-manager-wallets
+   Admin: recalculate wallet_balance for ALL managers using the
+   correct formula: shop credits + admin_to_manager credits
+                  - manager_to_admin - manager_to_bank - expenses
+───────────────────────────────────────────────────────────────── */
+exports.syncManagerWallets = async (req, res) => {
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const result = await client.query(
+            `UPDATE users u
+             SET wallet_balance = (
+                 COALESCE((
+                     SELECT SUM(ct.amount) FROM cash_transfers ct
+                     WHERE ct.to_user_id = u.id AND ct.status IN ('accepted', 'approved')
+                 ), 0)
+                 +
+                 COALESCE((
+                     SELECT SUM(mt.amount) FROM manager_transfers mt
+                     WHERE mt.manager_id = u.id AND mt.type = 'admin_to_manager' AND mt.status = 'approved'
+                 ), 0)
+                 -
+                 COALESCE((
+                     SELECT SUM(mt.amount) FROM manager_transfers mt
+                     WHERE mt.manager_id = u.id
+                       AND mt.type IN ('manager_to_admin', 'manager_to_bank', 'manager_expense')
+                       AND mt.status = 'approved'
+                 ), 0)
+             )
+             WHERE u.role = 'manager'
+             RETURNING u.id, u.name, u.wallet_balance AS new_balance`
+        );
+
+        await client.query('COMMIT');
+        console.log(`[syncManagerWallets] Admin ${req.user.id} resynced ${result.rowCount} manager(s).`);
+        res.json({ managers_updated: result.rowCount, managers: result.rows });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[syncManagerWallets] error:', err.message);
         res.status(500).json({ error: err.message });
     } finally {
         client.release();

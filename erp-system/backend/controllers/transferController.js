@@ -273,6 +273,8 @@ exports.getBalance = async (req, res) => {
         }
 
         // Managers → compute from transaction records (self-healing)
+        // credits: cash from shops + admin_to_manager inflows
+        // debits:  manager_to_admin + manager_to_bank + manager_expense outflows
         if (req.user.role === 'manager') {
             const result = await db.query(
                 `SELECT
@@ -280,14 +282,24 @@ exports.getBalance = async (req, res) => {
                         SELECT SUM(amount) FROM cash_transfers
                         WHERE to_user_id = $1 AND status IN ('accepted', 'approved')
                     ), 0)
+                    +
+                    COALESCE((
+                        SELECT SUM(amount) FROM manager_transfers
+                        WHERE manager_id = $1 AND type = 'admin_to_manager' AND status = 'approved'
+                    ), 0)
                     -
                     COALESCE((
                         SELECT SUM(amount) FROM manager_transfers
-                        WHERE manager_id = $1 AND status = 'approved'
+                        WHERE manager_id = $1
+                          AND type IN ('manager_to_admin', 'manager_to_bank', 'manager_expense')
+                          AND status = 'approved'
                     ), 0) AS balance`,
                 [req.user.id]
             );
-            return res.json({ balance: parseFloat(result.rows[0]?.balance || 0) });
+            const balance = parseFloat(result.rows[0]?.balance || 0);
+            // Self-heal stored value so admin panel stays in sync
+            await db.query('UPDATE users SET wallet_balance = $1 WHERE id = $2', [balance, req.user.id]);
+            return res.json({ balance });
         }
 
         res.json({ balance: 0 });
