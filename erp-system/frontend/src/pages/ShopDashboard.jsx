@@ -398,6 +398,7 @@ const ShopDashboard = () => {
                 online:           form.online   || '0',
                 razorpay:         form.razorpay || '0',
                 photo_url:        photoUrl,
+                entry_type:       noSalesToday ? 'no_sale' : 'normal',
             };
 
             if (editId !== null) {
@@ -870,9 +871,10 @@ const ShopDashboard = () => {
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>My Entries</h3>
                                 <div className="flex items-center gap-2">
-                                    <button id="btn-upload-excel" onClick={() => xlRef.current?.click()} disabled={xlLoading}
+                                    <button id="btn-upload-excel" onClick={() => xlRef.current?.click()} disabled={xlLoading || noSalesToday}
+                                        title={noSalesToday ? 'Disabled — No Sales Today is checked' : undefined}
                                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg text-white transition-all shadow-sm"
-                                        style={{ background: xlLoading ? '#9ca3af' : 'linear-gradient(90deg,#059669,#10b981)' }}>
+                                        style={{ background: (xlLoading || noSalesToday) ? '#9ca3af' : 'linear-gradient(90deg,#059669,#10b981)' }}>
                                         {xlLoading
                                             ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Processing…</>
                                             : <><FileSpreadsheet className="h-3.5 w-3.5" /> Upload Excel</>}

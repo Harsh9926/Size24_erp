@@ -37,23 +37,25 @@ const EntriesPage = () => {
     const [txStatusFilter,setTxStatusFilter]= useState('');
 
     // Filters
-    const [dateFrom,    setDateFrom]    = useState('');
-    const [dateTo,      setDateTo]      = useState('');
-    const [shopFilter,  setShopFilter]  = useState('');
-    const [statusFilter,setStatusFilter]= useState('');
+    const [dateFrom,       setDateFrom]       = useState('');
+    const [dateTo,         setDateTo]         = useState('');
+    const [shopFilter,     setShopFilter]     = useState('');
+    const [statusFilter,   setStatusFilter]   = useState('');
+    const [entryTypeFilter,setEntryTypeFilter]= useState('');
     const [page,        setPage]        = useState(1);
     const [showMissing,    setShowMissing]    = useState(false);
     const [todayStatus,    setTodayStatus]    = useState(null);
     const [todayLoading,   setTodayLoading]   = useState(false);
 
-    const loadEntries = useCallback(async (p = page) => {
+    const loadEntries = useCallback(async (p = page) => {  // eslint-disable-line react-hooks/exhaustive-deps
         setLoading(true);
         try {
             const params = new URLSearchParams({ page: p, limit: PAGE_SIZE });
-            if (dateFrom)     params.set('date_from',  dateFrom);
-            if (dateTo)       params.set('date_to',    dateTo);
-            if (shopFilter)   params.set('shop_id',    shopFilter);
-            if (statusFilter) params.set('status',     statusFilter);
+            if (dateFrom)        params.set('date_from',   dateFrom);
+            if (dateTo)          params.set('date_to',     dateTo);
+            if (shopFilter)      params.set('shop_id',     shopFilter);
+            if (statusFilter)    params.set('status',      statusFilter);
+            if (entryTypeFilter) params.set('entry_type',  entryTypeFilter);
 
             const res = await api.get(`/entries?${params}`);
             setEntries(res.data.entries);
@@ -64,7 +66,7 @@ const EntriesPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [page, dateFrom, dateTo, shopFilter, statusFilter]);
+    }, [page, dateFrom, dateTo, shopFilter, statusFilter, entryTypeFilter]);
 
     const fetchTransfers = useCallback(async (status = txStatusFilter) => {
         setTxLoading(true);
@@ -86,7 +88,7 @@ const EntriesPage = () => {
 
     const applyFilters = () => { setPage(1); loadEntries(1); };
     const clearFilters = () => {
-        setDateFrom(''); setDateTo(''); setShopFilter(''); setStatusFilter('');
+        setDateFrom(''); setDateTo(''); setShopFilter(''); setStatusFilter(''); setEntryTypeFilter('');
         setPage(1);
     };
 
@@ -211,6 +213,19 @@ const EntriesPage = () => {
                             <option value="APPROVED">Approved</option>
                             <option value="PENDING">Pending</option>
                             <option value="REJECTED">Rejected</option>
+                        </select>
+                    </div>
+
+                    {/* Entry Type filter */}
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                            <Filter className="h-3 w-3" /> Type
+                        </label>
+                        <select className={inputCls + ' w-full sm:w-auto'} value={entryTypeFilter}
+                            onChange={e => setEntryTypeFilter(e.target.value)}>
+                            <option value="">All Types</option>
+                            <option value="normal">Normal</option>
+                            <option value="no_sale">No Sale</option>
                         </select>
                     </div>
 
@@ -369,11 +384,18 @@ const EntriesPage = () => {
                                         ₹{Number(e.razorpay || 0).toLocaleString('en-IN')}
                                     </td>
 
-                                    {/* Approval status */}
+                                    {/* Approval status + entry type */}
                                     <td className="px-4 py-3">
-                                        <span className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${statusBadge[e.approval_status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                                            {(e.approval_status || 'PENDING').charAt(0) + (e.approval_status || 'PENDING').slice(1).toLowerCase()}
-                                        </span>
+                                        <div className="flex flex-col gap-1">
+                                            <span className={`px-2 py-0.5 text-xs font-semibold rounded-full border w-fit ${statusBadge[e.approval_status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                                                {(e.approval_status || 'PENDING').charAt(0) + (e.approval_status || 'PENDING').slice(1).toLowerCase()}
+                                            </span>
+                                            {e.entry_type === 'no_sale' && (
+                                                <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full border w-fit bg-orange-100 text-orange-700 border-orange-200">
+                                                    No Sale
+                                                </span>
+                                            )}
+                                        </div>
                                     </td>
 
                                     {/* Lock status */}

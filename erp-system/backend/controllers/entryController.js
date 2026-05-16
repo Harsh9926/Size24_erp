@@ -21,8 +21,9 @@ const getTodayUTC = () => new Date().toISOString().split('T')[0];
 // - admin:     saves as APPROVED immediately, credits cash to wallet
 // ─────────────────────────────────────────────────────────────────
 exports.createEntry = async (req, res) => {
-    const { shop_id, date, excel_total_sale, cash, online, razorpay } = req.body;
-    const isAdmin = req.user.role === 'admin';
+    const { shop_id, date, excel_total_sale, cash, online, razorpay, entry_type } = req.body;
+    const isAdmin   = req.user.role === 'admin';
+    const entryType = entry_type === 'no_sale' ? 'no_sale' : 'normal';
 
     const entryDate = date ? String(date).split('T')[0] : null;
     if (!entryDate) return res.status(400).json({ error: 'Date is required.' });
@@ -56,10 +57,10 @@ exports.createEntry = async (req, res) => {
             const result = await client.query(
                 `INSERT INTO daily_entries
                     (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay,
-                     approval_status, locked, approved_by, approved_at, wallet_credited)
-                 VALUES ($1, $2, $3, $3, $4, $5, $6, 'APPROVED', true, $7, NOW(), true)
+                     approval_status, locked, approved_by, approved_at, wallet_credited, entry_type)
+                 VALUES ($1, $2, $3, $3, $4, $5, $6, 'APPROVED', true, $7, NOW(), true, $8)
                  RETURNING *`,
-                [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0, req.user.id],
+                [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0, req.user.id, entryType],
             );
 
             // Credit cash portion to shop wallet
@@ -95,10 +96,10 @@ exports.createEntry = async (req, res) => {
         const result = await client.query(
             `INSERT INTO daily_entries
                 (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay,
-                 approval_status, wallet_credited)
-             VALUES ($1, $2, $3, $3, $4, $5, $6, 'PENDING', true)
+                 approval_status, wallet_credited, entry_type)
+             VALUES ($1, $2, $3, $3, $4, $5, $6, 'PENDING', true, $7)
              RETURNING *`,
-            [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0],
+            [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0, entryType],
         );
 
         // Credit ONLY the cash portion to the shop wallet immediately on submission
@@ -257,7 +258,7 @@ exports.updateEntry = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────
 exports.getEntries = async (req, res) => {
     try {
-        const { status, date_from, date_to, shop_id, page, limit = 20 } = req.query;
+        const { status, date_from, date_to, shop_id, page, limit = 20, entry_type: entryTypeFilter } = req.query;
 
         const baseSelect = `
             SELECT e.*, s.shop_name, s.shop_address,
@@ -294,6 +295,10 @@ exports.getEntries = async (req, res) => {
         if (shop_id && req.user.role !== 'shop_user') {
             clauses.push(`e.shop_id = $${params.length + 1}`);
             params.push(parseInt(shop_id));
+        }
+        if (entryTypeFilter && ['normal', 'no_sale'].includes(entryTypeFilter)) {
+            clauses.push(`e.entry_type = $${params.length + 1}`);
+            params.push(entryTypeFilter);
         }
 
         const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
