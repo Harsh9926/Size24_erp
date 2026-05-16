@@ -7,7 +7,7 @@ import {
     Camera, MapPin, AlertCircle, FileSpreadsheet, X,
     CheckCircle2, XCircle, Loader2, Calendar, Pencil,
     Info, Clock, ShieldCheck, ShieldX, Wallet, ArrowRightLeft,
-    ChevronDown,
+    ChevronDown, History, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -220,6 +220,14 @@ const ShopDashboard = () => {
     const [transferring,      setTransferring]      = useState(false);
     const [transferMsg,       setTransferMsg]       = useState(null); // {type, text}
 
+    // ── Wallet History state ──────────────────────────────────────
+    const [showWalletHistory,    setShowWalletHistory]    = useState(false);
+    const [walletHistory,        setWalletHistory]        = useState(null);
+    const [walletHistoryLoading, setWalletHistoryLoading] = useState(false);
+    const [walletHistoryFilter,  setWalletHistoryFilter]  = useState('all');
+    const [walletCustomFrom,     setWalletCustomFrom]     = useState('');
+    const [walletCustomTo,       setWalletCustomTo]       = useState('');
+
     /* ── Wallet helpers ──────────────────────────────────────────── */
     const fetchBalance = useCallback(async () => {
         try {
@@ -241,6 +249,26 @@ const ShopDashboard = () => {
             setMyTransfers(res.data);
         } catch {}
     }, []);
+
+    const fetchWalletHistory = useCallback(async (filter, customFrom, customTo) => {
+        if (!user?.shopId) return;
+        setWalletHistoryLoading(true);
+        try {
+            const params = {};
+            if (filter === 'custom') {
+                if (customFrom) params.from_date = customFrom;
+                if (customTo)   params.to_date   = customTo;
+            } else if (filter !== 'all') {
+                params.period = filter;
+            }
+            const res = await api.get(`/shops/${user.shopId}/wallet-history`, { params });
+            setWalletHistory(res.data);
+        } catch {
+            setWalletHistory(null);
+        } finally {
+            setWalletHistoryLoading(false);
+        }
+    }, [user?.shopId]);
 
     const handleTransfer = async (e) => {
         e.preventDefault();
@@ -520,13 +548,25 @@ const ShopDashboard = () => {
                             <Wallet className="h-4 w-4 text-teal-200" />
                         </div>
                         <p className="text-xl font-extrabold text-white">₹{walletBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
-                        <button
-                            onClick={() => { setShowTransferPanel(p => !p); setTransferMsg(null); }}
-                            className="mt-2 flex items-center gap-1 text-xs font-semibold text-teal-100 hover:text-white transition-colors">
-                            <ArrowRightLeft className="h-3 w-3" />
-                            Transfer Cash
-                            <ChevronDown className={`h-3 w-3 transition-transform ${showTransferPanel ? 'rotate-180' : ''}`} />
-                        </button>
+                        <div className="mt-2 flex items-center gap-3">
+                            <button
+                                onClick={() => { setShowTransferPanel(p => !p); setTransferMsg(null); }}
+                                className="flex items-center gap-1 text-xs font-semibold text-teal-100 hover:text-white transition-colors">
+                                <ArrowRightLeft className="h-3 w-3" />
+                                Transfer Cash
+                                <ChevronDown className={`h-3 w-3 transition-transform ${showTransferPanel ? 'rotate-180' : ''}`} />
+                            </button>
+                            <span className="text-teal-400 text-xs">|</span>
+                            <button
+                                onClick={() => {
+                                    setShowWalletHistory(true);
+                                    fetchWalletHistory(walletHistoryFilter, walletCustomFrom, walletCustomTo);
+                                }}
+                                className="flex items-center gap-1 text-xs font-semibold text-teal-100 hover:text-white transition-colors">
+                                <History className="h-3 w-3" />
+                                Wallet History
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -1050,6 +1090,163 @@ const ShopDashboard = () => {
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ══ Wallet History Modal ══════════════════════════════════ */}
+            {showWalletHistory && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                    style={{ background: 'rgba(0,0,0,0.55)' }}
+                    onClick={e => { if (e.target === e.currentTarget) setShowWalletHistory(false); }}>
+                    <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden"
+                        style={{ background: 'var(--bg-surface)' }}>
+
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0"
+                            style={{ background: 'linear-gradient(135deg,#0f766e,#14b8a6)', borderColor: 'transparent' }}>
+                            <div className="flex items-center gap-2">
+                                <History className="h-5 w-5 text-teal-100" />
+                                <h2 className="text-base font-bold text-white">Wallet Transaction History</h2>
+                            </div>
+                            <button onClick={() => setShowWalletHistory(false)}
+                                className="text-teal-100 hover:text-white transition-colors">
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        {/* Balance Summary */}
+                        {walletHistory && (
+                            <div className="px-6 py-3 border-b flex items-center gap-6 flex-shrink-0"
+                                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                                <div>
+                                    <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>Current Balance</p>
+                                    <p className={`text-lg font-extrabold ${walletHistory.currentBalance >= 0 ? 'text-teal-600' : 'text-red-600'}`}>
+                                        ₹{walletHistory.currentBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                    </p>
+                                </div>
+                                {walletHistory.latestTransaction && (
+                                    <div className="ml-auto text-right">
+                                        <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>Last Update</p>
+                                        <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
+                                            {walletHistory.latestTransaction.amount >= 0 ? '+' : ''}₹{Math.abs(walletHistory.latestTransaction.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                            {' '}·{' '}
+                                            {new Date(walletHistory.latestTransaction.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Filter Tabs */}
+                        <div className="px-6 py-3 border-b flex-shrink-0 flex flex-wrap items-center gap-2"
+                            style={{ borderColor: 'var(--border-color)', background: 'var(--bg-surface)' }}>
+                            {[
+                                { key: 'all',       label: 'All' },
+                                { key: 'today',     label: 'Today' },
+                                { key: 'yesterday', label: 'Yesterday' },
+                                { key: 'last7',     label: 'Last 7 Days' },
+                                { key: 'custom',    label: 'Custom' },
+                            ].map(({ key, label }) => (
+                                <button key={key}
+                                    onClick={() => {
+                                        setWalletHistoryFilter(key);
+                                        if (key !== 'custom') fetchWalletHistory(key, walletCustomFrom, walletCustomTo);
+                                    }}
+                                    className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${walletHistoryFilter === key ? 'bg-teal-600 text-white border-teal-600' : 'text-gray-600 border-gray-200 hover:border-teal-400'}`}
+                                    style={walletHistoryFilter !== key ? { background: 'var(--bg-primary)' } : {}}>
+                                    {label}
+                                </button>
+                            ))}
+                            {walletHistoryFilter === 'custom' && (
+                                <div className="flex items-center gap-2 ml-1 flex-wrap">
+                                    <input type="date" value={walletCustomFrom}
+                                        onChange={e => setWalletCustomFrom(e.target.value)}
+                                        className="px-2 py-1 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-teal-500"
+                                        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                                    <span className="text-xs text-gray-400">to</span>
+                                    <input type="date" value={walletCustomTo}
+                                        onChange={e => setWalletCustomTo(e.target.value)}
+                                        className="px-2 py-1 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-teal-500"
+                                        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                                    <button onClick={() => fetchWalletHistory('custom', walletCustomFrom, walletCustomTo)}
+                                        className="px-3 py-1 rounded-full text-xs font-semibold bg-teal-600 text-white border-teal-600 border">
+                                        Apply
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Transaction List */}
+                        <div className="flex-1 overflow-y-auto px-6 py-4">
+                            {walletHistoryLoading ? (
+                                <div className="flex items-center justify-center py-12">
+                                    <Loader2 className="h-6 w-6 animate-spin text-teal-500" />
+                                </div>
+                            ) : !walletHistory || walletHistory.transactions.length === 0 ? (
+                                <div className="text-center py-12">
+                                    <Wallet className="h-10 w-10 mx-auto mb-3 text-gray-300" />
+                                    <p className="text-sm font-semibold text-gray-400">No transactions found</p>
+                                    <p className="text-xs text-gray-300 mt-1">Try a different filter</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {walletHistory.transactions.map((txn, i) => {
+                                        const isCredit = txn.amount >= 0;
+                                        const amt = Math.abs(txn.amount);
+                                        const TrendIcon = isCredit ? ArrowDownLeft : ArrowUpRight;
+                                        const txnDate = new Date(txn.created_at);
+                                        return (
+                                            <div key={txn.ref_id + i}
+                                                className="flex items-start gap-3 p-3 rounded-xl border transition-colors hover:border-teal-200"
+                                                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                                                {/* Icon */}
+                                                <div className={`flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center ${isCredit ? 'bg-green-100' : 'bg-red-100'}`}>
+                                                    <TrendIcon className={`h-4 w-4 ${isCredit ? 'text-green-600' : 'text-red-600'}`} />
+                                                </div>
+                                                {/* Details */}
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                                                        {txn.description}
+                                                        {txn.entry_type === 'no_sale' && (
+                                                            <span className="ml-1.5 px-1.5 py-0.5 text-[9px] font-bold rounded bg-orange-100 text-orange-700">NO SALE</span>
+                                                        )}
+                                                    </p>
+                                                    <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                                                        {txnDate.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                        {txn.done_by && <span className="ml-1.5 text-gray-400">· {txn.done_by}</span>}
+                                                    </p>
+                                                </div>
+                                                {/* Amount + Running balance */}
+                                                <div className="flex-shrink-0 text-right">
+                                                    <p className={`text-sm font-bold ${isCredit ? 'text-green-600' : 'text-red-600'}`}>
+                                                        {isCredit ? '+' : '−'}₹{amt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                                    </p>
+                                                    <p className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+                                                        Bal: ₹{txn.balance_after.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        {walletHistory && walletHistory.transactions.length > 0 && (
+                            <div className="px-6 py-3 border-t flex-shrink-0 flex items-center justify-between"
+                                style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                    Showing {walletHistory.transactions.length} of {walletHistory.totalCount} transactions
+                                </p>
+                                <button onClick={() => fetchWalletHistory(walletHistoryFilter, walletCustomFrom, walletCustomTo)}
+                                    className="flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors">
+                                    <RefreshCw className="h-3 w-3" />
+                                    Refresh
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

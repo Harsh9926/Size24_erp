@@ -326,3 +326,108 @@ exports.removeUserFromShop = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
+/* ─────────────────────────────────────────────────────────────────
+   GET /api/shops/:shopId/wallet-history
+   Returns the complete wallet ledger for a shop, reconstructed
+   from daily_entries (credits) and cash_transfers (debits).
+   Running balance is computed chronologically from all records.
+───────────────────────────────────────────────────────────────── */
+exports.getWalletHistory = async (req, res) => {
+    try {
+        const { shopId } = req.params;
+        const { period, from_date, to_date } = req.query;
+
+        // Auth: shop_user can only see their own shop
+        if (req.user.role === 'shop_user' && req.user.shopId !== parseInt(shopId)) {
+            return res.status(403).json({ error: 'Access denied.' });
+        }
+
+        // Fetch ALL transactions (unfiltered) to compute correct running balance
+        const allQ = await db.query(
+            `SELECT
+                de.created_at,
+                de.date::text            AS entry_date,
+                de.cash::decimal         AS amount,
+                'entry_credit'           AS txn_type,
+                'Daily Entry — Cash'     AS description,
+                de.id::text              AS ref_id,
+                de.approval_status       AS status,
+                de.entry_type,
+                COALESCE(su.name, su.mobile, 'Shop User') AS done_by
+             FROM daily_entries de
+             JOIN shops s ON de.shop_id = s.id
+             LEFT JOIN users su ON s.user_id = su.id
+             WHERE de.shop_id = $1
+               AND de.cash > 0
+               AND de.approval_status != 'REJECTED'
+
+             UNION ALL
+
+             SELECT
+                ct.updated_at            AS created_at,
+                ct.updated_at::date::text AS entry_date,
+                (ct.amount * -1)::decimal AS amount,
+                'cash_transfer'          AS txn_type,
+                CONCAT('Transfer to Manager',
+                    CASE WHEN ct.note IS NOT NULL THEN ' — ' || ct.note ELSE '' END)
+                                         AS description,
+                ct.id::text              AS ref_id,
+                ct.status,
+                NULL                     AS entry_type,
+                mu.name                  AS done_by
+             FROM cash_transfers ct
+             LEFT JOIN users mu ON ct.to_user_id = mu.id
+             WHERE ct.shop_id = $1
+               AND ct.status IN ('accepted', 'approved')
+
+             ORDER BY created_at ASC`,
+            [shopId]
+        );
+
+        // Compute running balance for every row
+        let balance = 0;
+        const withBalance = allQ.rows.map(row => {
+            const amt = parseFloat(row.amount);
+            const prev = balance;
+            balance += amt;
+            return { ...row, amount: amt, balance_before: prev, balance_after: balance };
+        });
+
+        // Apply date filter AFTER computing balances
+        let filtered = withBalance;
+        const today = new Date().toISOString().split('T')[0];
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+        if (period === 'today') {
+            filtered = withBalance.filter(r => r.created_at.toISOString().split('T')[0] === today);
+        } else if (period === 'yesterday') {
+            filtered = withBalance.filter(r => r.created_at.toISOString().split('T')[0] === yesterday);
+        } else if (period === 'last7') {
+            const cutoff = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+            filtered = withBalance.filter(r => r.created_at.toISOString().split('T')[0] >= cutoff);
+        } else if (from_date || to_date) {
+            filtered = withBalance.filter(r => {
+                const d = r.created_at.toISOString().split('T')[0];
+                if (from_date && d < from_date) return false;
+                if (to_date   && d > to_date)   return false;
+                return true;
+            });
+        }
+
+        // Return descending (most recent first), opening balance = balance at start of filtered window
+        const openingBalance = filtered.length > 0 ? filtered[0].balance_before : balance;
+        const latestTxn = withBalance.length > 0 ? withBalance[withBalance.length - 1] : null;
+
+        res.json({
+            currentBalance: balance,
+            openingBalance,
+            transactions: filtered.reverse(),
+            latestTransaction: latestTxn,
+            totalCount: withBalance.length,
+        });
+    } catch (err) {
+        console.error('[ShopWalletHistory]', err.message);
+        res.status(500).json({ error: err.message });
+    }
+};
