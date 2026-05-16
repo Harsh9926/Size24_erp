@@ -577,3 +577,43 @@ exports.unlockEntry = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
+// ─────────────────────────────────────────────────────────────────
+// TODAY STATUS — which shops have/haven't submitted today
+// ─────────────────────────────────────────────────────────────────
+exports.getTodayStatus = async (req, res) => {
+    try {
+        const today = getTodayUTC();
+        const isManager = req.user.role === 'manager';
+
+        const shopsQ = isManager
+            ? await db.query(`SELECT id, shop_name FROM shops WHERE user_id = $1 ORDER BY shop_name`, [req.user.id])
+            : await db.query(`SELECT id, shop_name FROM shops ORDER BY shop_name`);
+
+        const allShops = shopsQ.rows;
+        if (allShops.length === 0) {
+            return res.json({ date: today, totalShops: 0, submittedCount: 0, pendingCount: 0, submittedShops: [], pendingShops: [] });
+        }
+
+        const shopIds     = allShops.map(s => s.id);
+        const placeholder = shopIds.map((_, i) => `$${i + 2}`).join(',');
+        const entriesQ    = await db.query(
+            `SELECT DISTINCT shop_id FROM daily_entries WHERE date = $1 AND shop_id IN (${placeholder})`,
+            [today, ...shopIds]
+        );
+        const submittedIds  = new Set(entriesQ.rows.map(r => r.shop_id));
+        const submittedShops = allShops.filter(s => submittedIds.has(s.id));
+        const pendingShops   = allShops.filter(s => !submittedIds.has(s.id));
+
+        res.json({
+            date:           today,
+            totalShops:     allShops.length,
+            submittedCount: submittedShops.length,
+            pendingCount:   pendingShops.length,
+            submittedShops,
+            pendingShops,
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};

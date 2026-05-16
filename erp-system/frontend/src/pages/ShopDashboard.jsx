@@ -206,6 +206,7 @@ const ShopDashboard = () => {
     const [showPreview, setShowPreview] = useState(false);
     const [previewData, setPreviewData] = useState({ totalSale: 0, previewRows: [] });
     const [excelLoaded, setExcelLoaded] = useState(false);
+    const [noSalesToday, setNoSalesToday] = useState(false);
 
     const [dateFilter,   setDateFilter]   = useState('');
     const [activeRowIdx, setActiveRowIdx] = useState(null);
@@ -361,14 +362,27 @@ const ShopDashboard = () => {
     const resetForm = useCallback(() => {
         setEditId(null); setEditLocked(false); setExcelLoaded(false);
         setPhotoFile(null); setPhotoPreview(''); setActiveRowIdx(null);
+        setNoSalesToday(false);
         setForm(EMPTY_FORM());
     }, []);
+
+    const handleNoSalesToggle = (checked) => {
+        setNoSalesToday(checked);
+        if (checked) {
+            setForm(f => ({ ...f, excel_total_sale: '0', cash: '0', online: '0', razorpay: '0' }));
+            setExcelLoaded(true);
+            setXlError(''); setXlSuccess('');
+        } else {
+            setForm(f => ({ ...f, excel_total_sale: '', cash: '', online: '', razorpay: '' }));
+            setExcelLoaded(false);
+        }
+    };
 
     /* ── Submit ───────────────────────────────────────────────────── */
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!isMatch) return alert('Breakdown must match Total Sale before submitting.');
-        if (excelTotal <= 0) return alert('Please upload an Excel file first to set Total Sale.');
+        if (!noSalesToday && excelTotal <= 0) return alert('Please upload an Excel file first to set Total Sale.');
         if (data.shop?.latitude && gpsStatus !== 'ok' && gpsStatus !== 'no_coords')
             return alert('GPS check required. Click "Check Location" first.');
 
@@ -695,6 +709,24 @@ const ShopDashboard = () => {
                                         Upload Excel first — Total Sale will be automatically set.
                                     </p>
                                 )}
+
+                                {/* No Sales Today checkbox */}
+                                {!isFormLocked && !excelLoaded && (
+                                    <label className="mt-2 flex items-center gap-2 cursor-pointer select-none w-fit">
+                                        <input
+                                            type="checkbox"
+                                            checked={noSalesToday}
+                                            onChange={e => handleNoSalesToggle(e.target.checked)}
+                                            className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500" />
+                                        <span className="text-xs font-semibold text-gray-600">No Sales Today (submit ₹0 entry)</span>
+                                    </label>
+                                )}
+                                {noSalesToday && (
+                                    <p className="mt-1 text-[11px] text-teal-600 flex items-center gap-1">
+                                        <CheckCircle2 className="h-3 w-3" />
+                                        Zero-sales entry — all fields set to ₹0.
+                                    </p>
+                                )}
                                 {excelLoaded && (
                                     <p className="mt-1 text-[11px] text-teal-600 flex items-center gap-1">
                                         <CheckCircle2 className="h-3 w-3" />
@@ -803,9 +835,11 @@ const ShopDashboard = () => {
                             {/* Submit */}
                             <button id="btn-submit-entry" type="submit"
                                 disabled={submitting || isFormLocked || !excelLoaded || !isMatch ||
+                                    (!noSalesToday && excelTotal <= 0) ||
                                     (data.shop?.latitude && gpsStatus !== 'ok' && gpsStatus !== 'no_coords')}
                                 className={`w-full py-2.5 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2 transition-all ${
                                     submitting || isFormLocked || !excelLoaded || !isMatch ||
+                                    (!noSalesToday && excelTotal <= 0) ||
                                     (data.shop?.latitude && gpsStatus !== 'ok' && gpsStatus !== 'no_coords')
                                         ? 'bg-gray-300 cursor-not-allowed'
                                         : 'bg-teal-600 hover:bg-teal-700 shadow-sm'

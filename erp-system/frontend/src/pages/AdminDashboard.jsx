@@ -203,6 +203,7 @@ const CARD_FILTERS = {
 /* ─── MAIN COMPONENT ───────────────────────────────────────────── */
 const AdminDashboard = () => {
     const [data, setData]       = useState({ summary: {}, chartData: [], latestEntries: [], pendingUsersCount: 0, pendingEntriesCount: 0 });
+    const [todayStatus, setTodayStatus] = useState(null);
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState(null);
     const [period, setPeriod]   = useState('monthly');
@@ -263,6 +264,7 @@ const AdminDashboard = () => {
 
     useEffect(() => {
         api.get('/shops').then(r => setShops(r.data)).catch(() => {});
+        api.get('/entries/today-status').then(r => setTodayStatus(r.data)).catch(() => {});
         fetchData();
         fetchTransfers();
     }, []);
@@ -383,6 +385,48 @@ const AdminDashboard = () => {
                     );
                 })}
             </div>
+
+            {/* ── Today's Entry Status ───────────────────────────── */}
+            {todayStatus && (
+                <div className="mb-6 rounded-xl border shadow-sm overflow-hidden"
+                    style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                    <div className="px-5 py-3.5 flex items-center justify-between border-b"
+                        style={{ borderColor: 'var(--border-color)' }}>
+                        <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-orange-500" />
+                            <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                                Today's Entries
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-extrabold text-emerald-600">{todayStatus.submittedCount}</span>
+                            <span className="text-sm text-gray-400">/</span>
+                            <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{todayStatus.totalShops}</span>
+                            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>shops submitted</span>
+                            <button
+                                onClick={() => api.get('/entries/today-status').then(r => setTodayStatus(r.data)).catch(() => {})}
+                                className="ml-2 text-gray-400 hover:text-orange-500 transition-colors">
+                                <RefreshCw className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                    </div>
+                    <div className="px-5 py-3 flex flex-wrap gap-2">
+                        {todayStatus.submittedShops.map(s => (
+                            <span key={s.id} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700 border border-green-200">
+                                <ShieldCheck className="h-3 w-3" />{s.shop_name}
+                            </span>
+                        ))}
+                        {todayStatus.pendingShops.map(s => (
+                            <span key={s.id} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-700 border border-red-200">
+                                <AlertCircle className="h-3 w-3" />{s.shop_name}
+                            </span>
+                        ))}
+                        {todayStatus.pendingCount === 0 && (
+                            <span className="text-xs text-emerald-600 font-semibold">All shops submitted today!</span>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* ── Shop Wallet Card (visible when a shop is selected) ── */}
             {filters.shop_id && data.shopWallet && (

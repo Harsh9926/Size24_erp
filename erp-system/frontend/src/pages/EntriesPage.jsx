@@ -42,6 +42,9 @@ const EntriesPage = () => {
     const [shopFilter,  setShopFilter]  = useState('');
     const [statusFilter,setStatusFilter]= useState('');
     const [page,        setPage]        = useState(1);
+    const [showMissing,    setShowMissing]    = useState(false);
+    const [todayStatus,    setTodayStatus]    = useState(null);
+    const [todayLoading,   setTodayLoading]   = useState(false);
 
     const loadEntries = useCallback(async (p = page) => {
         setLoading(true);
@@ -85,6 +88,18 @@ const EntriesPage = () => {
     const clearFilters = () => {
         setDateFrom(''); setDateTo(''); setShopFilter(''); setStatusFilter('');
         setPage(1);
+    };
+
+    const toggleMissingShops = async () => {
+        if (!showMissing) {
+            setTodayLoading(true);
+            try {
+                const res = await api.get('/entries/today-status');
+                setTodayStatus(res.data);
+            } catch { setTodayStatus(null); }
+            finally { setTodayLoading(false); }
+        }
+        setShowMissing(v => !v);
     };
 
     const handleUnlock = async (id) => {
@@ -218,6 +233,63 @@ const EntriesPage = () => {
                     </div>
                 </div>
             </div>
+
+            {/* ── Missing Shops Toggle + Panel ─────────────────── */}
+            <div className="mb-4 flex items-center gap-3">
+                <button
+                    onClick={toggleMissingShops}
+                    className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border transition-all ${
+                        showMissing
+                            ? 'bg-red-50 border-red-300 text-red-700'
+                            : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}>
+                    {todayLoading
+                        ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Loading…</>
+                        : <><Filter className="h-3.5 w-3.5" /> {showMissing ? 'Hide Missing Shops' : 'Show Missing Shops Today'}</>
+                    }
+                </button>
+                {todayStatus && showMissing && (
+                    <span className="text-xs text-gray-500">
+                        {todayStatus.submittedCount}/{todayStatus.totalShops} submitted
+                    </span>
+                )}
+            </div>
+
+            {showMissing && todayStatus && (
+                <div className="mb-4 rounded-xl border overflow-hidden shadow-sm">
+                    <div className="px-4 py-3 text-xs font-bold uppercase tracking-wide bg-gray-50 border-b border-gray-100 text-gray-500">
+                        Today's Submission Status — {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </div>
+                    <table className="min-w-full text-sm">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Shop</th>
+                                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {[...todayStatus.submittedShops.map(s => ({ ...s, submitted: true })),
+                              ...todayStatus.pendingShops.map(s => ({ ...s, submitted: false }))]
+                              .sort((a, b) => a.shop_name.localeCompare(b.shop_name))
+                              .map(s => (
+                                <tr key={s.id} className="border-t border-gray-100">
+                                    <td className="px-4 py-2.5 font-medium text-gray-800">{s.shop_name}</td>
+                                    <td className="px-4 py-2.5">
+                                        {s.submitted
+                                            ? <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700 border border-green-200">
+                                                <span className="h-1.5 w-1.5 rounded-full bg-green-500 inline-block" /> Submitted
+                                              </span>
+                                            : <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-700 border border-red-200">
+                                                <span className="h-1.5 w-1.5 rounded-full bg-red-500 inline-block" /> Pending
+                                              </span>
+                                        }
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
             {/* ── Table ────────────────────────────────────────── */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

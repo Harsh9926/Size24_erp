@@ -7,7 +7,8 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 // GET /pending would match /:id = "pending" if placed after put('/:id')
 
 // ── Admin-only named routes ───────────────────────────────────────
-router.get(  '/pending',     authenticateToken, requireRole('admin', 'manager'), ctrl.getPendingEntries);
+router.get(  '/pending',      authenticateToken, requireRole('admin', 'manager'), ctrl.getPendingEntries);
+router.get(  '/today-status', authenticateToken, requireRole('admin', 'manager'), ctrl.getTodayStatus);
 
 // ── Shop user / general ───────────────────────────────────────────
 router.get( '/',              authenticateToken, ctrl.getEntries);
