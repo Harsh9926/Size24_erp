@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Space Travel</title>
+  <title>SIZE24 — Retail ERP</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet" />
@@ -18,6 +18,7 @@
             body:    ['Barlow', 'sans-serif'],
           },
           borderRadius: { DEFAULT: '9999px' },
+          colors: { brand: '#FF6B00' },
         },
       },
     };
@@ -28,10 +29,10 @@
     html, body { margin: 0; padding: 0; background: #000; overflow-x: hidden; }
 
     .liquid-glass {
-      background: rgba(255,255,255,0.01);
-      backdrop-filter: blur(4px);
-      -webkit-backdrop-filter: blur(4px);
-      box-shadow: inset 0 1px 1px rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      box-shadow: inset 0 1px 1px rgba(255,255,255,0.12);
       position: relative;
       overflow: hidden;
     }
@@ -51,10 +52,10 @@
     }
 
     .liquid-glass-strong {
-      background: rgba(255,255,255,0.06);
+      background: rgba(255, 107, 0, 0.18);
       backdrop-filter: blur(50px);
       -webkit-backdrop-filter: blur(50px);
-      box-shadow: 4px 4px 4px rgba(0,0,0,0.05), inset 0 1px 1px rgba(255,255,255,0.15);
+      box-shadow: 4px 4px 16px rgba(255,107,0,0.15), inset 0 1px 1px rgba(255,255,255,0.2);
       position: relative;
       overflow: hidden;
     }
@@ -72,18 +73,33 @@
       mask-composite: exclude;
       pointer-events: none;
     }
+
+    /* orange solid pill */
+    .btn-orange {
+      background: #FF6B00;
+      color: #fff;
+      border-radius: 9999px;
+      font-family: 'Barlow', sans-serif;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-orange:hover { opacity: 0.88; }
+
+    /* subtle overlay so text always readable over video */
+    .hero-overlay {
+      background: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.5) 100%);
+    }
+    .cap-overlay {
+      background: rgba(0,0,0,0.45);
+    }
   </style>
 
-  <!-- React + Babel (no SRI — avoids hash-mismatch blocking) -->
   <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/framer-motion@11.11.17/dist/framer-motion.js" crossorigin="anonymous"></script>
-  <script>
-    // Framer Motion 11 UMD may expose as either Motion or FramerMotion —
-    // prefer whichever is truthy; never overwrite a valid reference with undefined.
-    window.__FM__ = window.Motion || window.FramerMotion || {};
-  </script>
+  <script>window.__FM__ = window.Motion || window.FramerMotion || {};</script>
 </head>
 <body>
   <div id="root"></div>
@@ -91,104 +107,71 @@
   <!-- ── FadingVideo ────────────────────────────────────────────── -->
   <script type="text/babel">
     const { useRef, useEffect } = React;
-
-    const FADE_MS       = 500;
-    const FADE_OUT_LEAD = 0.55;
+    const FADE_MS = 500, FADE_OUT_LEAD = 0.55;
 
     const FadingVideo = ({ src, className, style = {} }) => {
-      const videoRef     = useRef(null);
-      const rafRef       = useRef(null);
-      const fadingOutRef = useRef(false);
+      const vr = useRef(null), rafRef = useRef(null), foRef = useRef(false);
 
-      const fadeTo = (video, target) => {
+      const fadeTo = (v, t) => {
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
-        const start = performance.now();
-        const from  = parseFloat(video.style.opacity) || 0;
-        const step  = (now) => {
-          const p = Math.min((now - start) / FADE_MS, 1);
-          video.style.opacity = String(from + (target - from) * p);
+        const s = performance.now(), f = parseFloat(v.style.opacity) || 0;
+        const step = (n) => {
+          const p = Math.min((n - s) / FADE_MS, 1);
+          v.style.opacity = String(f + (t - f) * p);
           if (p < 1) rafRef.current = requestAnimationFrame(step);
         };
         rafRef.current = requestAnimationFrame(step);
       };
 
       useEffect(() => {
-        const video = videoRef.current;
-        if (!video) return;
-        video.style.opacity = '0';
-
-        const onLoaded = () => {
-          video.style.opacity = '0';
-          video.play().catch(() => {});
-          fadeTo(video, 1);
+        const v = vr.current; if (!v) return;
+        v.style.opacity = '0';
+        const onL = () => { v.style.opacity = '0'; v.play().catch(()=>{}); fadeTo(v,1); };
+        const onT = () => {
+          const r = v.duration - v.currentTime;
+          if (!foRef.current && !isNaN(v.duration) && r <= FADE_OUT_LEAD && r > 0) { foRef.current=true; fadeTo(v,0); }
         };
-        const onTimeUpdate = () => {
-          const rem = video.duration - video.currentTime;
-          if (!fadingOutRef.current && !isNaN(video.duration) && rem <= FADE_OUT_LEAD && rem > 0) {
-            fadingOutRef.current = true;
-            fadeTo(video, 0);
-          }
-        };
-        const onEnded = () => {
-          video.style.opacity = '0';
+        const onE = () => {
+          v.style.opacity='0';
           if (rafRef.current) cancelAnimationFrame(rafRef.current);
-          setTimeout(() => {
-            video.currentTime = 0;
-            video.play().catch(() => {});
-            fadingOutRef.current = false;
-            fadeTo(video, 1);
-          }, 100);
+          setTimeout(() => { v.currentTime=0; v.play().catch(()=>{}); foRef.current=false; fadeTo(v,1); }, 100);
         };
-
-        video.addEventListener('loadeddata',  onLoaded);
-        video.addEventListener('timeupdate',  onTimeUpdate);
-        video.addEventListener('ended',       onEnded);
+        v.addEventListener('loadeddata', onL);
+        v.addEventListener('timeupdate', onT);
+        v.addEventListener('ended',      onE);
         return () => {
           if (rafRef.current) cancelAnimationFrame(rafRef.current);
-          video.removeEventListener('loadeddata',  onLoaded);
-          video.removeEventListener('timeupdate',  onTimeUpdate);
-          video.removeEventListener('ended',       onEnded);
+          v.removeEventListener('loadeddata', onL);
+          v.removeEventListener('timeupdate', onT);
+          v.removeEventListener('ended',      onE);
         };
       }, [src]);
 
-      return (
-        <video
-          ref={videoRef}
-          src={src}
-          autoPlay muted playsInline preload="auto"
-          className={className}
-          style={{ opacity: 0, ...style }}
-        />
-      );
+      return <video ref={vr} src={src} autoPlay muted playsInline preload="auto"
+        className={className} style={{ opacity:0, ...style }} />;
     };
     window.FadingVideo = FadingVideo;
   </script>
 
   <!-- ── BlurText ───────────────────────────────────────────────── -->
   <script type="text/babel">
-    const { useRef: useRefBT, useEffect: useEffectBT, useState: useStateBT } = React;
+    const { useRef: rBT, useEffect: eBT, useState: sBT } = React;
     const { motion } = window.__FM__;
 
     const BlurText = ({ text, className }) => {
-      const ref = useRefBT(null);
-      const [vis, setVis] = useStateBT(false);
+      const ref = rBT(null);
+      const [vis, setVis] = sBT(false);
       const words = text.split(' ');
-
-      useEffectBT(() => {
-        const obs = new IntersectionObserver(
-          ([e]) => { if (e.isIntersecting) setVis(true); },
-          { threshold: 0.1 }
-        );
-        if (ref.current) obs.observe(ref.current);
-        return () => obs.disconnect();
+      eBT(() => {
+        const o = new IntersectionObserver(([e]) => { if(e.isIntersecting) setVis(true); }, { threshold:0.1 });
+        if (ref.current) o.observe(ref.current);
+        return () => o.disconnect();
       }, []);
-
       return (
         <p ref={ref} className={className}
           style={{ display:'flex', flexWrap:'wrap', justifyContent:'center', rowGap:'0.1em' }}>
-          {words.map((w, i) => (
-            <motion.span
-              key={i}
+          {words.map((w,i) => (
+            <motion.span key={i}
               initial={{ filter:'blur(10px)', opacity:0, y:50 }}
               animate={vis
                 ? { filter:['blur(10px)','blur(5px)','blur(0px)'], opacity:[0,0.5,1], y:[50,-5,0] }
@@ -206,14 +189,14 @@
 
   <!-- ── Icons ─────────────────────────────────────────────────── -->
   <script type="text/babel">
-    const ArrowUpRight = ({ size=24, className='' }) => (
+    const ArrowUpRight = ({ size=24 }) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M7 17L17 7"/><path d="M7 7h10v10"/>
       </svg>
     );
-    const Play = ({ size=24, className='' }) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
+    const Play = ({ size=24 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
         <polygon points="6 4 20 12 6 20 6 4"/>
       </svg>
     );
@@ -225,20 +208,39 @@
   <script type="text/babel">
     const Navbar = () => {
       const { ArrowUpRight } = window;
+      const links = [
+        { label:'Home',      href:'/' },
+        { label:'Features',  href:'#features' },
+        { label:'Shops',     href:'/admin/shops' },
+        { label:'Managers',  href:'/admin/manager-funds' },
+        { label:'Reports',   href:'/admin/dashboard' },
+      ];
       return (
-        <nav className="fixed top-4 left-0 right-0 z-50 flex items-center justify-between px-8 lg:px-16">
-          <div className="liquid-glass w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="font-heading italic text-white text-xl select-none">a</span>
-          </div>
+        <nav className="fixed top-4 left-0 right-0 z-50 flex items-center justify-between px-6 lg:px-16">
+          {/* Logo */}
+          <a href="/" className="liquid-glass rounded-full flex items-center gap-2 px-4 py-2 no-underline" style={{ textDecoration:'none' }}>
+            <span style={{ color:'#FF6B00', fontFamily:'Barlow,sans-serif', fontWeight:600, fontSize:'15px', letterSpacing:'0.05em' }}>SIZE</span>
+            <span style={{ color:'white',   fontFamily:'Barlow,sans-serif', fontWeight:300, fontSize:'15px' }}>24</span>
+          </a>
+
+          {/* Center links */}
           <div className="hidden md:flex items-center liquid-glass rounded-full px-1.5 py-1.5">
-            {['Home','Voyages','Worlds','Innovation','Plan Launch'].map(l => (
-              <a key={l} href="#" className="px-3 py-2 text-sm font-medium text-white/90 font-body whitespace-nowrap hover:text-white transition-colors rounded-full">{l}</a>
+            {links.map(l => (
+              <a key={l.label} href={l.href}
+                className="px-3 py-2 text-sm font-medium font-body whitespace-nowrap rounded-full transition-colors"
+                style={{ color:'rgba(255,255,255,0.85)', textDecoration:'none' }}
+                onMouseOver={e=>e.target.style.color='#fff'}
+                onMouseOut={e=>e.target.style.color='rgba(255,255,255,0.85)'}>
+                {l.label}
+              </a>
             ))}
-            <button className="flex items-center gap-1.5 bg-white text-black rounded-full px-4 py-2 text-sm font-medium font-body whitespace-nowrap ml-1">
-              Claim a Spot <ArrowUpRight size={14}/>
-            </button>
+            <a href="/login" className="btn-orange flex items-center gap-1.5 px-4 py-2 text-sm ml-1 rounded-full" style={{ textDecoration:'none' }}>
+              Login <ArrowUpRight size={14}/>
+            </a>
           </div>
-          <div className="w-12 h-12 flex-shrink-0"/>
+
+          {/* Mobile login */}
+          <a href="/login" className="flex md:hidden btn-orange px-4 py-2 text-sm rounded-full" style={{ textDecoration:'none' }}>Login</a>
         </nav>
       );
     };
@@ -248,20 +250,14 @@
   <!-- ── Hero ──────────────────────────────────────────────────── -->
   <script type="text/babel">
     const { motion: hm } = window.__FM__;
-
-    const fu = (delay) => ({
-      initial:    { filter:'blur(10px)', opacity:0, y:20 },
-      animate:    { filter:'blur(0px)',  opacity:1, y:0  },
-      transition: { duration:0.7, ease:'easeOut', delay },
+    const fu = (d) => ({
+      initial:{ filter:'blur(10px)', opacity:0, y:20 },
+      animate:{ filter:'blur(0px)',  opacity:1, y:0  },
+      transition:{ duration:0.7, ease:'easeOut', delay:d },
     });
 
     const HeroSection = () => {
-      const FV  = window.FadingVideo;
-      const BT  = window.BlurText;
-      const AIR = window.ArrowUpRight;
-      const P   = window.Play;
-      const NB  = window.Navbar;
-
+      const FV=window.FadingVideo, BT=window.BlurText, AIR=window.ArrowUpRight, P=window.Play, NB=window.Navbar;
       return (
         <section style={{ position:'relative', width:'100%', height:'100vh', background:'#000', overflow:'hidden', display:'flex', flexDirection:'column' }}>
           <FV
@@ -269,69 +265,79 @@
             className="absolute left-1/2 top-0 -translate-x-1/2 object-cover object-top"
             style={{ width:'120%', height:'120%', zIndex:0 }}
           />
+          {/* subtle overlay */}
+          <div className="hero-overlay absolute inset-0" style={{ zIndex:1 }}/>
 
           <div style={{ position:'relative', zIndex:10, display:'flex', flexDirection:'column', height:'100%' }}>
             <NB/>
 
-            {/* centred content */}
             <div className="flex-1 flex flex-col items-center justify-center pt-24 px-4">
 
               {/* Badge */}
               <hm.div {...fu(0.4)} className="liquid-glass rounded-full flex items-center gap-2 px-1.5 py-1.5 mb-6">
-                <span className="bg-white text-black rounded-full px-3 py-1 text-xs font-semibold font-body">New</span>
-                <span className="text-sm text-white/90 font-body pr-3">Maiden Crewed Voyage to Mars Arrives 2026</span>
+                <span className="rounded-full px-3 py-1 text-xs font-semibold font-body"
+                  style={{ background:'#FF6B00', color:'#fff' }}>Live Now</span>
+                <span className="text-sm font-body pr-3" style={{ color:'rgba(255,255,255,0.9)' }}>
+                  India's All-in-One Retail ERP Platform
+                </span>
               </hm.div>
 
               {/* Headline */}
-              <BT text="Venture Past Our Sky Across the Universe"
-                className="text-6xl md:text-7xl lg:text-[5.5rem] font-heading italic text-white leading-[0.8] max-w-2xl text-center tracking-[-4px]"/>
+              <BT text="Control Every Shop. Track Every Rupee."
+                className="text-6xl md:text-7xl lg:text-[5.5rem] font-heading italic text-white leading-[0.85] max-w-3xl text-center tracking-[-4px]"/>
 
               {/* Sub */}
-              <hm.p {...fu(0.8)} className="mt-4 text-sm md:text-base text-white max-w-2xl font-body font-light leading-tight text-center">
-                Discover the universe in ways once unimaginable. Our pioneering vessels and breakthrough engineering bring deep-space exploration within reach—secure and extraordinary.
+              <hm.p {...fu(0.8)} className="mt-5 text-sm md:text-base max-w-xl font-body font-light leading-relaxed text-center"
+                style={{ color:'rgba(255,255,255,0.85)' }}>
+                SIZE24 gives your retail chain complete visibility — manage stores, track cash flows, approve transfers, log expenses, and make smarter decisions, all from one dashboard.
               </hm.p>
 
               {/* CTAs */}
-              <hm.div {...fu(1.1)} className="flex items-center gap-6 mt-6">
-                <button className="liquid-glass-strong rounded-full px-5 py-2.5 text-sm font-medium text-white font-body flex items-center gap-2 cursor-pointer">
-                  Start Your Voyage <AIR size={20}/>
-                </button>
-                <button className="flex items-center gap-2 text-sm font-medium text-white font-body cursor-pointer">
-                  View Liftoff <P size={16}/>
-                </button>
+              <hm.div {...fu(1.1)} className="flex items-center gap-5 mt-7">
+                <a href="/login" className="btn-orange flex items-center gap-2 px-6 py-3 text-sm font-medium"
+                  style={{ textDecoration:'none' }}>
+                  Open Dashboard <AIR size={18}/>
+                </a>
+                <a href="#features" className="flex items-center gap-2 text-sm font-medium font-body cursor-pointer"
+                  style={{ color:'white', textDecoration:'none' }}>
+                  See Features <P size={15}/>
+                </a>
               </hm.div>
 
               {/* Stats */}
-              <hm.div {...fu(1.3)} className="flex items-stretch gap-4 mt-8">
+              <hm.div {...fu(1.3)} className="flex items-stretch gap-4 mt-9">
                 {[
                   {
-                    icon:<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
-                    val:'34.5 Min', label:'Average Videos Watch Time'
+                    icon: <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>,
+                    val: '500+', label: 'Shops Managed'
                   },
                   {
-                    icon:<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>,
-                    val:'2.8B+', label:'Users Across the Globe'
-                  }
+                    icon: <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M12 6v6l4 2"/></svg>,
+                    val: '₹50Cr+', label: 'Cash Tracked Daily'
+                  },
                 ].map(({ icon, val, label }) => (
-                  <div key={label} className="liquid-glass rounded-[1.25rem] p-5 flex flex-col justify-between" style={{ width:'220px' }}>
+                  <div key={label} className="liquid-glass rounded-[1.25rem] p-5 flex flex-col justify-between" style={{ width:'200px' }}>
                     <div>{icon}</div>
                     <div>
-                      <p className="font-heading italic text-white text-4xl tracking-[-1px] leading-none mt-4">{val}</p>
-                      <p className="text-xs text-white font-body font-light mt-2">{label}</p>
+                      <p className="font-heading italic text-white text-4xl tracking-[-1px] leading-none mt-4" style={{ color:'#FF6B00' }}>{val}</p>
+                      <p className="text-xs font-body font-light mt-2" style={{ color:'rgba(255,255,255,0.8)' }}>{label}</p>
                     </div>
                   </div>
                 ))}
               </hm.div>
             </div>
 
-            {/* Partners */}
-            <hm.div {...fu(1.4)} className="flex flex-col items-center gap-4 pb-8">
-              <div className="liquid-glass rounded-full px-3.5 py-1">
-                <span className="text-xs font-medium text-white font-body">Collaborating with top aerospace pioneers globally</span>
+            {/* Bottom strip */}
+            <hm.div {...fu(1.4)} className="flex flex-col items-center gap-3 pb-8">
+              <div className="liquid-glass rounded-full px-4 py-1">
+                <span className="text-xs font-medium font-body" style={{ color:'rgba(255,255,255,0.7)' }}>
+                  Trusted by retail businesses across India
+                </span>
               </div>
-              <div className="flex items-center gap-12 md:gap-16">
-                {['Aeon','Vela','Apex','Orbit','Zeno'].map(n => (
-                  <span key={n} className="font-heading italic text-white text-2xl md:text-3xl tracking-tight">{n}</span>
+              <div className="flex items-center gap-10 md:gap-14">
+                {['Shop Wallet','Manager Funds','Cash Transfers','Daily Reports','Expense Logs'].map(n => (
+                  <span key={n} className="font-body text-sm md:text-base font-light tracking-wide whitespace-nowrap"
+                    style={{ color:'rgba(255,255,255,0.55)' }}>{n}</span>
                 ))}
               </div>
             </hm.div>
@@ -346,68 +352,103 @@
   <script type="text/babel">
     const CapabilitiesSection = () => {
       const FV = window.FadingVideo;
+
       const cards = [
         {
-          title:'AI Scenery',
-          body:'AI analyzes your product to create indistinguishable natural environments — from Icelandic cliffs to misty forests.',
-          iconPath:'M5 21q-.825 0-1.412-.587T3 19V5q0-.825.588-1.412T5 3h14q.825 0 1.413.588T21 5v14q0 .825-.587 1.413T19 21H5Zm1-4h12l-3.75-5-3 4L9 13l-3 4Z',
-          tags:['Natural Context','Photo Realism','Infinite Settings','Eco-Vibe'],
+          title: 'Shop Wallets',
+          body: 'Real-time wallet balance for every store. View full ledger history, credits, debits, and running balance — day-wise or across any custom date range.',
+          iconPath: 'M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z',
+          tags: ['Live Balance', 'Full Ledger', 'Date Filter', 'Opening / Closing'],
+          href: '/admin/manager-funds',
         },
         {
-          title:'Batch Production',
-          body:'Style your entire product line in minutes. Create a unified visual identity for catalogues and social media without weeks of retouching.',
-          iconPath:'M4 6.47 5.76 10H20v8H4V6.47M22 4h-4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.89-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4Z',
-          tags:['Scale Fast','Visual Consistency','Time Saver','Ready to Post'],
+          title: 'Manager Funds',
+          body: 'Managers receive cash from shops, log expenses, send money to admin or bank. Every transfer goes through an approval workflow with full audit trail.',
+          iconPath: 'M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z',
+          tags: ['Expense Log', 'Bank Transfer', 'Admin Send', 'Approvals'],
+          href: '/admin/manager-funds',
         },
         {
-          title:'Smart Lighting',
-          body:'Automatic lighting and material adjustment. Achieve flawless integration with realistic shadows and sunlight.',
-          iconPath:'M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1Zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7Z',
-          tags:['Ray Tracing','Physical Shadows','Studio Quality','Sunlight Sync'],
+          title: 'Daily Reports',
+          body: 'Dashboard KPI cards with compact Indian number formatting. Filter by shop, date range, or manager. One-click Excel export for any period.',
+          iconPath: 'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z',
+          tags: ['KPI Cards', 'Shop Filter', 'Date Range', 'Excel Export'],
+          href: '/admin/dashboard',
         },
       ];
 
       return (
-        <section style={{ position:'relative', minHeight:'100vh', background:'#000', overflow:'hidden' }}>
+        <section id="features" style={{ position:'relative', minHeight:'100vh', background:'#000', overflow:'hidden' }}>
           <FV
             src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260418_094631_d30ab262-45ee-4b7d-99f3-5d5848c8ef13.mp4"
             className="absolute inset-0 w-full h-full object-cover"
             style={{ zIndex:0 }}
           />
+          <div className="cap-overlay absolute inset-0" style={{ zIndex:1 }}/>
+
           <div style={{ position:'relative', zIndex:10, minHeight:'100vh', display:'flex', flexDirection:'column' }}
-            className="px-8 md:px-16 lg:px-20 pt-24 pb-10">
+            className="px-8 md:px-16 lg:px-20 pt-24 pb-12">
 
             <div className="mb-auto">
-              <p className="text-sm font-body mb-6" style={{ color:'rgba(255,255,255,0.8)' }}>// Capabilities</p>
+              <p className="text-sm font-body mb-5" style={{ color:'#FF6B00', letterSpacing:'0.1em' }}>// Features</p>
               <h2 className="font-heading italic text-white text-6xl md:text-7xl lg:text-[6rem] leading-[0.9] tracking-[-3px]">
-                Production<br/>evolved
+                Retail management<br/>evolved
               </h2>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-14">
               {cards.map(card => (
-                <div key={card.title} className="liquid-glass rounded-[1.25rem] p-6 flex flex-col" style={{ minHeight:'360px' }}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="liquid-glass rounded-[0.75rem] flex-shrink-0 flex items-center justify-center" style={{ width:'44px', height:'44px' }}>
-                      <svg viewBox="0 0 24 24" style={{ width:'24px', height:'24px', color:'white' }} fill="currentColor">
-                        <path d={card.iconPath}/>
-                      </svg>
+                <a key={card.title} href={card.href} style={{ textDecoration:'none' }}>
+                  <div className="liquid-glass rounded-[1.25rem] p-6 flex flex-col cursor-pointer transition-all"
+                    style={{ minHeight:'380px' }}
+                    onMouseOver={e => e.currentTarget.style.background='rgba(255,107,0,0.08)'}
+                    onMouseOut={e  => e.currentTarget.style.background=''}>
+
+                    <div className="flex items-start justify-between gap-4">
+                      {/* Icon */}
+                      <div className="liquid-glass rounded-[0.75rem] flex-shrink-0 flex items-center justify-center"
+                        style={{ width:'44px', height:'44px', background:'rgba(255,107,0,0.15)' }}>
+                        <svg viewBox="0 0 24 24" style={{ width:'22px', height:'22px', color:'#FF6B00' }} fill="currentColor">
+                          <path d={card.iconPath}/>
+                        </svg>
+                      </div>
+                      {/* Tags */}
+                      <div className="flex flex-wrap justify-end gap-1.5" style={{ maxWidth:'68%' }}>
+                        {card.tags.map(t => (
+                          <span key={t} className="liquid-glass rounded-full px-3 py-1 font-body whitespace-nowrap"
+                            style={{ fontSize:'11px', color:'rgba(255,255,255,0.85)' }}>{t}</span>
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex flex-wrap justify-end gap-1.5" style={{ maxWidth:'70%' }}>
-                      {card.tags.map(t => (
-                        <span key={t} className="liquid-glass rounded-full px-3 py-1 font-body whitespace-nowrap"
-                          style={{ fontSize:'11px', color:'rgba(255,255,255,0.9)' }}>{t}</span>
-                      ))}
+
+                    <div style={{ flex:1 }}/>
+
+                    <div className="mt-6">
+                      <h3 className="font-heading italic text-white text-3xl md:text-4xl tracking-[-1px] leading-none">{card.title}</h3>
+                      <p className="mt-3 text-sm font-body font-light leading-snug"
+                        style={{ color:'rgba(255,255,255,0.8)', maxWidth:'32ch' }}>{card.body}</p>
+                      <p className="mt-4 text-xs font-semibold font-body" style={{ color:'#FF6B00' }}>
+                        Open →
+                      </p>
                     </div>
                   </div>
-                  <div style={{ flex:1 }}/>
-                  <div className="mt-6">
-                    <h3 className="font-heading italic text-white text-3xl md:text-4xl tracking-[-1px] leading-none">{card.title}</h3>
-                    <p className="mt-3 text-sm font-body font-light leading-snug"
-                      style={{ color:'rgba(255,255,255,0.9)', maxWidth:'32ch' }}>{card.body}</p>
-                  </div>
-                </div>
+                </a>
               ))}
+            </div>
+
+            {/* Bottom CTA */}
+            <div className="flex items-center justify-center mt-14 gap-4">
+              <a href="/login" className="btn-orange flex items-center gap-2 px-8 py-3 text-sm font-medium"
+                style={{ textDecoration:'none' }}>
+                Go to Dashboard
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M7 17L17 7"/><path d="M7 7h10v10"/>
+                </svg>
+              </a>
+              <a href="/register" className="liquid-glass rounded-full px-8 py-3 text-sm font-medium font-body"
+                style={{ color:'white', textDecoration:'none' }}>
+                Create Account
+              </a>
             </div>
           </div>
         </section>
@@ -419,17 +460,11 @@
   <!-- ── App ───────────────────────────────────────────────────── -->
   <script type="text/babel">
     const _e = console.error;
-    console.error = (...a) => { if (typeof a[0] === 'string' && a[0].includes('key')) return; _e(...a); };
+    console.error = (...a) => { if (typeof a[0]==='string' && a[0].includes('key')) return; _e(...a); };
 
-    const HS  = window.HeroSection;
-    const CS  = window.CapabilitiesSection;
-
-    const App = () => (
-      <React.Fragment>
-        <HS/>
-        <CS/>
-      </React.Fragment>
-    );
+    const HS = window.HeroSection;
+    const CS = window.CapabilitiesSection;
+    const App = () => <React.Fragment><HS/><CS/></React.Fragment>;
 
     ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
   </script>
