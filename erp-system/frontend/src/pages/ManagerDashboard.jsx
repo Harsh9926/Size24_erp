@@ -2,14 +2,16 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
 import Layout from '../components/Layout';
+import WalletHistoryModal from '../components/WalletHistoryModal';
 import {
     Wallet, Store, ArrowUpRight, ArrowDownRight, RefreshCw,
-    TrendingUp, Clock, CheckCircle2, XCircle, Loader2, AlertCircle,
+    TrendingUp, Clock, CheckCircle2, XCircle, Loader2, AlertCircle, History,
 } from 'lucide-react';
 
 const ManagerDashboard = () => {
     const [walletBalance,     setWalletBalance]     = useState(0);
     const [shops,             setShops]             = useState([]);
+    const [allShops,          setAllShops]          = useState([]);
     const [selectedShop,      setSelectedShop]      = useState('');
     const [summary,           setSummary]           = useState({ received: 0, to_admin: 0, to_bank: 0, pending_count: 0 });
     const [pendingRequests,   setPendingRequests]   = useState([]);
@@ -17,6 +19,7 @@ const ManagerDashboard = () => {
     const [toast,             setToast]             = useState(null);
     const [loading,           setLoading]           = useState(true);
     const [refreshing,        setRefreshing]        = useState(false);
+    const [historyShop,       setHistoryShop]       = useState(null); // { id, name }
 
     const showToast = (type, text) => {
         setToast({ type, text });
@@ -24,12 +27,13 @@ const ManagerDashboard = () => {
     };
 
     const fetchAll = useCallback(async () => {
-        // Run all 4 fetches independently — a failure in one won't blank the others
-        const [balRes, dashRes, txRes, myTxRes] = await Promise.allSettled([
+        // Run all fetches independently — a failure in one won't blank the others
+        const [balRes, dashRes, txRes, myTxRes, shopsRes] = await Promise.allSettled([
             api.get('/transfers/balance'),
             api.get('/dashboard/manager'),
             api.get('/transfers/manager'),
             api.get('/manager-transfers/mine'),
+            api.get('/shops'),
         ]);
 
         if (balRes.status === 'fulfilled')
@@ -37,6 +41,9 @@ const ManagerDashboard = () => {
 
         if (dashRes.status === 'fulfilled')
             setShops(dashRes.value.data.shops || []);
+
+        if (shopsRes.status === 'fulfilled')
+            setAllShops(shopsRes.value.data || []);
 
         const allUserTx = txRes.status === 'fulfilled' ? (txRes.value.data || []) : [];
         setPendingRequests(allUserTx.filter(t => t.status === 'pending'));
@@ -308,7 +315,7 @@ const ManagerDashboard = () => {
             </div>
 
             {/* ── Quick action CTA ────────────────────────────────────── */}
-            <div className="rounded-xl p-5 border flex items-center justify-between gap-4"
+            <div className="rounded-xl p-5 border flex items-center justify-between gap-4 mb-6"
                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
                 <div>
                     <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>
@@ -324,6 +331,52 @@ const ManagerDashboard = () => {
                     Cash Transfer →
                 </Link>
             </div>
+
+            {/* ── Store Wallets ────────────────────────────────────────── */}
+            {allShops.length > 0 && (
+                <>
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                            <Store className="h-4 w-4 text-teal-600" />
+                            <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Store Wallets</h3>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
+                        {allShops.map(sw => (
+                            <div key={sw.id}
+                                className="rounded-xl p-4 border"
+                                style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="p-1.5 rounded-lg bg-teal-100">
+                                        <Store className="h-4 w-4 text-teal-600" />
+                                    </div>
+                                    <span className="text-[10px] font-medium text-gray-400">#{sw.id}</span>
+                                </div>
+                                <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
+                                    {sw.shop_name}
+                                </p>
+                                <p className="text-lg font-extrabold text-teal-600">
+                                    ₹{parseFloat(sw.wallet_balance || 0).toLocaleString('en-IN')}
+                                </p>
+                                <button
+                                    onClick={() => setHistoryShop({ id: sw.id, name: sw.shop_name })}
+                                    className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-teal-600 hover:text-teal-800 transition-colors">
+                                    <History className="h-3 w-3" />
+                                    Wallet History
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </>
+            )}
+
+            {historyShop && (
+                <WalletHistoryModal
+                    shopId={historyShop.id}
+                    shopName={historyShop.name}
+                    onClose={() => setHistoryShop(null)}
+                />
+            )}
         </Layout>
     );
 };

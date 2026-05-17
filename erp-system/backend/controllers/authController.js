@@ -95,6 +95,24 @@ exports.changePassword = async (req, res) => {
     }
 };
 
+// ── Verify Password (admin confirming own password before destructive action) ──
+exports.verifyPassword = async (req, res) => {
+    try {
+        const { password } = req.body;
+        if (!password) return res.status(400).json({ error: 'password is required.' });
+
+        const userResult = await db.query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
+        if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found.' });
+
+        const valid = await bcrypt.compare(password, userResult.rows[0].password_hash);
+        if (!valid) return res.status(401).json({ error: 'Incorrect password.' });
+
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
+    }
+};
+
 exports.register = async (req, res) => {
     try {
         const { name, mobile, password, role } = req.body;

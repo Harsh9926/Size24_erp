@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import Layout from '../components/Layout';
-import { Plus, PlusCircle, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, PlusCircle, Trash2, AlertTriangle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none";
@@ -14,8 +14,24 @@ const EMPTY_SHOP = {
 };
 
 const DeleteConfirmModal = ({ shop, onConfirm, onCancel, deleting, result }) => {
-    const [typed, setTyped] = useState('');
+    const [step,      setStep]      = useState('password'); // 'password' | 'confirm'
+    const [password,  setPassword]  = useState('');
+    const [showPwd,   setShowPwd]   = useState(false);
+    const [pwdError,  setPwdError]  = useState('');
+    const [verifying, setVerifying] = useState(false);
+    const [typed,     setTyped]     = useState('');
     const confirmed = typed === shop.shop_name;
+
+    const handleVerify = async (e) => {
+        e.preventDefault();
+        setVerifying(true); setPwdError('');
+        try {
+            await api.post('/auth/verify-password', { password });
+            setStep('confirm');
+        } catch (err) {
+            setPwdError(err.response?.data?.error || 'Incorrect password.');
+        } finally { setVerifying(false); }
+    };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
@@ -42,6 +58,40 @@ const DeleteConfirmModal = ({ shop, onConfirm, onCancel, deleting, result }) => 
                             <li>Manager wallets recalculated: <strong>{result.managers_recalculated}</strong></li>
                         </ul>
                     </div>
+                ) : step === 'password' ? (
+                    <form onSubmit={handleVerify}>
+                        <p className="text-sm text-gray-700 mb-4">
+                            Enter your admin password to authorise deletion of all data for <strong>{shop.shop_name}</strong>.
+                        </p>
+                        <div className="relative mb-3">
+                            <input
+                                type={showPwd ? 'text' : 'password'}
+                                className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-400 outline-none"
+                                placeholder="Your password"
+                                value={password}
+                                onChange={e => { setPassword(e.target.value); setPwdError(''); }}
+                                disabled={verifying}
+                                autoFocus
+                                required
+                            />
+                            <button type="button" onClick={() => setShowPwd(v => !v)}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                        </div>
+                        {pwdError && <p className="text-xs text-red-500 mb-3">{pwdError}</p>}
+                        <div className="flex gap-3 justify-end">
+                            <button type="button" onClick={onCancel}
+                                className="px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                                Cancel
+                            </button>
+                            <button type="submit" disabled={!password || verifying}
+                                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-40 flex items-center gap-2">
+                                {verifying && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                Verify & Continue
+                            </button>
+                        </div>
+                    </form>
                 ) : (
                     <>
                         <p className="text-sm text-gray-700 mb-3">
@@ -61,36 +111,39 @@ const DeleteConfirmModal = ({ shop, onConfirm, onCancel, deleting, result }) => 
                             disabled={deleting}
                             autoFocus
                         />
+                        <div className="flex gap-3 justify-end">
+                            <button onClick={onCancel}
+                                className="px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                                Cancel
+                            </button>
+                            <button
+                                onClick={onConfirm}
+                                disabled={!confirmed || deleting}
+                                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
+                                {deleting ? (
+                                    <>
+                                        <span className="h-3.5 w-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                        Deleting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                        Yes, Delete All Data
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     </>
                 )}
 
-                <div className="flex gap-3 justify-end">
-                    <button
-                        onClick={onCancel}
-                        className="px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                    >
-                        {result ? 'Close' : 'Cancel'}
-                    </button>
-                    {!result && (
-                        <button
-                            onClick={onConfirm}
-                            disabled={!confirmed || deleting}
-                            className="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
-                        >
-                            {deleting ? (
-                                <>
-                                    <span className="h-3.5 w-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                                    Deleting...
-                                </>
-                            ) : (
-                                <>
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                    Yes, Delete All Data
-                                </>
-                            )}
+                {result && (
+                    <div className="flex justify-end mt-4">
+                        <button onClick={onCancel}
+                            className="px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                            Close
                         </button>
-                    )}
-                </div>
+                    </div>
+                )}
             </div>
         </div>
     );

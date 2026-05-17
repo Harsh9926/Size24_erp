@@ -4,7 +4,7 @@ import Layout from '../components/Layout';
 import {
     UserPlus, Store, CheckCircle2, XCircle, Clock,
     Pencil, Trash2, KeyRound, X, Users, Search, Filter,
-    Plus, Loader2,
+    Plus, Loader2, AlertTriangle, Eye, EyeOff,
 } from 'lucide-react';
 
 /* ── Shared styles ───────────────────────────────────────────────── */
@@ -81,6 +81,13 @@ const UsersPage = () => {
     // Manage shops modal state
     const [manageModal, setManageModal] = useState(null);
     // { user, shops: [], loading, addShopId, addLoading }
+
+    // Delete user confirmation state
+    const [deleteModal,   setDeleteModal]   = useState(null); // user object
+    const [deletePwd,     setDeletePwd]     = useState('');
+    const [deletePwdShow, setDeletePwdShow] = useState(false);
+    const [deletePwdErr,  setDeletePwdErr]  = useState('');
+    const [deleteLoading, setDeleteLoading] = useState(false);
 
     const loadAll = useCallback(async () => {
         setLoading(true);
@@ -181,13 +188,27 @@ const UsersPage = () => {
     };
 
     /* ── Remove user ────────────────────────────────────────────── */
-    const handleDelete = async (u) => {
-        if (!window.confirm(`Remove "${u.name || u.mobile}" from the system? This will deactivate their account.`)) return;
+    const openDeleteModal = (u) => {
+        setDeleteModal(u);
+        setDeletePwd('');
+        setDeletePwdErr('');
+        setDeletePwdShow(false);
+    };
+
+    const handleDeleteConfirm = async (e) => {
+        e.preventDefault();
+        setDeleteLoading(true); setDeletePwdErr('');
         try {
-            await api.delete(`/users/${u.id}`);
+            await api.post('/auth/verify-password', { password: deletePwd });
+            await api.delete(`/users/${deleteModal.id}`);
+            setDeleteModal(null);
             loadAll();
             notify('User removed.', 'warn');
-        } catch (err) { notify(err.response?.data?.error || 'Error removing user', 'error'); }
+        } catch (err) {
+            const errMsg = err.response?.data?.error || 'Error';
+            if (errMsg === 'Incorrect password.') setDeletePwdErr(errMsg);
+            else { setDeleteModal(null); notify(errMsg, 'error'); }
+        } finally { setDeleteLoading(false); }
     };
 
     /* ── Manage shops modal ─────────────────────────────────────── */
@@ -568,7 +589,7 @@ const UsersPage = () => {
                                                     className="p-1.5 rounded-lg text-gray-400 hover:text-amber-500 hover:bg-amber-50 transition-colors">
                                                     <KeyRound className="h-3.5 w-3.5" />
                                                 </button>
-                                                <button onClick={() => handleDelete(u)} title="Remove user"
+                                                <button onClick={() => openDeleteModal(u)} title="Remove user"
                                                     className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors">
                                                     <Trash2 className="h-3.5 w-3.5" />
                                                 </button>
@@ -712,6 +733,57 @@ const UsersPage = () => {
                         </div>
                     </form>
                 </Modal>
+            )}
+
+            {/* ── Delete User Confirm Modal ────────────────────────── */}
+            {deleteModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                    style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+                        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
+                            <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                                <AlertTriangle className="h-4 w-4 text-red-600" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-bold text-gray-900">Remove User</h3>
+                                <p className="text-xs text-gray-400">{deleteModal.name || deleteModal.mobile}</p>
+                            </div>
+                        </div>
+                        <form onSubmit={handleDeleteConfirm} className="px-6 py-5 space-y-4">
+                            <p className="text-sm text-gray-600">
+                                Enter your admin password to confirm removal of this user.
+                            </p>
+                            <div className="relative">
+                                <input
+                                    type={deletePwdShow ? 'text' : 'password'}
+                                    className={inputCls + ' pr-10'}
+                                    placeholder="Your password"
+                                    value={deletePwd}
+                                    onChange={e => { setDeletePwd(e.target.value); setDeletePwdErr(''); }}
+                                    disabled={deleteLoading}
+                                    autoFocus
+                                    required
+                                />
+                                <button type="button" onClick={() => setDeletePwdShow(v => !v)}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                    {deletePwdShow ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                </button>
+                            </div>
+                            {deletePwdErr && <p className="text-xs text-red-500">{deletePwdErr}</p>}
+                            <div className="flex gap-3">
+                                <button type="button" onClick={() => setDeleteModal(null)} disabled={deleteLoading}
+                                    className="flex-1 py-2.5 border border-gray-200 text-sm font-semibold rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">
+                                    Cancel
+                                </button>
+                                <button type="submit" disabled={!deletePwd || deleteLoading}
+                                    className="flex-1 py-2.5 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-700 disabled:opacity-40 transition-colors flex items-center justify-center gap-2">
+                                    {deleteLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                    Remove User
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             )}
 
         </>)}
