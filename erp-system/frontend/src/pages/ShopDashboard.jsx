@@ -758,7 +758,7 @@ const ShopDashboard = () => {
                                 )}
 
                                 {/* No Sales Today checkbox */}
-                                {!isFormLocked && !excelLoaded && (
+                                {!isFormLocked && (!excelLoaded || noSalesToday) && (
                                     <label className="mt-2 flex items-center gap-2 cursor-pointer select-none w-fit">
                                         <input
                                             type="checkbox"
