@@ -1,0 +1,10 @@
+{
+  "name": "size24-erp-mcp",
+  "version": "1.0.0",
+  "description": "MCP server connecting Claude Desktop to SIZE24 ERP",
+  "type": "module",
+  "main": "index.js",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  }
+}
