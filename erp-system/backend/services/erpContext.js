@@ -10,10 +10,10 @@ async function buildContext() {
                     de.cash, de.online, de.razorpay, de.approval_status
              FROM daily_entries de
              JOIN shops s ON de.shop_id = s.id
-             LEFT JOIN users u ON de.submitted_by = u.id
+             LEFT JOIN users u ON de.created_by = u.id
              WHERE de.date = $1
              ORDER BY s.shop_name`,
-            [today]
+            [today],
         ),
         db.query(
             `SELECT s.shop_name, c.name AS city, s.wallet_balance
