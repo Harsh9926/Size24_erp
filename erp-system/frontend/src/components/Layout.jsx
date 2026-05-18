@@ -1,5 +1,6 @@
 import React, { useContext, useState } from 'react';
 import Sidebar from './Sidebar';
+import AIChat from './AIChat';
 import { AuthContext } from '../context/AuthContext';
 import { Menu } from 'lucide-react';
 
@@ -76,6 +77,9 @@ const Layout = ({ children, title }) => {
                     Powered by <span className="font-bold" style={{ color: '#FF6B00' }}>SIZE24</span> &middot; Smart Retail ERP System
                 </footer>
             </div>
+
+            {/* AI Chat — floating, admin & manager only */}
+            <AIChat />
         </div>
     );
 };
