@@ -14,8 +14,8 @@ export default function AIChat() {
     const bottomRef             = useRef(null);
     const inputRef              = useRef(null);
 
-    // Only show for admin / manager
-    if (!user || !['admin', 'manager'].includes(user.role)) return null;
+    // Only show when logged in
+    if (!user) return null;
 
     const scrollBottom = () => bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
 
@@ -55,7 +55,7 @@ export default function AIChat() {
                 onClick={() => setOpen(o => !o)}
                 title="AI Assistant"
                 style={{
-                    position: 'fixed', bottom: 24, right: 24, zIndex: 1000,
+                    position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
                     width: 52, height: 52, borderRadius: '50%',
                     background: 'linear-gradient(135deg, #FF6B00, #ff9a00)',
                     border: 'none', cursor: 'pointer', boxShadow: '0 4px 20px rgba(255,107,0,0.45)',
@@ -72,7 +72,7 @@ export default function AIChat() {
             {open && (
                 <div
                     style={{
-                        position: 'fixed', bottom: 86, right: 24, zIndex: 999,
+                        position: 'fixed', bottom: 86, right: 24, zIndex: 9998,
                         width: 340, maxWidth: 'calc(100vw - 48px)',
                         height: 480, maxHeight: 'calc(100vh - 120px)',
                         background: 'var(--bg-surface)',
