@@ -6,6 +6,7 @@ import {
     X, RefreshCw, Store, Calendar, ChevronRight,
     User, AlertCircle, Loader2, Search,
     ThumbsUp, ThumbsDown, Info, WifiOff,
+    FileSpreadsheet, ChevronDown, ChevronUp,
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -102,9 +103,24 @@ const DetailRow = ({ label, value, highlight }) => (
 const EntryDrawer = ({ entry, onClose, onApprove, onReject, actionLoading }) => {
     const [rejectNote,    setRejectNote]    = useState('');
     const [showRejectBox, setShowRejectBox] = useState(false);
+    const [excelData,     setExcelData]     = useState(null);
+    const [excelLoading,  setExcelLoading]  = useState(false);
+    const [showExcel,     setShowExcel]     = useState(false);
 
-    // Always reset reject box when entry changes
-    useEffect(() => { setRejectNote(''); setShowRejectBox(false); }, [entry?.id]);
+    // Always reset when entry changes
+    useEffect(() => {
+        setRejectNote('');
+        setShowRejectBox(false);
+        setExcelData(null);
+        setShowExcel(false);
+        if (!entry?.shop_id || !entry?.date) return;
+        setExcelLoading(true);
+        const dateStr = String(entry.date).split('T')[0];
+        api.get(`/excel/by-entry?shop_id=${entry.shop_id}&date=${dateStr}`)
+            .then(r => setExcelData(r.data))
+            .catch(() => setExcelData(null))
+            .finally(() => setExcelLoading(false));
+    }, [entry?.id]);
 
     // ── Null-guard: MUST be first conditional after hooks ──────────
     if (!entry) return null;
@@ -263,6 +279,83 @@ const EntryDrawer = ({ entry, onClose, onApprove, onReject, actionLoading }) => 
                             </a>
                         </div>
                     )}
+
+                    {/* Excel Sheet */}
+                    <div>
+                        <button
+                            onClick={() => setShowExcel(v => !v)}
+                            className="w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors"
+                            style={{
+                                background: showExcel ? 'rgba(16,185,129,0.06)' : 'var(--bg-primary)',
+                                borderColor: showExcel ? '#6ee7b7' : 'var(--border-color)',
+                                color: 'var(--text-primary)',
+                            }}
+                        >
+                            <div className="flex items-center gap-2">
+                                <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                                <span className="text-sm font-bold">
+                                    {excelLoading ? 'Excel Sheet Loading…' :
+                                     excelData ? `Excel Sheet — ${excelData.filename}` :
+                                     'Excel Sheet (Not Found)'}
+                                </span>
+                                {excelData && (
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-semibold">
+                                        {excelData.row_data?.length ?? 0} rows
+                                    </span>
+                                )}
+                            </div>
+                            {excelLoading
+                                ? <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
+                                : showExcel
+                                    ? <ChevronUp   className="h-4 w-4 text-gray-400" />
+                                    : <ChevronDown className="h-4 w-4 text-gray-400" />
+                            }
+                        </button>
+
+                        {showExcel && excelData?.row_data?.length > 0 && (() => {
+                            const cols = Object.keys(excelData.row_data[0]);
+                            return (
+                                <div className="mt-2 rounded-xl border overflow-hidden"
+                                    style={{ borderColor: 'var(--border-color)' }}>
+                                    <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                                        <table className="min-w-full text-xs">
+                                            <thead style={{ background: 'var(--bg-primary)', position: 'sticky', top: 0 }}>
+                                                <tr>
+                                                    {cols.map(c => (
+                                                        <th key={c}
+                                                            className="px-3 py-2 text-left font-bold uppercase tracking-wider whitespace-nowrap border-b"
+                                                            style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-color)' }}>
+                                                            {c}
+                                                        </th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {excelData.row_data.map((row, i) => (
+                                                    <tr key={i} style={{ borderTop: '1px solid var(--border-color)' }}>
+                                                        {cols.map(c => (
+                                                            <td key={c}
+                                                                className="px-3 py-1.5 whitespace-nowrap"
+                                                                style={{ color: 'var(--text-primary)' }}>
+                                                                {row[c] != null ? String(row[c]) : '—'}
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {showExcel && !excelData && !excelLoading && (
+                            <p className="mt-2 text-xs text-center py-4"
+                                style={{ color: 'var(--text-secondary)' }}>
+                                Is entry ke liye koi Excel upload nahi mili.
+                            </p>
+                        )}
+                    </div>
 
                     {/* Reject text area — shown when reject button first clicked */}
                     {showRejectBox && status === 'PENDING' && (

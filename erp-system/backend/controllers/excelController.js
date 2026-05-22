@@ -254,6 +254,28 @@ exports.getHistory = async (req, res) => {
     }
 };
 
+/* ── GET /api/excel/by-entry?shop_id=X&date=YYYY-MM-DD ─────────── */
+exports.getByEntry = async (req, res) => {
+    const { shop_id, date } = req.query;
+    if (!shop_id || !date) return res.status(400).json({ error: 'shop_id and date are required' });
+    try {
+        const result = await db.query(
+            `SELECT eu.id, eu.filename, eu.upload_date, eu.total_sale,
+                    eu.row_data, eu.created_at, u.name AS uploaded_by
+             FROM excel_uploads eu
+             LEFT JOIN users u ON u.id = eu.user_id
+             WHERE eu.shop_id = $1 AND eu.upload_date = $2
+             ORDER BY eu.created_at DESC
+             LIMIT 1`,
+            [parseInt(shop_id), date]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'No Excel upload found for this entry' });
+        res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 /* ── GET /api/excel/:id ─────────────────────────────────────────── */
 exports.getOne = async (req, res) => {
     try {
