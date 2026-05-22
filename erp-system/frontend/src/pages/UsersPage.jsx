@@ -58,6 +58,71 @@ const StatusToggle = ({ userId, status, loading, onToggle }) => {
     );
 };
 
+/* ── User table row ──────────────────────────────────────────────── */
+const UserRow = ({ u, toggling, onToggle, onManage, onEdit, onReset, onDelete }) => {
+    const isActive      = u.status === 'active';
+    const assignedShops = u.assigned_shops || [];
+    return (
+        <tr className={`border-t border-gray-100 transition-colors hover:bg-gray-50 ${!isActive ? 'opacity-50' : ''}`}>
+            <td className="px-5 py-3.5">
+                <p className="text-sm font-semibold text-gray-800 leading-tight">{u.name || '—'}</p>
+                <p className="text-xs text-gray-400 font-mono mt-0.5">{u.mobile}</p>
+            </td>
+            <td className="px-5 py-3.5">
+                <span className={`px-2 py-0.5 text-xs font-bold rounded-full border ${roleBadge[u.role] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                    {u.role?.replace('_', ' ')}
+                </span>
+            </td>
+            <td className="px-5 py-3.5">
+                {assignedShops.length === 0 ? (
+                    <button onClick={() => onManage(u)} title="Assign shops"
+                        className="text-xs text-gray-300 hover:text-teal-500 transition-colors">— add</button>
+                ) : (
+                    <button onClick={() => onManage(u)} title="Manage shops"
+                        className="flex items-center gap-1.5 text-left group">
+                        <span className="text-sm font-medium text-teal-600 group-hover:text-teal-700">
+                            {assignedShops[0].name}
+                        </span>
+                        {assignedShops.length > 1 && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold bg-teal-100 text-teal-700 rounded-full whitespace-nowrap">
+                                +{assignedShops.length - 1}
+                            </span>
+                        )}
+                    </button>
+                )}
+            </td>
+            <td className="px-5 py-3.5">
+                <div className="flex items-center gap-2.5">
+                    <StatusToggle userId={u.id} status={u.status} loading={toggling === u.id} onToggle={onToggle} />
+                    <span className={`text-xs font-semibold ${isActive ? 'text-green-600' : 'text-gray-400'}`}>
+                        {isActive ? 'Active' : 'Inactive'}
+                    </span>
+                </div>
+            </td>
+            <td className="px-5 py-3.5">
+                <div className="flex items-center gap-1">
+                    <button onClick={() => onManage(u)} title="Manage shops"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors">
+                        <Store className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => onEdit(u)} title="Edit user"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors">
+                        <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => onReset(u)} title="Reset password"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-amber-500 hover:bg-amber-50 transition-colors">
+                        <KeyRound className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => onDelete(u)} title="Remove user"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                        <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                </div>
+            </td>
+        </tr>
+    );
+};
+
 /* ══════════════════════════════════════════════════════════════════
    PAGE
 ══════════════════════════════════════════════════════════════════ */
@@ -284,6 +349,9 @@ const UsersPage = () => {
     const activeCount   = approved.filter(u => u.status === 'active').length;
     const inactiveCount = approved.length - activeCount;
 
+    const filteredActive   = filtered.filter(u => u.status === 'active');
+    const filteredInactive = filtered.filter(u => u.status !== 'active');
+
     // Shops already assigned in the manage modal (for excluding from "add" dropdown)
     const modalAssignedShopIds = new Set((manageModal?.shops || []).map(s => s.id));
 
@@ -503,7 +571,7 @@ const UsersPage = () => {
                                 ))}
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody>
                             {filtered.length === 0 && (
                                 <tr>
                                     <td colSpan="5" className="py-14 text-center text-sm text-gray-400">
@@ -511,93 +579,46 @@ const UsersPage = () => {
                                     </td>
                                 </tr>
                             )}
-                            {filtered.map(u => {
-                                const isActive      = u.status === 'active';
-                                const assignedShops = u.assigned_shops || [];
-                                return (
-                                    <tr key={u.id}
-                                        className={`transition-colors hover:bg-gray-50 ${!isActive ? 'opacity-55' : ''}`}>
 
-                                        {/* Name + Mobile */}
-                                        <td className="px-5 py-3.5">
-                                            <p className="text-sm font-semibold text-gray-800 leading-tight">
-                                                {u.name || '—'}
-                                            </p>
-                                            <p className="text-xs text-gray-400 font-mono mt-0.5">{u.mobile}</p>
-                                        </td>
+                            {/* ── Active users ── */}
+                            {filteredActive.length > 0 && (
+                                <tr>
+                                    <td colSpan="5" className="px-5 py-2 bg-green-50 border-y border-green-100">
+                                        <span className="text-[11px] font-bold text-green-700 uppercase tracking-wider">
+                                            Active — {filteredActive.length}
+                                        </span>
+                                    </td>
+                                </tr>
+                            )}
+                            {filteredActive.map(u => (
+                                <UserRow key={u.id} u={u}
+                                    toggling={toggling}
+                                    onToggle={handleToggleStatus}
+                                    onManage={openManageModal}
+                                    onEdit={openEdit}
+                                    onReset={(u) => { setResetUser(u); setNewPwd(''); }}
+                                    onDelete={openDeleteModal} />
+                            ))}
 
-                                        {/* Role badge */}
-                                        <td className="px-5 py-3.5">
-                                            <span className={`px-2 py-0.5 text-xs font-bold rounded-full border ${roleBadge[u.role] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                                                {u.role?.replace('_', ' ')}
-                                            </span>
-                                        </td>
-
-                                        {/* Shops — all assignments */}
-                                        <td className="px-5 py-3.5">
-                                            {assignedShops.length === 0 ? (
-                                                <button
-                                                    onClick={() => openManageModal(u)}
-                                                    className="text-xs text-gray-300 hover:text-teal-500 transition-colors"
-                                                    title="Assign shops">
-                                                    — add
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    onClick={() => openManageModal(u)}
-                                                    className="flex items-center gap-1.5 text-left group"
-                                                    title="Manage shops">
-                                                    <span className="text-sm font-medium text-teal-600 group-hover:text-teal-700">
-                                                        {assignedShops[0].name}
-                                                    </span>
-                                                    {assignedShops.length > 1 && (
-                                                        <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold bg-teal-100 text-teal-700 rounded-full whitespace-nowrap">
-                                                            +{assignedShops.length - 1}
-                                                        </span>
-                                                    )}
-                                                </button>
-                                            )}
-                                        </td>
-
-                                        {/* Status toggle */}
-                                        <td className="px-5 py-3.5">
-                                            <div className="flex items-center gap-2.5">
-                                                <StatusToggle
-                                                    userId={u.id}
-                                                    status={u.status}
-                                                    loading={toggling === u.id}
-                                                    onToggle={handleToggleStatus}
-                                                />
-                                                <span className={`text-xs font-semibold ${isActive ? 'text-green-600' : 'text-gray-400'}`}>
-                                                    {isActive ? 'Active' : 'Inactive'}
-                                                </span>
-                                            </div>
-                                        </td>
-
-                                        {/* Actions */}
-                                        <td className="px-5 py-3.5">
-                                            <div className="flex items-center gap-1">
-                                                <button onClick={() => openManageModal(u)} title="Manage shops"
-                                                    className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors">
-                                                    <Store className="h-3.5 w-3.5" />
-                                                </button>
-                                                <button onClick={() => openEdit(u)} title="Edit user"
-                                                    className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors">
-                                                    <Pencil className="h-3.5 w-3.5" />
-                                                </button>
-                                                <button onClick={() => { setResetUser(u); setNewPwd(''); }} title="Reset password"
-                                                    className="p-1.5 rounded-lg text-gray-400 hover:text-amber-500 hover:bg-amber-50 transition-colors">
-                                                    <KeyRound className="h-3.5 w-3.5" />
-                                                </button>
-                                                <button onClick={() => openDeleteModal(u)} title="Remove user"
-                                                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors">
-                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
+                            {/* ── Inactive users ── */}
+                            {filteredInactive.length > 0 && (
+                                <tr>
+                                    <td colSpan="5" className="px-5 py-2 bg-gray-100 border-y border-gray-200">
+                                        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                                            Inactive — {filteredInactive.length}
+                                        </span>
+                                    </td>
+                                </tr>
+                            )}
+                            {filteredInactive.map(u => (
+                                <UserRow key={u.id} u={u}
+                                    toggling={toggling}
+                                    onToggle={handleToggleStatus}
+                                    onManage={openManageModal}
+                                    onEdit={openEdit}
+                                    onReset={(u) => { setResetUser(u); setNewPwd(''); }}
+                                    onDelete={openDeleteModal} />
+                            ))}
                         </tbody>
                     </table>
                 </div>
