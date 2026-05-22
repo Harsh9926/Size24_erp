@@ -1,4 +1,5 @@
-const db = require('../config/db');
+const db  = require('../config/db');
+const msg = require('../services/msg91Service');
 
 /*
  * FIELD CONTRACT
@@ -429,6 +430,18 @@ exports.approveEntry = async (req, res) => {
 
         await client.query('COMMIT');
 
+        // Notify shop user via WhatsApp (fire-and-forget)
+        try {
+            const shopRes = await db.query(
+                `SELECT u.mobile FROM shops s JOIN users u ON u.id = s.user_id WHERE s.id = $1`,
+                [entry.shop_id],
+            );
+            if (shopRes.rows[0]?.mobile) {
+                const dateStr = String(entry.date).split('T')[0];
+                msg.notifyEntryApproved(shopRes.rows[0].mobile, entry.shop_id, dateStr, parseFloat(entry.total_sale || 0).toFixed(2)).catch(() => {});
+            }
+        } catch { /* notification errors must never break the response */ }
+
         res.json({ message: 'Entry approved successfully.', entry: updated.rows[0] });
     } catch (err) {
         await client.query('ROLLBACK');
@@ -496,6 +509,19 @@ exports.rejectEntry = async (req, res) => {
         );
 
         await client.query('COMMIT');
+
+        // Notify shop user via WhatsApp (fire-and-forget)
+        try {
+            const shopRes = await db.query(
+                `SELECT u.mobile FROM shops s JOIN users u ON u.id = s.user_id WHERE s.id = $1`,
+                [entry.shop_id],
+            );
+            if (shopRes.rows[0]?.mobile) {
+                const dateStr = String(entry.date).split('T')[0];
+                msg.notifyEntryRejected(shopRes.rows[0].mobile, entry.shop_id, dateStr, rejection_note || '').catch(() => {});
+            }
+        } catch { /* notification errors must never break the response */ }
+
         res.json({ message: 'Entry rejected.', entry: result.rows[0] });
     } catch (err) {
         await client.query('ROLLBACK');
@@ -554,6 +580,99 @@ exports.deleteEntry = async (req, res) => {
     } finally {
         client.release();
     }
+};
+
+// ─────────────────────────────────────────────────────────────────
+// BULK APPROVE / REJECT  (admin / manager)
+// Body: { ids: number[], action: 'approve'|'reject', rejection_note?: string }
+// ─────────────────────────────────────────────────────────────────
+exports.bulkAction = async (req, res) => {
+    const { ids, action, rejection_note } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0)
+        return res.status(400).json({ error: 'ids array is required' });
+    if (!['approve', 'reject'].includes(action))
+        return res.status(400).json({ error: 'action must be approve or reject' });
+
+    const succeeded = [];
+    const failed    = [];
+
+    for (const id of ids) {
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const entryResult = await client.query(
+                'SELECT * FROM daily_entries WHERE id = $1 FOR UPDATE', [id],
+            );
+            if (entryResult.rows.length === 0) {
+                await client.query('ROLLBACK');
+                failed.push({ id, error: 'Not found' });
+                continue;
+            }
+            const entry = entryResult.rows[0];
+
+            if (entry.approval_status !== 'PENDING') {
+                await client.query('ROLLBACK');
+                failed.push({ id, error: `Already ${entry.approval_status}` });
+                continue;
+            }
+
+            if (action === 'approve') {
+                const updated = await client.query(
+                    `UPDATE daily_entries
+                     SET approval_status = 'APPROVED', approved_by = $1,
+                         approved_at = NOW(), rejection_note = NULL, locked = true
+                     WHERE id = $2 RETURNING *`,
+                    [req.user.id, id],
+                );
+                if (!entry.wallet_credited) {
+                    await client.query(
+                        'UPDATE shops SET wallet_balance = COALESCE(wallet_balance,0) + $1 WHERE id = $2',
+                        [parseFloat(entry.cash || 0), entry.shop_id],
+                    );
+                }
+                await client.query(
+                    `INSERT INTO audit_logs (table_name,record_id,old_value,new_value,edited_by)
+                     VALUES ('daily_entries',$1,$2::jsonb,$3::jsonb,$4)`,
+                    [id, JSON.stringify(entry), JSON.stringify(updated.rows[0]), req.user.id],
+                );
+            } else {
+                const updated = await client.query(
+                    `UPDATE daily_entries
+                     SET approval_status = 'REJECTED', approved_by = $1,
+                         approved_at = NOW(), rejection_note = $2
+                     WHERE id = $3 RETURNING *`,
+                    [req.user.id, rejection_note || null, id],
+                );
+                if (entry.wallet_credited) {
+                    await client.query(
+                        'UPDATE shops SET wallet_balance = COALESCE(wallet_balance,0) - $1 WHERE id = $2',
+                        [parseFloat(entry.cash || 0), entry.shop_id],
+                    );
+                }
+                await client.query(
+                    `INSERT INTO audit_logs (table_name,record_id,old_value,new_value,edited_by)
+                     VALUES ('daily_entries',$1,$2::jsonb,$3::jsonb,$4)`,
+                    [id, JSON.stringify(entry), JSON.stringify(updated.rows[0]), req.user.id],
+                );
+            }
+
+            await client.query('COMMIT');
+            succeeded.push(id);
+        } catch (err) {
+            await client.query('ROLLBACK');
+            failed.push({ id, error: err.message });
+        } finally {
+            client.release();
+        }
+    }
+
+    res.json({
+        message: `Bulk ${action}: ${succeeded.length} succeeded, ${failed.length} failed`,
+        success: succeeded.length,
+        failed:  failed.length,
+        errors:  failed,
+    });
 };
 
 // ─────────────────────────────────────────────────────────────────

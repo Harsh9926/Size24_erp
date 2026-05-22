@@ -7,7 +7,8 @@ import {
     Calendar, Pencil, Save, Wallet, Calculator,
 } from 'lucide-react';
 import {
-    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+    PieChart, Pie, Cell,
 } from 'recharts';
 
 /* ─── tiny helpers ─────────────────────────────────────────────── */
@@ -552,6 +553,64 @@ const AdminDashboard = () => {
                         </ResponsiveContainer>
                     )}
             </div>
+
+            {/* ── Payment Breakdown Pie Chart ────────────────────── */}
+            {!loading && (data.totalCash > 0 || data.totalOnline > 0) && (() => {
+                const totalCash    = Number(data.totalCash    || 0);
+                const totalOnline  = Number(data.totalOnline  || 0);
+                const totalRazorpay= Number(data.totalRazorpay|| 0);
+                const pieData = [
+                    { name: 'Cash',         value: totalCash,     color: '#10b981' },
+                    { name: 'QR/Card/Bank', value: totalOnline,   color: '#6366f1' },
+                    { name: 'Razorpay',     value: totalRazorpay, color: '#f59e0b' },
+                ].filter(d => d.value > 0);
+                const grandTotal = pieData.reduce((s, d) => s + d.value, 0);
+
+                return (
+                    <div className="rounded-xl shadow-sm border p-4 sm:p-6 mb-6 flex flex-col sm:flex-row items-center gap-6"
+                        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                        <div className="flex-shrink-0">
+                            <h3 className="text-base font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
+                                Payment Breakdown
+                            </h3>
+                            <PieChart width={200} height={200}>
+                                <Pie data={pieData} cx={100} cy={100} innerRadius={55} outerRadius={90}
+                                    dataKey="value" paddingAngle={3}>
+                                    {pieData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                                </Pie>
+                                <Tooltip formatter={v => fmt(v)} contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '8px' }} />
+                            </PieChart>
+                        </div>
+                        <div className="flex-1 space-y-3 w-full">
+                            {pieData.map(d => (
+                                <div key={d.name}>
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <span className="font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                                            <span className="inline-block w-3 h-3 rounded-full" style={{ background: d.color }} />
+                                            {d.name}
+                                        </span>
+                                        <span className="font-bold" style={{ color: d.color }}>
+                                            {fmt(d.value)} &nbsp;
+                                            <span className="text-xs font-normal text-gray-400">
+                                                ({((d.value / grandTotal) * 100).toFixed(1)}%)
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <div className="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
+                                        <div className="h-2 rounded-full transition-all"
+                                            style={{ width: `${(d.value / grandTotal) * 100}%`, background: d.color }} />
+                                    </div>
+                                </div>
+                            ))}
+                            <div className="pt-2 border-t flex justify-between text-sm font-bold"
+                                style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+                                <span>Total</span>
+                                <span>{fmt(grandTotal)}</span>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* ── Entries Table ──────────────────────────────────── */}
             <div className="rounded-xl shadow-sm border overflow-hidden" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>

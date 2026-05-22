@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import Layout from '../components/Layout';
 import {
     Wallet, TrendingUp, ArrowUpRight, Building2,
-    ArrowLeft, RefreshCw, CheckCircle2,
+    ArrowLeft, RefreshCw, CheckCircle2, ArrowDownCircle, ArrowUpCircle,
+    BookOpen, Table2,
 } from 'lucide-react';
 
 /* ── Flow type badge ─────────────────────────────────────────────── */
@@ -34,12 +35,17 @@ const StatusChip = ({ status }) => {
     );
 };
 
+/* ── Passbook row helper ─────────────────────────────────────────── */
+const isCredited = (row) => row.flow_type === 'user_to_manager';
+const isSettled  = (row) => ['accepted', 'approved'].includes(row.status);
+
 /* ── Page ─────────────────────────────────────────────────────────── */
 const AdminManagerProfilePage = () => {
     const { id }       = useParams();
     const navigate     = useNavigate();
     const [data,      setData]      = useState(null);
     const [loading,   setLoading]   = useState(true);
+    const [view,      setView]      = useState('passbook'); // 'passbook' | 'table'
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -64,6 +70,20 @@ const AdminManagerProfilePage = () => {
     );
 
     const { manager, summary, history } = data;
+
+    /* Build passbook rows with running balance (oldest → newest) */
+    const passbookRows = useMemo(() => {
+        const sorted = [...history].sort(
+            (a, b) => new Date(a.created_at) - new Date(b.created_at)
+        );
+        let balance = 0;
+        return sorted.map((row) => {
+            const credit = isCredited(row);
+            const settled = isSettled(row);
+            if (settled) balance += credit ? +row.amount : -row.amount;
+            return { ...row, credit, settled, runningBalance: balance };
+        });
+    }, [history]);
 
     const summaryCards = [
         {
@@ -163,64 +183,180 @@ const AdminManagerProfilePage = () => {
             {/* ── Transaction History ──────────────────────────────── */}
             <div className="rounded-xl border shadow-sm overflow-hidden"
                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-                <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--border-color)' }}>
-                    <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-                        Transaction History
-                    </h3>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                        Full cash trail: User → Manager → Admin / Bank
-                    </p>
+
+                {/* Header + view toggle */}
+                <div className="px-6 py-4 border-b flex items-center justify-between flex-wrap gap-3"
+                    style={{ borderColor: 'var(--border-color)' }}>
+                    <div>
+                        <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+                            Transaction History
+                        </h3>
+                        <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                            Full cash trail: User → Manager → Admin / Bank
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-1 rounded-lg p-1 border"
+                        style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                        <button onClick={() => setView('passbook')}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${view === 'passbook' ? 'text-white shadow' : ''}`}
+                            style={view === 'passbook' ? { background: '#FF6B00' } : { color: 'var(--text-secondary)' }}>
+                            <BookOpen className="h-3.5 w-3.5" />Passbook
+                        </button>
+                        <button onClick={() => setView('table')}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${view === 'table' ? 'text-white shadow' : ''}`}
+                            style={view === 'table' ? { background: '#FF6B00' } : { color: 'var(--text-secondary)' }}>
+                            <Table2 className="h-3.5 w-3.5" />Table
+                        </button>
+                    </div>
                 </div>
-                <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
-                        <thead style={{ background: 'var(--bg-primary)' }}>
-                            <tr>
-                                {['Type', 'Amount', 'From', 'To', 'Status', 'Receipt', 'Note', 'Date'].map(h => (
-                                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
-                                        style={{ color: 'var(--text-secondary)' }}>{h}</th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {history.map((row, i) => (
-                                <tr key={i} style={{ borderTop: '1px solid var(--border-color)' }}>
-                                    <td className="px-4 py-3"><FlowBadge type={row.flow_type} /></td>
-                                    <td className="px-4 py-3 font-bold text-emerald-600">
-                                        ₹{parseFloat(row.amount).toLocaleString('en-IN')}
-                                    </td>
-                                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-primary)' }}>
-                                        {row.from_name || '—'}
-                                    </td>
-                                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-primary)' }}>
-                                        {row.to_name || '—'}
-                                    </td>
-                                    <td className="px-4 py-3"><StatusChip status={row.status} /></td>
-                                    <td className="px-4 py-3">
-                                        {row.receipt_url
-                                            ? <a href={row.receipt_url} target="_blank" rel="noreferrer"
-                                                className="text-xs text-blue-600 hover:underline">View</a>
-                                            : <span className="text-xs text-gray-400">—</span>}
-                                    </td>
-                                    <td className="px-4 py-3 text-xs max-w-[120px] truncate"
-                                        style={{ color: 'var(--text-secondary)' }} title={row.note}>
-                                        {row.note || '—'}
-                                    </td>
-                                    <td className="px-4 py-3 text-xs whitespace-nowrap"
-                                        style={{ color: 'var(--text-secondary)' }}>
-                                        {new Date(row.created_at).toLocaleDateString('en-IN')}
-                                    </td>
-                                </tr>
-                            ))}
-                            {history.length === 0 && (
+
+                {/* ── PASSBOOK VIEW ─────────────────────────────────── */}
+                {view === 'passbook' && (
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead style={{ background: 'var(--bg-primary)' }}>
                                 <tr>
-                                    <td colSpan={8} className="text-center py-12 text-gray-400">
-                                        No transactions yet.
-                                    </td>
+                                    {['Date', 'Description', 'Ref / Note', 'Credit (+)', 'Debit (−)', 'Balance'].map(h => (
+                                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
+                                            style={{ color: 'var(--text-secondary)' }}>{h}</th>
+                                    ))}
                                 </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                            </thead>
+                            <tbody>
+                                {passbookRows.map((row, i) => {
+                                    const amt = parseFloat(row.amount);
+                                    const bal = row.runningBalance;
+                                    const fmtAmt = `₹${amt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                                    const fmtBal = `₹${Math.abs(bal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                                    return (
+                                        <tr key={i}
+                                            className={`transition-colors ${!row.settled ? 'opacity-60' : ''}`}
+                                            style={{ borderTop: '1px solid var(--border-color)', background: i % 2 === 0 ? 'transparent' : 'var(--bg-primary)' }}>
+
+                                            {/* Date */}
+                                            <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                                                <div>{new Date(row.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+                                                <div className="text-[10px] opacity-60">{new Date(row.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
+                                            </td>
+
+                                            {/* Description */}
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center gap-2">
+                                                    {row.credit
+                                                        ? <ArrowDownCircle className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                                                        : <ArrowUpCircle   className="h-4 w-4 text-red-400    flex-shrink-0" />
+                                                    }
+                                                    <div>
+                                                        <FlowBadge type={row.flow_type} />
+                                                        {!row.settled && (
+                                                            <span className="ml-1.5 text-[10px] font-bold text-amber-500 uppercase">pending</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="text-xs mt-1 ml-6" style={{ color: 'var(--text-secondary)' }}>
+                                                    {row.from_name && row.to_name ? `${row.from_name} → ${row.to_name}` : row.from_name || row.to_name || ''}
+                                                </div>
+                                            </td>
+
+                                            {/* Note / Receipt */}
+                                            <td className="px-4 py-3 text-xs max-w-[120px]" style={{ color: 'var(--text-secondary)' }}>
+                                                {row.note && <div className="truncate" title={row.note}>{row.note}</div>}
+                                                {row.receipt_url && (
+                                                    <a href={row.receipt_url} target="_blank" rel="noreferrer"
+                                                        className="text-blue-500 hover:underline">Receipt</a>
+                                                )}
+                                                {!row.note && !row.receipt_url && '—'}
+                                            </td>
+
+                                            {/* Credit */}
+                                            <td className="px-4 py-3 font-bold text-emerald-600 text-right">
+                                                {row.credit && row.settled ? fmtAmt : ''}
+                                            </td>
+
+                                            {/* Debit */}
+                                            <td className="px-4 py-3 font-bold text-red-500 text-right">
+                                                {!row.credit && row.settled ? fmtAmt : ''}
+                                            </td>
+
+                                            {/* Running Balance */}
+                                            <td className="px-4 py-3 text-right">
+                                                {row.settled ? (
+                                                    <span className={`font-extrabold text-sm ${bal >= 0 ? 'text-orange-600' : 'text-red-600'}`}>
+                                                        {fmtBal}
+                                                        <span className="text-[10px] font-semibold ml-0.5">{bal >= 0 ? 'Cr' : 'Dr'}</span>
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs text-gray-400">—</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                {passbookRows.length === 0 && (
+                                    <tr>
+                                        <td colSpan={6} className="text-center py-12 text-gray-400">
+                                            No transactions yet.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {/* ── TABLE VIEW ───────────────────────────────────── */}
+                {view === 'table' && (
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead style={{ background: 'var(--bg-primary)' }}>
+                                <tr>
+                                    {['Type', 'Amount', 'From', 'To', 'Status', 'Receipt', 'Note', 'Date'].map(h => (
+                                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
+                                            style={{ color: 'var(--text-secondary)' }}>{h}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {history.map((row, i) => (
+                                    <tr key={i} style={{ borderTop: '1px solid var(--border-color)' }}>
+                                        <td className="px-4 py-3"><FlowBadge type={row.flow_type} /></td>
+                                        <td className={`px-4 py-3 font-bold ${isCredited(row) ? 'text-emerald-600' : 'text-red-500'}`}>
+                                            {isCredited(row) ? '+' : '−'}₹{parseFloat(row.amount).toLocaleString('en-IN')}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-primary)' }}>
+                                            {row.from_name || '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-primary)' }}>
+                                            {row.to_name || '—'}
+                                        </td>
+                                        <td className="px-4 py-3"><StatusChip status={row.status} /></td>
+                                        <td className="px-4 py-3">
+                                            {row.receipt_url
+                                                ? <a href={row.receipt_url} target="_blank" rel="noreferrer"
+                                                    className="text-xs text-blue-600 hover:underline">View</a>
+                                                : <span className="text-xs text-gray-400">—</span>}
+                                        </td>
+                                        <td className="px-4 py-3 text-xs max-w-[120px] truncate"
+                                            style={{ color: 'var(--text-secondary)' }} title={row.note}>
+                                            {row.note || '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-xs whitespace-nowrap"
+                                            style={{ color: 'var(--text-secondary)' }}>
+                                            {new Date(row.created_at).toLocaleDateString('en-IN')}
+                                        </td>
+                                    </tr>
+                                ))}
+                                {history.length === 0 && (
+                                    <tr>
+                                        <td colSpan={8} className="text-center py-12 text-gray-400">
+                                            No transactions yet.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         </Layout>
     );

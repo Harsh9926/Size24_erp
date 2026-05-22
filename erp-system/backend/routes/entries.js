@@ -9,6 +9,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 // ── Admin-only named routes ───────────────────────────────────────
 router.get(  '/pending',      authenticateToken, requireRole('admin', 'manager'), ctrl.getPendingEntries);
 router.get(  '/today-status', authenticateToken, requireRole('admin', 'manager'), ctrl.getTodayStatus);
+router.post( '/bulk-action',  authenticateToken, requireRole('admin', 'manager'), ctrl.bulkAction);
 
 // ── Shop user / general ───────────────────────────────────────────
 router.get( '/',              authenticateToken, ctrl.getEntries);

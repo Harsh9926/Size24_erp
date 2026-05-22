@@ -69,6 +69,7 @@ app.use('/api/transfers',          require('./routes/transfer'));
 app.use('/api/manager-transfers',  require('./routes/managerTransfers'));
 app.use('/api/ai',                 require('./routes/ai'));
 app.use('/api/mcp',                require('./routes/mcp'));
+app.use('/api/expenses',           require('./routes/expenses'));
 
 // ── 404 handler — catches any unknown /api/* path ────────────────
 app.use('/api/*path', (req, res) => {

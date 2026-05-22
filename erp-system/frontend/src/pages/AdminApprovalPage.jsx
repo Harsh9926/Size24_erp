@@ -436,12 +436,16 @@ const TABS = [
 const AdminApprovalPage = () => {
     const [entries,       setEntries]       = useState([]);
     const [loading,       setLoading]       = useState(true);
-    const [apiError,      setApiError]      = useState(false); // true = using mock data
+    const [apiError,      setApiError]      = useState(false);
     const [activeTab,     setActiveTab]     = useState('PENDING');
     const [selectedEntry, setSelectedEntry] = useState(null);
     const [actionLoading, setActionLoading] = useState(false);
     const [search,        setSearch]        = useState('');
     const [toast,         setToast]         = useState(null);
+
+    // Bulk select state
+    const [selectedIds,   setSelectedIds]   = useState(new Set());
+    const [bulkLoading,   setBulkLoading]   = useState(false);
 
     /* ── Normalise all entries from API ─────────────────────────── */
     const normalizeEntries = (raw) =>
@@ -504,6 +508,47 @@ const AdminApprovalPage = () => {
             setToast({ msg: e?.response?.data?.error ?? 'Rejection failed.', type: 'error' });
         } finally {
             setActionLoading(false);
+        }
+    };
+
+    /* ── Bulk actions ───────────────────────────────────────────── */
+    const pendingFiltered = useMemo(() =>
+        entries.filter(e => normalizeStatus(e.approval_status) === 'PENDING'),
+    [entries]);
+
+    const toggleSelect = (id, e) => {
+        e.stopPropagation();
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        const pendingIds = filtered.filter(e => normalizeStatus(e.approval_status) === 'PENDING').map(e => e.id);
+        if (pendingIds.every(id => selectedIds.has(id))) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(pendingIds));
+        }
+    };
+
+    const handleBulkAction = async (action) => {
+        const ids = [...selectedIds];
+        if (!ids.length) return;
+        const label = action === 'approve' ? 'Approve' : 'Reject';
+        if (!window.confirm(`${label} ${ids.length} selected entr${ids.length === 1 ? 'y' : 'ies'}?`)) return;
+        setBulkLoading(true);
+        try {
+            const res = await api.post('/entries/bulk-action', { ids, action });
+            setToast({ msg: `${res.data.message}`, type: action === 'approve' ? 'success' : 'error' });
+            setSelectedIds(new Set());
+            fetchEntries();
+        } catch (e) {
+            setToast({ msg: e?.response?.data?.error ?? 'Bulk action failed.', type: 'error' });
+        } finally {
+            setBulkLoading(false);
         }
     };
 
@@ -638,7 +683,30 @@ const AdminApprovalPage = () => {
                 {activeTab === 'PENDING' && pendingCount > 0 && (
                     <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
                         <Info className="h-4 w-4 flex-shrink-0" />
-                        Click any row to open entry details and Approve or Reject it.
+                        Click any row to open entry details, or use checkboxes to bulk approve/reject.
+                    </div>
+                )}
+
+                {/* ── Bulk Action Bar ─────────────────────────────── */}
+                {activeTab === 'PENDING' && selectedIds.size > 0 && (
+                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-indigo-200 bg-indigo-50 flex-wrap">
+                        <span className="text-sm font-bold text-indigo-700">
+                            {selectedIds.size} selected
+                        </span>
+                        <button onClick={() => handleBulkAction('approve')} disabled={bulkLoading}
+                            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 transition-colors">
+                            <ThumbsUp className="h-3.5 w-3.5" />
+                            {bulkLoading ? 'Processing…' : `Approve All (${selectedIds.size})`}
+                        </button>
+                        <button onClick={() => handleBulkAction('reject')} disabled={bulkLoading}
+                            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-colors">
+                            <ThumbsDown className="h-3.5 w-3.5" />
+                            {bulkLoading ? 'Processing…' : `Reject All (${selectedIds.size})`}
+                        </button>
+                        <button onClick={() => setSelectedIds(new Set())}
+                            className="ml-auto text-xs text-gray-500 hover:text-gray-700 underline">
+                            Clear selection
+                        </button>
                     </div>
                 )}
 
@@ -655,6 +723,16 @@ const AdminApprovalPage = () => {
                             <table className="min-w-full text-sm">
                                 <thead style={{ background: 'var(--bg-primary)' }}>
                                     <tr>
+                                        {/* Checkbox column — only on PENDING tab */}
+                                        {activeTab === 'PENDING' && (
+                                            <th className="px-3 py-3 w-8">
+                                                <input type="checkbox"
+                                                    className="rounded cursor-pointer"
+                                                    checked={filtered.filter(e => normalizeStatus(e.approval_status) === 'PENDING').length > 0 &&
+                                                             filtered.filter(e => normalizeStatus(e.approval_status) === 'PENDING').every(e => selectedIds.has(e.id))}
+                                                    onChange={toggleSelectAll} />
+                                            </th>
+                                        )}
                                         {[
                                             'Date', 'Shop', 'Total Sale', 'Cash',
                                             'RazorPay', 'QR/Card/Bank', 'Breakdown', 'Match',
@@ -676,13 +754,26 @@ const AdminApprovalPage = () => {
                                             parseFloat(entry.cash     ?? 0) +
                                             parseFloat(entry.online   ?? entry.paytm ?? 0) +
                                             parseFloat(entry.razorpay ?? 0);
-                                        const isMatch = Math.abs(breakdownSum - excelTotal) <= 0.01;
+                                        const isMatch   = Math.abs(breakdownSum - excelTotal) <= 0.01;
+                                        const isChecked = selectedIds.has(entry.id);
 
                                         return (
                                             <tr key={entry.id ?? Math.random()}
                                                 onClick={() => setSelectedEntry({ ...entry, approval_status: status })}
-                                                className="cursor-pointer hover:opacity-90 transition-all group"
+                                                className={`cursor-pointer hover:opacity-90 transition-all group ${isChecked ? 'bg-indigo-50/60' : ''}`}
                                                 style={{ borderTop: '1px solid var(--border-color)' }}>
+
+                                                {/* Checkbox — only on PENDING tab */}
+                                                {activeTab === 'PENDING' && (
+                                                    <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                                                        {status === 'PENDING' && (
+                                                            <input type="checkbox"
+                                                                className="rounded cursor-pointer"
+                                                                checked={isChecked}
+                                                                onChange={e => toggleSelect(entry.id, e)} />
+                                                        )}
+                                                    </td>
+                                                )}
 
                                                 <td className="px-4 py-3.5 font-medium whitespace-nowrap"
                                                     style={{ color: 'var(--text-primary)' }}>

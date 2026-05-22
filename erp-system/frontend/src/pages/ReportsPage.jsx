@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import Layout from '../components/Layout';
-import { Download, FileText } from 'lucide-react';
+import { Download, FileText, FileSpreadsheet } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 
 const ReportsPage = () => {
     const [filters, setFilters] = useState({ from_date: '', to_date: '', shop_id: '', city_id: '' });
@@ -80,6 +81,28 @@ const ReportsPage = () => {
         doc.save('SIZE24_ERP_Report.pdf');
     };
 
+    const downloadExcel = () => {
+        const rows = reportData.map(r => ({
+            Date:        r.date?.split('T')[0],
+            Shop:        r.shop_name,
+            City:        r.city_name,
+            Status:      r.approval_status,
+            'Total Sale':parseFloat(r.total_sale || 0),
+            Cash:        parseFloat(r.cash || 0),
+            'QR/Card/Bank': parseFloat(r.online || 0),
+            Razorpay:    parseFloat(r.razorpay || 0),
+            Expense:     parseFloat(r.expense || 0),
+            Difference:  parseFloat(r.difference || 0),
+        }));
+        const ws = XLSX.utils.json_to_sheet(rows);
+        // Set column widths
+        ws['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 16 }, { wch: 10 },
+                       { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'ERP Report');
+        XLSX.writeFile(wb, `SIZE24_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
+
     const inputCls = "px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white";
 
     return (
@@ -126,11 +149,15 @@ const ReportsPage = () => {
                             <div className="flex items-center gap-2">
                                 <button onClick={downloadCSV}
                                     className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors">
-                                    <Download className="h-3.5 w-3.5" /> Download CSV
+                                    <Download className="h-3.5 w-3.5" /> CSV
+                                </button>
+                                <button onClick={downloadExcel}
+                                    className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors">
+                                    <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
                                 </button>
                                 <button onClick={downloadPDF}
                                     className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors">
-                                    <FileText className="h-3.5 w-3.5" /> Download PDF
+                                    <FileText className="h-3.5 w-3.5" /> PDF
                                 </button>
                             </div>
                         </div>
