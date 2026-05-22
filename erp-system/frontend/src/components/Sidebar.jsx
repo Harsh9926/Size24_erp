@@ -6,7 +6,7 @@ import {
     Banknote, LogOut, ChevronRight,
     BarChart3, Sun, Moon, FileUp, ShieldCheck, PlusCircle,
     KeyRound, Eye, EyeOff, X, CheckCircle2, AlertCircle,
-    Wallet, Receipt,
+    Wallet, Receipt, TriangleAlert,
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -18,6 +18,7 @@ const adminLinks = [
     { to: '/admin/entries',        label: 'Entries',       icon: ClipboardList },
     { to: '/admin/expenses',       label: 'Expenses',      icon: Receipt },
     { to: '/admin/manager-funds',  label: 'Manager Funds', icon: Wallet },
+    { to: '/admin/anomalies',      label: 'Anomalies',     icon: TriangleAlert },
     { to: '/admin/reports',        label: 'Reports',       icon: BarChart3 },
     { to: '/admin/new-entry',      label: 'New Entry',     icon: PlusCircle },
 ];
@@ -27,6 +28,7 @@ const managerLinks = [
     { to: '/admin/approvals',       label: 'Approvals',     icon: ShieldCheck },
     { to: '/admin/entries',         label: 'Entries',       icon: ClipboardList },
     { to: '/admin/expenses',        label: 'Expenses',      icon: Receipt },
+    { to: '/admin/anomalies',       label: 'Anomalies',     icon: TriangleAlert },
     { to: '/manager/cash-transfer', label: 'Cash Transfer', icon: Banknote },
 ];
 

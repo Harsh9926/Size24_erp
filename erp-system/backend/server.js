@@ -1,11 +1,14 @@
 require('dotenv').config();
-const express = require('express');
-const cors    = require('cors');
-const path    = require('path');
-const cron    = require('node-cron');
-const db      = require('./config/db');
+const express  = require('express');
+const http     = require('http');
+const { Server: SocketServer } = require('socket.io');
+const cors     = require('cors');
+const path     = require('path');
+const cron     = require('node-cron');
+const db       = require('./config/db');
 
-const app = express();
+const app        = express();
+const httpServer = http.createServer(app);
 
 // ── CORS ─────────────────────────────────────────────────────────
 // Set CORS_ORIGIN in .env as a comma-separated list of allowed origins.
@@ -29,9 +32,8 @@ const allowedOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
     : defaultOrigins;
 
-app.use(cors({
+const corsOptions = {
     origin: (origin, cb) => {
-        // Allow requests with no Origin header (mobile apps, curl, Postman)
         if (!origin) return cb(null, true);
         if (allowedOrigins.includes(origin)) return cb(null, true);
         cb(new Error(`CORS: origin '${origin}' not allowed`));
@@ -39,7 +41,17 @@ app.use(cors({
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+};
+app.use(cors(corsOptions));
+
+/* ── Socket.io ───────────────────────────────────────────────────── */
+const io = new SocketServer(httpServer, { cors: corsOptions });
+app.set('io', io);   // controllers access via req.app.get('io')
+
+io.on('connection', (socket) => {
+    console.log(`[Socket] connected: ${socket.id}`);
+    socket.on('disconnect', () => console.log(`[Socket] disconnected: ${socket.id}`));
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -70,6 +82,7 @@ app.use('/api/manager-transfers',  require('./routes/managerTransfers'));
 app.use('/api/ai',                 require('./routes/ai'));
 app.use('/api/mcp',                require('./routes/mcp'));
 app.use('/api/expenses',           require('./routes/expenses'));
+app.use('/api/anomalies',          require('./routes/anomalies'));
 
 // ── 404 handler — catches any unknown /api/* path ────────────────
 app.use('/api/*path', (req, res) => {
@@ -100,7 +113,7 @@ cron.schedule('0 0 * * *', async () => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, async () => {
+httpServer.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Allowed CORS origins: ${allowedOrigins.join(', ')}`);
 

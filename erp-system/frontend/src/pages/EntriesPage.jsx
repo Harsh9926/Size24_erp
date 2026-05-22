@@ -4,7 +4,7 @@ import Layout from '../components/Layout';
 import {
     Lock, Unlock, ChevronLeft, ChevronRight,
     Search, Filter, RefreshCw, Calendar, ArrowRightLeft, Pencil, X,
-    FileSpreadsheet, ChevronDown, ChevronUp, Loader2,
+    FileSpreadsheet, ChevronDown, ChevronUp, Loader2, TriangleAlert,
 } from 'lucide-react';
 
 const fmt = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
@@ -31,6 +31,7 @@ const EntriesPage = () => {
     const [loading,       setLoading]       = useState(true);
     const [total,         setTotal]         = useState(0);
     const [pages,         setPages]         = useState(1);
+    const [anomalyMap,    setAnomalyMap]    = useState({}); // entry_id → flags[]
 
     // Cash transfers
     const [transfers,     setTransfers]     = useState([]);
@@ -62,6 +63,17 @@ const EntriesPage = () => {
             setEntries(res.data.entries);
             setTotal(res.data.total);
             setPages(res.data.pages);
+
+            /* fetch anomalies for the visible date range */
+            const anomalyParams = new URLSearchParams();
+            if (dateFrom) anomalyParams.set('from', dateFrom);
+            if (dateTo)   anomalyParams.set('to', dateTo);
+            if (shopFilter) anomalyParams.set('shop_id', shopFilter);
+            api.get(`/anomalies?${anomalyParams}`).then(ar => {
+                const map = {};
+                ar.data.forEach(r => { map[r.id] = r.anomaly_flags; });
+                setAnomalyMap(map);
+            }).catch(() => {});
         } catch (e) {
             console.error(e);
         } finally {
@@ -372,8 +384,12 @@ const EntriesPage = () => {
                                     </td>
                                 </tr>
                             )}
-                            {!loading && entries.map(e => (
-                                <tr key={e.id} className="hover:bg-gray-50 transition-colors">
+                            {!loading && entries.map(e => {
+                                const eFlags = anomalyMap[e.id] || [];
+                                const hasHigh = eFlags.some(f => f.severity === 'high');
+                                return (
+                                <tr key={e.id} className="hover:bg-gray-50 transition-colors"
+                                    style={eFlags.length > 0 ? { background: hasHigh ? 'rgba(239,68,68,0.04)' : 'rgba(245,158,11,0.04)' } : {}}>
 
                                     {/* Date */}
                                     <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
@@ -382,7 +398,16 @@ const EntriesPage = () => {
 
                                     {/* Shop */}
                                     <td className="px-4 py-3 text-sm font-medium text-indigo-600 whitespace-nowrap">
-                                        {e.shop_name}
+                                        <div className="flex items-center gap-1.5">
+                                            {e.shop_name}
+                                            {eFlags.length > 0 && (
+                                                <span title={eFlags.map(f => f.label + ': ' + f.detail).join('\n')}
+                                                    className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${hasHigh ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
+                                                    <TriangleAlert className="h-3 w-3" />
+                                                    {eFlags.length}
+                                                </span>
+                                            )}
+                                        </div>
                                     </td>
 
                                     {/* Total Sale */}
@@ -452,7 +477,8 @@ const EntriesPage = () => {
                                         </div>
                                     </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>

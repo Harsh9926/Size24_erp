@@ -26,7 +26,8 @@ import AdminManagerFundsPage   from './pages/AdminManagerFundsPage';
 import AdminManagerProfilePage from './pages/AdminManagerProfilePage';
 
 // New feature pages
-import ExpensesPage from './pages/ExpensesPage';
+import ExpensesPage   from './pages/ExpensesPage';
+import AnomaliesPage  from './pages/AnomaliesPage';
 
 // Shop User Pages
 import ShopDashboard from './pages/ShopDashboard';
@@ -53,6 +54,7 @@ function App() {
         <Route path="/admin/manager-funds" element={<PrivateRoute allowedRoles={['admin']}><AdminManagerFundsPage /></PrivateRoute>} />
         <Route path="/admin/manager/:id"   element={<PrivateRoute allowedRoles={['admin']}><AdminManagerProfilePage /></PrivateRoute>} />
         <Route path="/admin/expenses"      element={<PrivateRoute allowedRoles={['admin', 'manager']}><ExpensesPage /></PrivateRoute>} />
+        <Route path="/admin/anomalies"     element={<PrivateRoute allowedRoles={['admin', 'manager']}><AnomaliesPage /></PrivateRoute>} />
 
         {/* Manager Routes */}
         <Route path="/manager"               element={<PrivateRoute allowedRoles={['manager']}><ManagerDashboard /></PrivateRoute>} />

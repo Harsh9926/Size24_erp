@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import api from '../services/api';
 import Layout from '../components/Layout';
+import socket from '../services/socket';
 import {
     TrendingUp, IndianRupee, CreditCard, Clock, Lock, ShieldCheck, ShieldX,
     AlertCircle, ArrowRightLeft, RefreshCw, Trash2, CheckCircle2, Store, X,
-    Calendar, Pencil, Save, Wallet, Calculator,
+    Calendar, Pencil, Save, Wallet, Calculator, Radio, TriangleAlert,
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -226,6 +227,11 @@ const AdminDashboard = () => {
 
     const [toast, setToast] = useState(null); // { msg, ok }
 
+    // Live dashboard state
+    const [isLive,       setIsLive]       = useState(false);
+    const [liveEvents,   setLiveEvents]   = useState([]); // last 5 events
+    const [anomalySummary, setAnomalySummary] = useState(null);
+
     // Keep ref to latest fetchData for the visibility listener
     const fetchDataRef = useRef(null);
     useEffect(() => { fetchDataRef.current = fetchData; });
@@ -236,6 +242,30 @@ const AdminDashboard = () => {
         document.addEventListener('visibilitychange', onVisible);
         return () => document.removeEventListener('visibilitychange', onVisible);
     }, []);
+
+    /* ── Socket.io live connection ─────────────────────────────── */
+    useEffect(() => {
+        socket.connect();
+        socket.on('connect',    () => setIsLive(true));
+        socket.on('disconnect', () => setIsLive(false));
+        socket.on('dashboard_update', (payload) => {
+            fetchDataRef.current?.();
+            const label =
+                payload.type === 'entry_submitted' ? '📥 New entry submitted' :
+                payload.type === 'entry_approved'  ? '✅ Entry approved' :
+                payload.type === 'entry_rejected'  ? '❌ Entry rejected' : 'Update';
+            setLiveEvents(prev => [
+                { id: Date.now(), label, time: new Date().toLocaleTimeString('en-IN'), anomaly_flags: payload.anomaly_flags || [] },
+                ...prev,
+            ].slice(0, 5));
+        });
+        return () => { socket.off('dashboard_update'); socket.off('connect'); socket.off('disconnect'); socket.disconnect(); };
+    }, []);
+
+    /* ── Anomaly summary fetch ─────────────────────────────────── */
+    useEffect(() => {
+        api.get('/anomalies/summary').then(r => setAnomalySummary(r.data)).catch(() => {});
+    }, [data]);
 
     const setQuickFilter = (type) => {
         const today = new Date();
@@ -385,6 +415,79 @@ const AdminDashboard = () => {
                         </div>
                     );
                 })}
+            </div>
+
+            {/* ── Live Feed + Anomaly Row ───────────────────────── */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+
+                {/* Live Feed */}
+                <div className="rounded-xl border shadow-sm overflow-hidden"
+                    style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                    <div className="px-4 py-3 border-b flex items-center gap-2"
+                        style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
+                        <Radio className={`h-4 w-4 ${isLive ? 'text-emerald-500' : 'text-gray-400'}`} />
+                        <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Live Feed</span>
+                        <span className={`ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${isLive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+                            {isLive ? 'LIVE' : 'OFFLINE'}
+                        </span>
+                    </div>
+                    <div className="divide-y" style={{ borderColor: 'var(--border-color)' }}>
+                        {liveEvents.length === 0 ? (
+                            <p className="px-4 py-6 text-xs text-center text-gray-400">
+                                {isLive ? 'Waiting for activity…' : 'Connecting…'}
+                            </p>
+                        ) : liveEvents.map(ev => (
+                            <div key={ev.id} className="px-4 py-2.5 flex items-center justify-between gap-2">
+                                <div>
+                                    <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{ev.label}</p>
+                                    {ev.anomaly_flags?.length > 0 && (
+                                        <p className="text-[10px] text-amber-600 font-medium mt-0.5">
+                                            ⚠ {ev.anomaly_flags.map(f => f.label).join(', ')}
+                                        </p>
+                                    )}
+                                </div>
+                                <span className="text-[10px] text-gray-400 whitespace-nowrap">{ev.time}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Anomaly Summary */}
+                <div className="rounded-xl border shadow-sm overflow-hidden"
+                    style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                    <div className="px-4 py-3 border-b flex items-center gap-2"
+                        style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
+                        <TriangleAlert className="h-4 w-4 text-amber-500" />
+                        <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Anomaly Radar</span>
+                        <a href="/admin/anomalies" className="ml-auto text-[11px] font-semibold text-orange-500 hover:underline">View all →</a>
+                    </div>
+                    {anomalySummary ? (
+                        <div className="p-4 space-y-2">
+                            <div className="flex gap-4 mb-3">
+                                <div className="text-center">
+                                    <p className="text-2xl font-extrabold text-amber-500">{anomalySummary.today_count}</p>
+                                    <p className="text-[10px] font-semibold text-gray-400 uppercase">Today</p>
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-2xl font-extrabold" style={{ color: 'var(--text-primary)' }}>{anomalySummary.week_count}</p>
+                                    <p className="text-[10px] font-semibold text-gray-400 uppercase">This Week</p>
+                                </div>
+                            </div>
+                            {anomalySummary.by_type.slice(0, 4).map(t => (
+                                <div key={t.code} className="flex items-center justify-between gap-2">
+                                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t.label}</span>
+                                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${t.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{t.count}</span>
+                                </div>
+                            ))}
+                            {anomalySummary.by_type.length === 0 && (
+                                <p className="text-xs text-center text-emerald-600 font-semibold py-4">✓ No anomalies this week</p>
+                            )}
+                        </div>
+                    ) : (
+                        <p className="px-4 py-8 text-xs text-center text-gray-400 animate-pulse">Loading…</p>
+                    )}
+                </div>
             </div>
 
             {/* ── Today's Entry Status ───────────────────────────── */}

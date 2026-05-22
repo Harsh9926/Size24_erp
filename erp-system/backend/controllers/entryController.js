@@ -1,5 +1,10 @@
-const db  = require('../config/db');
-const msg = require('../services/msg91Service');
+const db      = require('../config/db');
+const msg     = require('../services/msg91Service');
+const anomaly = require('../services/anomalyService');
+
+const emitDashboard = (req, payload) => {
+    try { req.app.get('io')?.emit('dashboard_update', payload); } catch (_) {}
+};
 
 /*
  * FIELD CONTRACT
@@ -112,7 +117,24 @@ exports.createEntry = async (req, res) => {
         console.log(`[createEntry] ₹${cashAmt} credited to shop #${shop_id} wallet on submission.`);
 
         await client.query('COMMIT');
-        res.status(201).json(result.rows[0]);
+
+        const newEntry = result.rows[0];
+        res.status(201).json(newEntry);
+
+        /* fire-and-forget: anomaly check + socket broadcast */
+        anomaly.checkEntry(newEntry.id).then(flags => {
+            emitDashboard(req, {
+                type: 'entry_submitted',
+                entry_id: newEntry.id,
+                shop_id,
+                date: entryDate,
+                total_sale: excelTotal,
+                anomaly_flags: flags,
+            });
+        }).catch(() => {
+            emitDashboard(req, { type: 'entry_submitted', shop_id, date: entryDate, total_sale: excelTotal });
+        });
+
     } catch (err) {
         await client.query('ROLLBACK');
         if (err.constraint === 'daily_entries_shop_id_date_key') {
@@ -443,6 +465,7 @@ exports.approveEntry = async (req, res) => {
         } catch { /* notification errors must never break the response */ }
 
         res.json({ message: 'Entry approved successfully.', entry: updated.rows[0] });
+        emitDashboard(req, { type: 'entry_approved', entry_id: id, shop_id: entry.shop_id });
     } catch (err) {
         await client.query('ROLLBACK');
         console.error('[approveEntry] Transaction rolled back:', err.message);
@@ -523,6 +546,7 @@ exports.rejectEntry = async (req, res) => {
         } catch { /* notification errors must never break the response */ }
 
         res.json({ message: 'Entry rejected.', entry: result.rows[0] });
+        emitDashboard(req, { type: 'entry_rejected', entry_id: id });
     } catch (err) {
         await client.query('ROLLBACK');
         res.status(500).json({ error: err.message });
