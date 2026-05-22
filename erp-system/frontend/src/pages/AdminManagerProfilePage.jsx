@@ -58,6 +58,21 @@ const AdminManagerProfilePage = () => {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
+    /* Build passbook rows with running balance — must be before early returns */
+    const passbookRows = useMemo(() => {
+        const rows = data?.history || [];
+        const sorted = [...rows].sort(
+            (a, b) => new Date(a.created_at) - new Date(b.created_at)
+        );
+        let balance = 0;
+        return sorted.map((row) => {
+            const credit = isCredited(row);
+            const settled = isSettled(row);
+            if (settled) balance += credit ? +row.amount : -row.amount;
+            return { ...row, credit, settled, runningBalance: balance };
+        });
+    }, [data]);
+
     if (loading) return (
         <Layout title="Manager Profile">
             <div className="text-center py-20 text-gray-400 animate-pulse">Loading…</div>
@@ -70,20 +85,6 @@ const AdminManagerProfilePage = () => {
     );
 
     const { manager, summary, history } = data;
-
-    /* Build passbook rows with running balance (oldest → newest) */
-    const passbookRows = useMemo(() => {
-        const sorted = [...history].sort(
-            (a, b) => new Date(a.created_at) - new Date(b.created_at)
-        );
-        let balance = 0;
-        return sorted.map((row) => {
-            const credit = isCredited(row);
-            const settled = isSettled(row);
-            if (settled) balance += credit ? +row.amount : -row.amount;
-            return { ...row, credit, settled, runningBalance: balance };
-        });
-    }, [history]);
 
     const summaryCards = [
         {
