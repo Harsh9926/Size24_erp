@@ -111,7 +111,7 @@ async function getAnomalies({ fromDate, toDate, shopId, status } = {}) {
             de.id, de.shop_id, de.date,
             de.total_sale, de.cash, de.online, de.razorpay,
             de.approval_status, de.created_at, de.entry_type,
-            s.name  AS shop_name,
+            s.shop_name,
             ss.avg_sale, ss.avg_cash_ratio, ss.entry_count,
             ra.repeat_count,
             EXTRACT(HOUR FROM de.created_at AT TIME ZONE 'Asia/Kolkata') AS ist_hour
