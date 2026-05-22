@@ -4,6 +4,7 @@ import Layout from '../components/Layout';
 import {
     Lock, Unlock, ChevronLeft, ChevronRight,
     Search, Filter, RefreshCw, Calendar, ArrowRightLeft, Pencil, X,
+    FileSpreadsheet, ChevronDown, ChevronUp, Loader2,
 } from 'lucide-react';
 
 const fmt = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
@@ -122,6 +123,26 @@ const EntriesPage = () => {
     const [editForm,    setEditForm]    = useState({});
     const [editLoading, setEditLoading] = useState(false);
     const [editError,   setEditError]   = useState('');
+
+    // ── Excel sheet modal state ───────────────────────────────────
+    const [excelModal,   setExcelModal]   = useState(null);
+    const [excelData,    setExcelData]    = useState(null);
+    const [excelLoading, setExcelLoading] = useState(false);
+
+    const openExcel = async (entry) => {
+        setExcelModal(entry);
+        setExcelData(null);
+        setExcelLoading(true);
+        try {
+            const dateStr = entry.date ? entry.date.split('T')[0] : '';
+            const res = await api.get(`/excel/by-entry?shop_id=${entry.shop_id}&date=${dateStr}`);
+            setExcelData(res.data);
+        } catch {
+            setExcelData(null);
+        } finally {
+            setExcelLoading(false);
+        }
+    };
 
     const openEdit = (entry) => {
         setEditEntry(entry);
@@ -424,6 +445,10 @@ const EntriesPage = () => {
                                                 className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 font-medium border border-amber-200 px-2 py-1 rounded-md hover:bg-amber-50 transition-colors">
                                                 <Pencil className="h-3 w-3" /> Edit
                                             </button>
+                                            <button onClick={() => openExcel(e)}
+                                                className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 font-medium border border-emerald-200 px-2 py-1 rounded-md hover:bg-emerald-50 transition-colors">
+                                                <FileSpreadsheet className="h-3 w-3" /> Sheet
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -626,6 +651,81 @@ const EntriesPage = () => {
                                 {editLoading ? 'Saving…' : 'Save Changes'}
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Excel Sheet Modal ────────────────────────────── */}
+            {excelModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl p-6 flex flex-col" style={{ maxHeight: '90vh' }}>
+
+                        {/* Header */}
+                        <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                            <div>
+                                <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                                    <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                                    Excel Sheet
+                                </h2>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                    {excelModal.shop_name} — {new Date(excelModal.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </p>
+                            </div>
+                            <button onClick={() => { setExcelModal(null); setExcelData(null); }}
+                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="overflow-auto flex-1 border border-gray-100 rounded-lg">
+                            {excelLoading && (
+                                <div className="flex items-center justify-center py-16 text-gray-400 gap-2">
+                                    <Loader2 className="h-5 w-5 animate-spin" />
+                                    <span className="text-sm">Loading sheet…</span>
+                                </div>
+                            )}
+                            {!excelLoading && !excelData && (
+                                <div className="text-center py-16 text-gray-400 text-sm">
+                                    No Excel sheet found for this entry.
+                                </div>
+                            )}
+                            {!excelLoading && excelData?.row_data?.length > 0 && (() => {
+                                const cols = Object.keys(excelData.row_data[0]);
+                                return (
+                                    <table className="min-w-full text-xs border-collapse">
+                                        <thead className="bg-gray-50 sticky top-0">
+                                            <tr>
+                                                {cols.map(col => (
+                                                    <th key={col} className="px-3 py-2 text-left font-semibold text-gray-500 uppercase border-b border-gray-200 whitespace-nowrap">
+                                                        {col}
+                                                    </th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {excelData.row_data.map((row, i) => (
+                                                <tr key={i} className="hover:bg-gray-50">
+                                                    {cols.map(col => (
+                                                        <td key={col} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                                                            {row[col] != null ? String(row[col]) : '—'}
+                                                        </td>
+                                                    ))}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                );
+                            })()}
+                        </div>
+
+                        {/* Footer */}
+                        {!excelLoading && excelData && (
+                            <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400 flex-shrink-0">
+                                <span>{excelData.row_data?.length || 0} rows — {excelData.filename}</span>
+                                <span>Total: ₹{Number(excelData.total_sale || 0).toLocaleString('en-IN')}</span>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
