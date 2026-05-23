@@ -6,6 +6,7 @@ import WalletHistoryModal from '../components/WalletHistoryModal';
 import {
     Wallet, Store, ArrowUpRight, ArrowDownRight, RefreshCw,
     TrendingUp, Clock, CheckCircle2, XCircle, Loader2, AlertCircle, History,
+    Calendar, ShieldCheck,
 } from 'lucide-react';
 
 const ManagerDashboard = () => {
@@ -20,6 +21,7 @@ const ManagerDashboard = () => {
     const [loading,           setLoading]           = useState(true);
     const [refreshing,        setRefreshing]        = useState(false);
     const [historyShop,       setHistoryShop]       = useState(null); // { id, name }
+    const [todayStatus,       setTodayStatus]       = useState(null);
 
     const showToast = (type, text) => {
         setToast({ type, text });
@@ -28,12 +30,13 @@ const ManagerDashboard = () => {
 
     const fetchAll = useCallback(async () => {
         // Run all fetches independently — a failure in one won't blank the others
-        const [balRes, dashRes, txRes, myTxRes, shopsRes] = await Promise.allSettled([
+        const [balRes, dashRes, txRes, myTxRes, shopsRes, todayRes] = await Promise.allSettled([
             api.get('/transfers/balance'),
             api.get('/dashboard/manager'),
             api.get('/transfers/manager'),
             api.get('/manager-transfers/mine'),
             api.get('/shops'),
+            api.get('/entries/today-status'),
         ]);
 
         if (balRes.status === 'fulfilled')
@@ -44,6 +47,9 @@ const ManagerDashboard = () => {
 
         if (shopsRes.status === 'fulfilled')
             setAllShops(shopsRes.value.data || []);
+
+        if (todayRes.status === 'fulfilled')
+            setTodayStatus(todayRes.value.data);
 
         const allUserTx = txRes.status === 'fulfilled' ? (txRes.value.data || []) : [];
         setPendingRequests(allUserTx.filter(t => t.status === 'pending'));
@@ -180,6 +186,48 @@ const ManagerDashboard = () => {
                     </div>
                 </div>
             </div>
+
+            {/* ── Today's Entry Status ────────────────────────────────── */}
+            {todayStatus && (
+                <div className="mb-6 rounded-xl border shadow-sm overflow-hidden"
+                    style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                    <div className="px-5 py-3.5 flex items-center justify-between border-b"
+                        style={{ borderColor: 'var(--border-color)' }}>
+                        <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-orange-500" />
+                            <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                                Today's Entries
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-extrabold text-emerald-600">{todayStatus.submittedCount}</span>
+                            <span className="text-sm text-gray-400">/</span>
+                            <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{todayStatus.totalShops}</span>
+                            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>shops submitted</span>
+                            <button
+                                onClick={() => api.get('/entries/today-status').then(r => setTodayStatus(r.data)).catch(() => {})}
+                                className="ml-2 text-gray-400 hover:text-orange-500 transition-colors">
+                                <RefreshCw className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                    </div>
+                    <div className="px-5 py-3 flex flex-wrap gap-2">
+                        {todayStatus.submittedShops.map(s => (
+                            <span key={s.id} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700 border border-green-200">
+                                <ShieldCheck className="h-3 w-3" />{s.shop_name}
+                            </span>
+                        ))}
+                        {todayStatus.pendingShops.map(s => (
+                            <span key={s.id} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-700 border border-red-200">
+                                <AlertCircle className="h-3 w-3" />{s.shop_name}
+                            </span>
+                        ))}
+                        {todayStatus.pendingCount === 0 && (
+                            <span className="text-xs text-emerald-600 font-semibold">All shops submitted today!</span>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* ── Pending User → Manager Requests ────────────────────── */}
             <div className="rounded-xl border shadow-sm overflow-hidden mb-6"
