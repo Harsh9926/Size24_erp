@@ -64,10 +64,17 @@ exports.createTransfer = async (req, res) => {
                     SELECT SUM(amount) FROM cash_transfers
                     WHERE to_user_id = $1 AND status IN ('accepted', 'approved')
                 ), 0)
+                +
+                COALESCE((
+                    SELECT SUM(amount) FROM manager_transfers
+                    WHERE manager_id = $1 AND type = 'admin_to_manager' AND status = 'approved'
+                ), 0)
                 -
                 COALESCE((
                     SELECT SUM(amount) FROM manager_transfers
-                    WHERE manager_id = $1 AND status IN ('approved', 'pending')
+                    WHERE manager_id = $1
+                      AND type IN ('manager_to_admin', 'manager_to_bank', 'manager_expense')
+                      AND status IN ('approved', 'pending')
                 ), 0) AS available`,
             [managerId]
         );
