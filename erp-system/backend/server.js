@@ -101,28 +101,62 @@ app.use((err, req, res, next) => {
 });
 
 // ── Cron: daily reminder at 8 PM IST (14:30 UTC) ────────────────
+// 1. Sends individual WhatsApp reminder to EVERY user of each missing shop
+// 2. Sends consolidated summary to ALL admin users
 cron.schedule('30 14 * * *', async () => {
     const wa = require('./services/aiSensyService');
     if (!wa.ENABLED) return;
     try {
-        const today = new Date().toISOString().split('T')[0];
-        const { rows } = await db.query(`
-            SELECT s.id, s.shop_name, u.mobile
+        const today   = new Date().toISOString().split('T')[0];
+        const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+        // ── Shops that have NOT submitted today ──────────────────
+        const { rows: missingShops } = await db.query(`
+            SELECT DISTINCT s.id, s.shop_name
             FROM shops s
-            JOIN users u ON u.id = s.user_id
             WHERE s.id NOT IN (
                 SELECT shop_id FROM daily_entries WHERE date = $1
             )
-            AND u.mobile IS NOT NULL
-            AND u.is_active = true
+            ORDER BY s.shop_name
         `, [today]);
 
-        console.log(`[cron] Reminder: ${rows.length} shops haven't submitted for ${today}`);
-        for (const shop of rows) {
-            await wa.notifyReminder(shop.mobile, shop.shop_name);
+        console.log(`[cron] Reminder: ${missingShops.length} shops haven't submitted for ${today}`);
+        if (missingShops.length === 0) return;
+
+        const shopIds   = missingShops.map(s => s.id);
+        const shopNames = missingShops.map(s => s.shop_name).join(', ');
+
+        // ── 1. Individual reminder to ALL users of each missing shop ──
+        const { rows: shopUsers } = await db.query(`
+            SELECT DISTINCT u.mobile, s.shop_name
+            FROM shop_users su
+            JOIN users  u ON u.id  = su.user_id
+            JOIN shops  s ON s.id  = su.shop_id
+            WHERE su.shop_id = ANY($1::int[])
+              AND u.mobile IS NOT NULL
+              AND u.is_active = true
+        `, [shopIds]);
+
+        for (const user of shopUsers) {
+            await wa.notifyReminder(user.mobile, user.shop_name);
+            await new Promise(r => setTimeout(r, 300)); // rate-limit
         }
+        console.log(`[cron] Sent ${shopUsers.length} individual reminders`);
+
+        // ── 2. Admin summary — send to all admin users ───────────
+        const { rows: admins } = await db.query(`
+            SELECT mobile FROM users
+            WHERE role = 'admin' AND mobile IS NOT NULL AND is_active = true
+        `);
+
+        for (const admin of admins) {
+            await wa.notifyAdminSummary(admin.mobile, dateStr, missingShops.length, shopNames);
+            await new Promise(r => setTimeout(r, 300));
+        }
+        console.log(`[cron] Sent admin summary to ${admins.length} admins`);
+
     } catch (err) {
-        console.error('[cron] Reminder failed:', err.message);
+        console.error('[cron] Daily reminder failed:', err.message);
     }
 });
 

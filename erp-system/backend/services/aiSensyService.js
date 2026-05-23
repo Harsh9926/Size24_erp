@@ -4,9 +4,10 @@ const API_KEY = process.env.AISENSY_API_KEY;
 const ENABLED = !!API_KEY;
 
 const CAMPAIGNS = {
-    entry_approved: process.env.AISENSY_TPL_APPROVED || 'entry_approved',
-    entry_rejected: process.env.AISENSY_TPL_REJECTED || 'entry_rejected',
-    entry_reminder: process.env.AISENSY_TPL_REMINDER || 'entry_reminder',
+    entry_approved:  process.env.AISENSY_TPL_APPROVED       || 'entry_approved',
+    entry_rejected:  process.env.AISENSY_TPL_REJECTED       || 'entry_rejected',
+    entry_reminder:  process.env.AISENSY_TPL_REMINDER       || 'entry_reminder',
+    admin_summary:   process.env.AISENSY_TPL_ADMIN_SUMMARY  || 'daily_admin_summary',
 };
 
 /* Normalize phone → "91XXXXXXXXXX" */
@@ -70,5 +71,10 @@ exports.notifyEntryRejected = (phone, shopName, date, reason) =>
 exports.notifyReminder = (phone, shopName) =>
     sendWhatsApp(phone, CAMPAIGNS.entry_reminder, [shopName])
         .catch(err => console.error('[AiSensy] reminder notify failed:', err.message));
+
+/* Admin daily summary — {{1}} = date, {{2}} = missing count, {{3}} = shop names list */
+exports.notifyAdminSummary = (phone, date, missingCount, shopList) =>
+    sendWhatsApp(phone, CAMPAIGNS.admin_summary, [date, String(missingCount), shopList])
+        .catch(err => console.error('[AiSensy] admin summary failed:', err.message));
 
 exports.ENABLED = ENABLED;
