@@ -100,6 +100,32 @@ app.use((err, req, res, next) => {
     res.status(status).json({ error: err.message || 'Internal server error' });
 });
 
+// ── Cron: daily reminder at 8 PM IST (14:30 UTC) ────────────────
+cron.schedule('30 14 * * *', async () => {
+    const wa = require('./services/aiSensyService');
+    if (!wa.ENABLED) return;
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const { rows } = await db.query(`
+            SELECT s.id, s.shop_name, u.mobile
+            FROM shops s
+            JOIN users u ON u.id = s.user_id
+            WHERE s.id NOT IN (
+                SELECT shop_id FROM daily_entries WHERE date = $1
+            )
+            AND u.mobile IS NOT NULL
+            AND u.is_active = true
+        `, [today]);
+
+        console.log(`[cron] Reminder: ${rows.length} shops haven't submitted for ${today}`);
+        for (const shop of rows) {
+            await wa.notifyReminder(shop.mobile, shop.shop_name);
+        }
+    } catch (err) {
+        console.error('[cron] Reminder failed:', err.message);
+    }
+});
+
 // ── Cron: auto-lock entries every midnight ───────────────────────
 cron.schedule('0 0 * * *', async () => {
     try {

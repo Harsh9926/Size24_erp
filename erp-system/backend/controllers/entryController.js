@@ -1,5 +1,6 @@
 const db      = require('../config/db');
 const msg     = require('../services/msg91Service');
+const wa      = require('../services/aiSensyService');
 const anomaly = require('../services/anomalyService');
 
 const emitDashboard = (req, payload) => {
@@ -455,12 +456,16 @@ exports.approveEntry = async (req, res) => {
         // Notify shop user via WhatsApp (fire-and-forget)
         try {
             const shopRes = await db.query(
-                `SELECT u.mobile FROM shops s JOIN users u ON u.id = s.user_id WHERE s.id = $1`,
+                `SELECT s.shop_name, u.mobile FROM shops s JOIN users u ON u.id = s.user_id WHERE s.id = $1`,
                 [entry.shop_id],
             );
             if (shopRes.rows[0]?.mobile) {
                 const dateStr = String(entry.date).split('T')[0];
-                msg.notifyEntryApproved(shopRes.rows[0].mobile, entry.shop_id, dateStr, parseFloat(entry.total_sale || 0).toFixed(2)).catch(() => {});
+                const mobile  = shopRes.rows[0].mobile;
+                const shopName = shopRes.rows[0].shop_name || `Shop #${entry.shop_id}`;
+                const amount  = parseFloat(entry.total_sale || 0).toFixed(2);
+                wa.notifyEntryApproved(mobile, shopName, dateStr, amount).catch(() => {});
+                msg.notifyEntryApproved(mobile, entry.shop_id, dateStr, amount).catch(() => {});
             }
         } catch { /* notification errors must never break the response */ }
 
@@ -536,12 +541,16 @@ exports.rejectEntry = async (req, res) => {
         // Notify shop user via WhatsApp (fire-and-forget)
         try {
             const shopRes = await db.query(
-                `SELECT u.mobile FROM shops s JOIN users u ON u.id = s.user_id WHERE s.id = $1`,
+                `SELECT s.shop_name, u.mobile FROM shops s JOIN users u ON u.id = s.user_id WHERE s.id = $1`,
                 [entry.shop_id],
             );
             if (shopRes.rows[0]?.mobile) {
-                const dateStr = String(entry.date).split('T')[0];
-                msg.notifyEntryRejected(shopRes.rows[0].mobile, entry.shop_id, dateStr, rejection_note || '').catch(() => {});
+                const dateStr  = String(entry.date).split('T')[0];
+                const mobile   = shopRes.rows[0].mobile;
+                const shopName = shopRes.rows[0].shop_name || `Shop #${entry.shop_id}`;
+                const reason   = rejection_note || 'No reason provided';
+                wa.notifyEntryRejected(mobile, shopName, dateStr, reason).catch(() => {});
+                msg.notifyEntryRejected(mobile, entry.shop_id, dateStr, reason).catch(() => {});
             }
         } catch { /* notification errors must never break the response */ }
 
