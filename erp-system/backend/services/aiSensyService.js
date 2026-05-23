@@ -8,6 +8,7 @@ const CAMPAIGNS = {
     entry_rejected:  process.env.AISENSY_TPL_REJECTED       || 'entry_rejected',
     entry_reminder:  process.env.AISENSY_TPL_REMINDER       || 'entry_reminder',
     admin_summary:   process.env.AISENSY_TPL_ADMIN_SUMMARY  || 'daily_admin_summary',
+    sales_summary:   process.env.AISENSY_TPL_SALES_SUMMARY  || 'daily_sales_summary',
 };
 
 /* Normalize phone → "91XXXXXXXXXX" */
@@ -76,5 +77,10 @@ exports.notifyReminder = (phone, shopName) =>
 exports.notifyAdminSummary = (phone, date, missingCount, shopList) =>
     sendWhatsApp(phone, CAMPAIGNS.admin_summary, [date, String(missingCount), shopList])
         .catch(err => console.error('[AiSensy] admin summary failed:', err.message));
+
+/* 11 PM sales summary — {{1}} = date, {{2}} = total amount, {{3}} = shop-wise breakdown */
+exports.notifySalesSummary = (phone, date, totalAmount, shopBreakdown) =>
+    sendWhatsApp(phone, CAMPAIGNS.sales_summary, [date, String(totalAmount), shopBreakdown])
+        .catch(err => console.error('[AiSensy] sales summary failed:', err.message));
 
 exports.ENABLED = ENABLED;

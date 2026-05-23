@@ -160,6 +160,47 @@ cron.schedule('30 14 * * *', async () => {
     }
 });
 
+// ── Cron: 11 PM IST sales summary to all admins (17:30 UTC) ────
+cron.schedule('30 17 * * *', async () => {
+    const wa = require('./services/aiSensyService');
+    if (!wa.ENABLED) return;
+    try {
+        const today   = new Date().toISOString().split('T')[0];
+        const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+        const { rows: shopSales } = await db.query(`
+            SELECT s.shop_name,
+                   COALESCE(SUM(de.total_sale::NUMERIC), 0) AS total_sale
+            FROM shops s
+            LEFT JOIN daily_entries de ON de.shop_id = s.id
+                AND de.date = $1
+                AND de.approval_status = 'APPROVED'
+            GROUP BY s.shop_name
+            ORDER BY total_sale DESC
+        `, [today]);
+
+        const grandTotal  = shopSales.reduce((sum, r) => sum + parseFloat(r.total_sale), 0);
+        const totalStr    = grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+        const breakdown   = shopSales
+            .map(r => `${r.shop_name}: ₹${parseFloat(r.total_sale).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`)
+            .join('\n');
+
+        const { rows: admins } = await db.query(`
+            SELECT mobile FROM users
+            WHERE role = 'admin' AND mobile IS NOT NULL AND is_active = true
+        `);
+
+        for (const admin of admins) {
+            await wa.notifySalesSummary(admin.mobile, dateStr, totalStr, breakdown);
+            await new Promise(r => setTimeout(r, 300));
+        }
+        console.log(`[cron] Sent 11 PM sales summary to ${admins.length} admins (total ₹${totalStr})`);
+
+    } catch (err) {
+        console.error('[cron] Sales summary failed:', err.message);
+    }
+});
+
 // ── Cron: auto-lock entries every midnight ───────────────────────
 cron.schedule('0 0 * * *', async () => {
     try {
