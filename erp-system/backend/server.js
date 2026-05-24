@@ -160,8 +160,8 @@ cron.schedule('30 14 * * *', async () => {
     }
 });
 
-// ── Cron: 11 PM IST sales summary to all admins (17:30 UTC) ────
-cron.schedule('30 17 * * *', async () => {
+// ── Cron: 12 AM IST sales summary to all admins (18:30 UTC) ────
+cron.schedule('30 18 * * *', async () => {
     const wa = require('./services/aiSensyService');
     if (!wa.ENABLED) return;
     try {
