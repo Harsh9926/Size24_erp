@@ -44,14 +44,14 @@ const Layout = ({ children, title }) => {
                             <Menu className="h-5 w-5" />
                         </button>
                         <div>
-                            <p className="text-xs font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#FF6B00' }}>SIZE24 ERP</p>
+                            <p className="text-xs font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#c2410c' }}>SIZE24 ERP</p>
                             <h1 className="text-base sm:text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{title}</h1>
                         </div>
                     </div>
                     <div className="flex items-center gap-2 sm:gap-3">
                         <div className="text-right hidden sm:block">
                             <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{user?.name || user?.mobile}</p>
-                            <p className="text-xs capitalize px-2 py-0.5 rounded-full font-bold" style={{ background: 'rgba(255,107,0,0.12)', color: '#FF6B00' }}>
+                            <p className="text-xs capitalize px-2 py-0.5 rounded-full font-bold" style={{ background: 'rgba(124,45,18,0.1)', color: '#7c2d12' }}>
                                 {user?.role?.replace('_', ' ')}
                             </p>
                         </div>
@@ -74,7 +74,7 @@ const Layout = ({ children, title }) => {
                     className="px-4 sm:px-8 py-3 text-center text-xs border-t"
                     style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-color)', background: 'var(--bg-surface)' }}
                 >
-                    Powered by <span className="font-bold" style={{ color: '#FF6B00' }}>SIZE24</span> &middot; Smart Retail ERP System
+                    Powered by <span className="font-bold" style={{ color: '#c2410c' }}>SIZE24</span> &middot; Smart Retail ERP System
                 </footer>
             </div>
 

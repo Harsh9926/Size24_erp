@@ -506,7 +506,7 @@ const ShopDashboard = () => {
         `w-full px-3 py-2.5 border rounded-lg text-sm outline-none transition-colors ${
             disabled
                 ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed'
-                : 'border-gray-200 focus:ring-2 focus:ring-teal-500 bg-white'
+                : 'border-gray-200 focus:ring-2 focus:ring-teal-700 bg-white'
         }`;
 
     const fmtAmt = (v) => `₹${parseFloat(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
@@ -523,19 +523,19 @@ const ShopDashboard = () => {
             <nav className="bg-teal-700 px-4 sm:px-8 py-3 sm:py-4 flex items-center justify-between shadow-md">
                 <div className="min-w-0">
                     <h1 className="text-white text-base sm:text-lg font-bold tracking-wide">Shop Dashboard</h1>
-                    <p className="text-teal-200 text-xs mt-0.5 flex items-center gap-1 truncate">
+                    <p className="text-white text-xs mt-0.5 flex items-center gap-1 truncate">
                         <span className="truncate max-w-[120px] sm:max-w-none">{user?.name || user?.mobile}</span>
                         {user?.shopName && <><span>·</span><Store className="h-3 w-3 flex-shrink-0" /><span className="truncate max-w-[80px] sm:max-w-none">{user.shopName}</span></>}
                     </p>
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
                     <div className="text-center">
-                        <p className="text-teal-300 text-[10px] sm:text-xs">Locks in</p>
+                        <p className="text-white text-[10px] sm:text-xs">Locks in</p>
                         <p className={`font-mono font-bold text-xs sm:text-sm ${countdown < '00:30:00' ? 'text-red-300' : 'text-white'}`}>{countdown}</p>
                     </div>
                     <button
                         onClick={() => { logout(); navigate('/login'); }}
-                        className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-teal-200 hover:text-white border border-teal-500 px-2 sm:px-3 py-1.5 rounded-lg transition-all"
+                        className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-white hover:text-white border border-teal-400 px-2 sm:px-3 py-1.5 rounded-lg transition-all"
                     >
                         <LogOut className="h-4 w-4" />
                         <span className="hidden sm:inline">Logout</span>
@@ -551,7 +551,7 @@ const ShopDashboard = () => {
                         style={{ background: 'linear-gradient(135deg,#0f766e,#14b8a6)', borderColor: 'transparent' }}>
                         <div className="flex items-center justify-between mb-1">
                             <p className="text-xs text-teal-100 font-semibold">Wallet Balance</p>
-                            <Wallet className="h-4 w-4 text-teal-200" />
+                            <Wallet className="h-4 w-4 text-white" />
                         </div>
                         <p className="text-xl font-extrabold text-white">₹{walletBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
                         <div className="mt-2 flex items-center gap-3">
@@ -582,7 +582,7 @@ const ShopDashboard = () => {
                         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
                         <div className="px-6 py-4 border-b flex items-center gap-2"
                             style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
-                            <ArrowRightLeft className="h-4 w-4 text-teal-600" />
+                            <ArrowRightLeft className="h-4 w-4 text-teal-700" />
                             <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Transfer Cash to Manager</h3>
                         </div>
 
@@ -595,7 +595,7 @@ const ShopDashboard = () => {
                                         id="transfer-manager"
                                         value={transferForm.to_user_id}
                                         onChange={e => setTransferForm(p => ({ ...p, to_user_id: e.target.value }))}
-                                        className="w-full px-3 py-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                        className="w-full px-3 py-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-700"
                                         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
                                         required>
                                         <option value="">— Choose a manager —</option>
@@ -604,7 +604,7 @@ const ShopDashboard = () => {
                                         ))}
                                     </select>
                                     {managers.length === 0 && (
-                                        <p className="text-xs text-amber-600 mt-1">No managers found.</p>
+                                        <p className="text-xs text-amber-700 mt-1">No managers found.</p>
                                     )}
                                 </div>
 
@@ -618,7 +618,7 @@ const ShopDashboard = () => {
                                         value={transferForm.amount}
                                         onChange={e => setTransferForm(p => ({ ...p, amount: e.target.value }))}
                                         placeholder="0.00"
-                                        className="w-full px-3 py-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                        className="w-full px-3 py-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-700"
                                         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
                                         required />
                                 </div>
@@ -631,7 +631,7 @@ const ShopDashboard = () => {
                                         value={transferForm.note}
                                         onChange={e => setTransferForm(p => ({ ...p, note: e.target.value }))}
                                         placeholder="e.g. Daily cash handover"
-                                        className="w-full px-3 py-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
+                                        className="w-full px-3 py-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-700"
                                         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
                                 </div>
 
@@ -702,7 +702,7 @@ const ShopDashboard = () => {
 
                         <h3 className="text-base font-bold mb-1 flex items-center gap-2 pb-3 border-b"
                             style={{ color: 'var(--text-primary)', borderColor: 'var(--border-color)' }}>
-                            <IndianRupee className="h-4 w-4 text-teal-600" />
+                            <IndianRupee className="h-4 w-4 text-teal-700" />
                             {editId !== null ? `Edit Entry — ${fmtDate(form.date)}` : 'New Daily Entry'}
                             {editId !== null && (
                                 <button type="button" onClick={resetForm}
@@ -727,12 +727,12 @@ const ShopDashboard = () => {
 
                             {/* ── Date (always today, read-only) ─────── */}
                             <div>
-                                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                                <label htmlFor="field-date" className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
                                     Date
-                                    <span className="ml-1 text-[10px] font-normal text-teal-600">(today · read-only)</span>
+                                    <span className="ml-1 text-[10px] font-normal text-teal-700">(today · read-only)</span>
                                 </label>
                                 <div className="relative">
-                                    <input id="field-date" type="date"
+                                    <input id="field-date" type="date" aria-label="Entry date (read-only)"
                                         className={inputCls(true) + ' pr-8'}
                                         value={form.date} disabled readOnly />
                                     <Lock className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-600 pointer-events-none" />
@@ -743,7 +743,7 @@ const ShopDashboard = () => {
                             <div>
                                 <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
                                     Total Sale (₹)
-                                    <span className="ml-1 text-[10px] font-normal text-teal-600">(locked from Excel)</span>
+                                    <span className="ml-1 text-[10px] font-normal text-teal-700">(locked from Excel)</span>
                                 </label>
                                 <div className="relative">
                                     <input id="field-total-sale" type="text"
@@ -754,7 +754,7 @@ const ShopDashboard = () => {
                                     <Lock className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-600 pointer-events-none" />
                                 </div>
                                 {!excelLoaded && (
-                                    <p className="mt-1 text-[11px] text-amber-600 flex items-center gap-1">
+                                    <p className="mt-1 text-[11px] text-amber-700 flex items-center gap-1">
                                         <Info className="h-3 w-3" />
                                         Upload Excel first — Total Sale will be automatically set.
                                     </p>
@@ -767,18 +767,18 @@ const ShopDashboard = () => {
                                             type="checkbox"
                                             checked={noSalesToday}
                                             onChange={e => handleNoSalesToggle(e.target.checked)}
-                                            className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500" />
+                                            className="h-4 w-4 rounded border-gray-300 text-teal-700 focus:ring-teal-700" />
                                         <span className="text-xs font-semibold text-gray-600">No Sales Today (submit ₹0 entry)</span>
                                     </label>
                                 )}
                                 {noSalesToday && (
-                                    <p className="mt-1 text-[11px] text-teal-600 flex items-center gap-1">
+                                    <p className="mt-1 text-[11px] text-teal-700 flex items-center gap-1">
                                         <CheckCircle2 className="h-3 w-3" />
                                         Zero-sales entry — all fields set to ₹0.
                                     </p>
                                 )}
                                 {excelLoaded && (
-                                    <p className="mt-1 text-[11px] text-teal-600 flex items-center gap-1">
+                                    <p className="mt-1 text-[11px] text-teal-700 flex items-center gap-1">
                                         <CheckCircle2 className="h-3 w-3" />
                                         Total Sale is locked from Excel. Upload again to change it.
                                     </p>
@@ -892,7 +892,7 @@ const ShopDashboard = () => {
                                     (!noSalesToday && excelTotal <= 0) ||
                                     (data.shop?.latitude && gpsStatus !== 'ok' && gpsStatus !== 'no_coords')
                                         ? 'bg-gray-300 cursor-not-allowed'
-                                        : 'bg-teal-600 hover:bg-teal-700 shadow-sm'
+                                        : 'bg-teal-700 hover:bg-teal-800 shadow-sm'
                                 }`}>
                                 {submitting
                                     ? <><Loader2 className="h-4 w-4 animate-spin" /> Submitting…</>
@@ -930,7 +930,7 @@ const ShopDashboard = () => {
                                     </button>
                                     <input ref={xlRef} type="file" accept=".xls,.xlsx" className="hidden"
                                         onChange={(e) => handleExcelFile(e.target.files[0])} />
-                                    <button aria-label="Refresh entries" onClick={fetchData} className="p-1 text-teal-600 hover:text-teal-800"><RefreshCw className="h-4 w-4" /></button>
+                                    <button aria-label="Refresh entries" onClick={fetchData} className="p-1 text-teal-700 hover:text-teal-800"><RefreshCw className="h-4 w-4" /></button>
                                 </div>
                             </div>
 
@@ -999,7 +999,7 @@ const ShopDashboard = () => {
                                                 {status !== 'APPROVED' && (
                                                     <button type="button" title="Edit entry"
                                                         onClick={(ev) => { ev.stopPropagation(); loadEntryForEdit(e); }}
-                                                        className="p-1.5 rounded-lg text-gray-600 hover:text-teal-600 hover:bg-teal-50 transition-colors">
+                                                        className="p-1.5 rounded-lg text-gray-600 hover:text-teal-700 hover:bg-teal-50 transition-colors">
                                                         <Pencil className="h-3.5 w-3.5" />
                                                     </button>
                                                 )}
@@ -1167,7 +1167,7 @@ const ShopDashboard = () => {
                                         if (key === 'history') fetchWalletHistory(walletHistoryFilter, walletCustomFrom, walletCustomTo);
                                         if (key === 'summary') runSummaryQuick(summaryQuick);
                                     }}
-                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold border-b-2 transition-colors ${walletViewMode === key ? 'border-teal-600 text-teal-600' : 'border-transparent text-gray-600 hover:text-gray-600'}`}
+                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold border-b-2 transition-colors ${walletViewMode === key ? 'border-teal-700 text-teal-700' : 'border-transparent text-gray-600 hover:text-gray-600'}`}
                                     style={{ background: 'transparent' }}>
                                     <Icon className="h-3.5 w-3.5" />
                                     {label}
@@ -1192,7 +1192,7 @@ const ShopDashboard = () => {
                                             setWalletHistoryFilter(key);
                                             if (key !== 'custom') fetchWalletHistory(key, walletCustomFrom, walletCustomTo);
                                         }}
-                                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${walletHistoryFilter === key ? 'bg-teal-600 text-white border-teal-600' : 'text-gray-600 border-gray-200 hover:border-teal-400'}`}
+                                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${walletHistoryFilter === key ? 'bg-teal-700 text-white border-teal-700' : 'text-gray-600 border-gray-200 hover:border-teal-400'}`}
                                         style={walletHistoryFilter !== key ? { background: 'var(--bg-primary)' } : {}}>
                                         {label}
                                     </button>
@@ -1201,15 +1201,15 @@ const ShopDashboard = () => {
                                     <div className="flex items-center gap-2 ml-1 flex-wrap">
                                         <input type="date" aria-label="Wallet history from date" value={walletCustomFrom}
                                             onChange={e => setWalletCustomFrom(e.target.value)}
-                                            className="px-2 py-1 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-teal-500"
+                                            className="px-2 py-1 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-teal-700"
                                             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
                                         <span className="text-xs text-gray-600">to</span>
                                         <input type="date" aria-label="Wallet history to date" value={walletCustomTo}
                                             onChange={e => setWalletCustomTo(e.target.value)}
-                                            className="px-2 py-1 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-teal-500"
+                                            className="px-2 py-1 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-teal-700"
                                             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
                                         <button onClick={() => fetchWalletHistory('custom', walletCustomFrom, walletCustomTo)}
-                                            className="px-3 py-1 rounded-full text-xs font-semibold bg-teal-600 text-white border border-teal-600">
+                                            className="px-3 py-1 rounded-full text-xs font-semibold bg-teal-700 text-white border border-teal-700">
                                             Apply
                                         </button>
                                     </div>
@@ -1226,7 +1226,7 @@ const ShopDashboard = () => {
                                         <p className="text-sm font-semibold text-red-500">Failed to load history</p>
                                         <p className="text-xs text-gray-600 mt-1 max-w-xs mx-auto">{walletHistoryError}</p>
                                         <button onClick={() => fetchWalletHistory(walletHistoryFilter, walletCustomFrom, walletCustomTo)}
-                                            className="mt-3 px-4 py-1.5 text-xs font-semibold rounded-lg bg-teal-600 text-white hover:bg-teal-700 transition-colors">Retry</button>
+                                            className="mt-3 px-4 py-1.5 text-xs font-semibold rounded-lg bg-teal-700 text-white hover:bg-teal-800 transition-colors">Retry</button>
                                     </div>
                                 ) : txns.length === 0 ? (
                                     <div className="text-center py-12">
@@ -1283,7 +1283,7 @@ const ShopDashboard = () => {
                                         {txns.length} of {walletHistory.totalCount} transactions
                                     </p>
                                     <button onClick={() => fetchWalletHistory(walletHistoryFilter, walletCustomFrom, walletCustomTo)}
-                                        className="flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors">
+                                        className="flex items-center gap-1 text-xs font-semibold text-teal-700 hover:text-teal-700 transition-colors">
                                         <RefreshCw className="h-3 w-3" />Refresh
                                     </button>
                                 </div>
@@ -1304,7 +1304,7 @@ const ShopDashboard = () => {
                                 ].map(({ key, label }) => (
                                     <button key={key}
                                         onClick={() => runSummaryQuick(key)}
-                                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${summaryQuick === key ? 'bg-teal-600 text-white border-teal-600' : 'text-gray-600 border-gray-200 hover:border-teal-400'}`}
+                                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${summaryQuick === key ? 'bg-teal-700 text-white border-teal-700' : 'text-gray-600 border-gray-200 hover:border-teal-400'}`}
                                         style={summaryQuick !== key ? { background: 'var(--bg-primary)' } : {}}>
                                         {label}
                                     </button>
@@ -1318,7 +1318,7 @@ const ShopDashboard = () => {
                                                 setSummaryDate(e.target.value);
                                                 fetchWalletHistory('custom', e.target.value, e.target.value);
                                             }}
-                                            className="px-2 py-1 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-teal-500"
+                                            className="px-2 py-1 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-teal-700"
                                             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
                                     </div>
                                 )}
@@ -1335,7 +1335,7 @@ const ShopDashboard = () => {
                                     <div className="col-span-4 text-center py-3">
                                         <p className="text-sm text-red-500 font-semibold">{walletHistoryError}</p>
                                         <button onClick={() => runSummaryQuick(summaryQuick)}
-                                            className="mt-2 px-3 py-1 text-xs font-semibold rounded-lg bg-teal-600 text-white">Retry</button>
+                                            className="mt-2 px-3 py-1 text-xs font-semibold rounded-lg bg-teal-700 text-white">Retry</button>
                                     </div>
                                 ) : (
                                     <>
@@ -1407,7 +1407,7 @@ const ShopDashboard = () => {
                                     {' '}· {walletHistory ? `${walletHistory.totalCount} total transactions` : ''}
                                 </p>
                                 <button onClick={() => runSummaryQuick(summaryQuick)}
-                                    className="flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors">
+                                    className="flex items-center gap-1 text-xs font-semibold text-teal-700 hover:text-teal-700 transition-colors">
                                     <RefreshCw className="h-3 w-3" />Refresh
                                 </button>
                             </div>

@@ -408,7 +408,7 @@ const AdminDashboard = () => {
                                 </div>
                             </div>
                             {isActive && (
-                                <p className="mt-2 text-[10px] font-bold text-orange-500 uppercase tracking-wide">
+                                <p className="mt-2 text-[10px] font-bold text-orange-700 uppercase tracking-wide">
                                     Filtering below ↓
                                 </p>
                             )}
@@ -460,7 +460,7 @@ const AdminDashboard = () => {
                         style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
                         <TriangleAlert className="h-4 w-4 text-amber-500" />
                         <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Anomaly Radar</span>
-                        <a href="/admin/anomalies" className="ml-auto text-[11px] font-semibold text-orange-500 hover:underline">View all →</a>
+                        <a href="/admin/anomalies" className="ml-auto text-[11px] font-semibold text-orange-700 hover:underline">View all →</a>
                     </div>
                     {anomalySummary ? (
                         <div className="p-4 space-y-2">
@@ -481,7 +481,7 @@ const AdminDashboard = () => {
                                 </div>
                             ))}
                             {anomalySummary.by_type.length === 0 && (
-                                <p className="text-xs text-center text-emerald-600 font-semibold py-4">✓ No anomalies this week</p>
+                                <p className="text-xs text-center text-emerald-700 font-semibold py-4">✓ No anomalies this week</p>
                             )}
                         </div>
                     ) : (
@@ -503,11 +503,12 @@ const AdminDashboard = () => {
                             </span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className="text-sm font-extrabold text-emerald-600">{todayStatus.submittedCount}</span>
+                            <span className="text-sm font-extrabold text-emerald-700">{todayStatus.submittedCount}</span>
                             <span className="text-sm text-gray-600">/</span>
                             <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{todayStatus.totalShops}</span>
                             <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>shops submitted</span>
                             <button
+                                aria-label="Refresh today's status"
                                 onClick={() => api.get('/entries/today-status').then(r => setTodayStatus(r.data)).catch(() => {})}
                                 className="ml-2 text-gray-600 hover:text-orange-500 transition-colors">
                                 <RefreshCw className="h-3.5 w-3.5" />
@@ -526,7 +527,7 @@ const AdminDashboard = () => {
                             </span>
                         ))}
                         {todayStatus.pendingCount === 0 && (
-                            <span className="text-xs text-emerald-600 font-semibold">All shops submitted today!</span>
+                            <span className="text-xs text-emerald-700 font-semibold">All shops submitted today!</span>
                         )}
                     </div>
                 </div>
@@ -634,7 +635,7 @@ const AdminDashboard = () => {
                         {['daily', 'weekly', 'monthly'].map(p => (
                             <button key={p} onClick={() => setPeriod(p)}
                                 className="px-3 py-1.5 text-xs font-semibold rounded-lg capitalize transition-colors"
-                                style={{ backgroundColor: period === p ? '#FF6B00' : '#f3f4f6', color: period === p ? 'white' : '#4b5563' }}>
+                                style={{ backgroundColor: period === p ? '#7c2d12' : '#f3f4f6', color: period === p ? '#ffffff' : '#4b5563' }}>
                                 {p}
                             </button>
                         ))}
@@ -870,7 +871,7 @@ const AdminDashboard = () => {
                                             <p className="font-medium text-indigo-600">{t.to_name || '—'}</p>
                                             <p className="text-xs text-gray-600">{t.to_mobile}</p>
                                         </td>
-                                        <td className="px-4 py-3 font-bold text-emerald-600 whitespace-nowrap">
+                                        <td className="px-4 py-3 font-bold text-emerald-700 whitespace-nowrap">
                                             {fmt(t.amount)}
                                         </td>
                                         <td className="px-4 py-3 text-xs max-w-[200px] break-words whitespace-normal"

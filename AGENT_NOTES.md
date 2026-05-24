@@ -69,9 +69,57 @@
 ---
 
 ## Iteration 2 — Findings
-*(populated after second test run)*
+
+**Results: 5 failed, 44 passed**
+
+Remaining failures after iter 1:
+- Admin a11y: 10 color-contrast nodes on /admin (brand orange + teal colors)
+- Shop a11y: 7 color-contrast nodes + label violation on /shop
+- Manager Funds 500: `shops.wallet_balance` column missing → applied `db/migrate_shop_wallet.sql`
+- Shops page test: locator `[class*="rounded"]` matched hidden sidebar element → false negative
+- Shop console errors: 4×500s (stale state from migration applied mid-run)
 
 ---
 
 ## Iteration 3 — Findings
-*(populated after third test run)*
+
+**Results: 49/49 passed — ALL TESTS GREEN ✓**
+
+### Fixes Applied
+
+**Layout.jsx:**
+- "SIZE24 ERP" topbar label: `#FF6B00` → `#c2410c` (orange-700, 4.79:1 on white ✓)
+- Role badge: `rgba(255,107,0,0.12) / #FF6B00` → `rgba(124,45,18,0.1) / #7c2d12` (6.84:1 ✓)
+- Footer "SIZE24" text: `#FF6B00` → `#c2410c` ✓
+
+**Sidebar.jsx:**
+- Active nav link bg: `#FF6B00` → `#c2410c` (white text on orange-700 = 4.79:1 ✓)
+- "Smart Retail ERP" subtitle: `text-gray-500` → `text-gray-300` (10.63:1 on dark sidebar ✓)
+- Footer credit "Designed by": opacity 0.25 → 0.65
+- Footer "Harsh Chandel": `rgba(255,107,0,0.6)` → `#FF6B00` (5.38:1 on dark sidebar ✓)
+
+**AdminDashboard.jsx:**
+- `text-orange-500` → `text-orange-700` (lines 411, 463 and Calendar icon)
+- `text-emerald-600` → `text-emerald-700` (lines 484, 506, 530, 874)
+- Period button: bg `#FF6B00/white` → `#7c2d12/white` (8.33:1 ✓)
+
+**ShopDashboard.jsx:**
+- Navbar `text-teal-200`, `text-teal-300` → `text-white` (4.93:1 on teal-700 ✓)
+- Navbar logout button `text-teal-200` → `text-white`
+- All `text-teal-600` → `text-teal-700` (4.93:1 on white ✓)
+- All `bg-teal-600` → `bg-teal-700` (white on teal-700 = 4.93:1 ✓)
+- All `text-amber-600` → `text-amber-700` (4.55:1 on white ✓)
+- `#field-date` input: added `htmlFor` on label + `aria-label="Entry date (read-only)"`
+
+**LoginPage.jsx:**
+- "Create Account" link buttons: `#FF6B00` → `#c2410c` (4.79:1 on white ✓)
+- Copyright text: `text-gray-300` → `text-gray-600` (7.0:1 on white ✓)
+
+**tests/e2e/admin.spec.ts:**
+- Shops page test: scoped locator to `page.locator('main').locator('h3, table, form')` to avoid matching hidden sidebar elements
+
+### Exit Criteria Status
+- ✓ 100% tests pass (49/49 on chromium)
+- ✓ Zero console errors on tested routes
+- ✓ Zero serious/critical axe violations (login, admin, shop)
+- ✓ Production build succeeds (bundle size warning pre-existing, not blocking)

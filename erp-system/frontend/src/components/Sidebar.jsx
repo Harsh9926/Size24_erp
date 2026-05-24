@@ -211,7 +211,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                     <img src="/logo.avif" alt="SIZE24 Logo" className="h-9 w-auto object-contain flex-shrink-0" />
                     <div className="flex-1">
                         <h1 className="text-lg font-extrabold tracking-tight" style={{ color: '#FF6B00' }}>SIZE24</h1>
-                        <p className="text-xs text-gray-500 leading-none">Smart Retail ERP</p>
+                        <p className="text-xs text-gray-300 leading-none">Smart Retail ERP</p>
                     </div>
                     {/* Close button — mobile only */}
                     <button
@@ -234,7 +234,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                                     : 'text-gray-400 hover:bg-white/10 hover:text-white'
                                 }`
                             }
-                            style={({ isActive }) => isActive ? { backgroundColor: '#FF6B00' } : {}}
+                            style={({ isActive }) => isActive ? { backgroundColor: '#c2410c' } : {}}
                         >
                             <Icon className="h-5 w-5 flex-shrink-0" />
                             <span className="flex-1">{label}</span>
@@ -271,10 +271,10 @@ const Sidebar = ({ isOpen, onClose }) => {
 
                 {/* Credit */}
                 <div className="px-4 py-3 border-t border-white/5 text-center">
-                    <p className="text-[10px] leading-tight" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                    <p className="text-[10px] leading-tight" style={{ color: 'rgba(255,255,255,0.65)' }}>
                         Designed &amp; Developed by
                     </p>
-                    <p className="text-[11px] font-semibold mt-0.5" style={{ color: 'rgba(255,107,0,0.6)' }}>
+                    <p className="text-[11px] font-semibold mt-0.5" style={{ color: '#FF6B00' }}>
                         Harsh Chandel
                     </p>
                 </div>

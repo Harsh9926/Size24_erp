@@ -60,7 +60,7 @@ test.describe('Admin — Critical Journeys', () => {
   test('shops page lists shops or shows empty state', async ({ page }) => {
     await page.goto('/admin/shops');
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-    const hasContent = await page.locator('table, form, [class*="rounded"], h3').first().isVisible({ timeout: 8000 }).catch(() => false);
+    const hasContent = await page.locator('main').locator('h3, table, form').first().isVisible({ timeout: 8000 }).catch(() => false);
     expect(hasContent).toBeTruthy();
   });
 

@@ -250,13 +250,13 @@ const LoginForm = ({ onSwitch }) => {
 
                 <motion.p variants={item} className="text-center text-sm text-gray-700">
                     Don't have an account?{' '}
-                    <motion.button onClick={onSwitch} className="font-bold hover:underline" style={{ color: '#FF6B00', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}
+                    <motion.button onClick={onSwitch} className="font-bold hover:underline" style={{ color: '#c2410c', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}
                         whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.96 }}>
                         Create Account
                     </motion.button>
                 </motion.p>
 
-                <motion.p variants={item} className="text-center text-xs text-gray-300 mt-6">
+                <motion.p variants={item} className="text-center text-xs text-gray-600 mt-6">
                     © 2025 SIZE24 · ERP v2.0
                 </motion.p>
             </motion.div>
@@ -340,7 +340,7 @@ const SignupForm = ({ onSwitch }) => {
 
                 <p className="text-center text-sm text-gray-700 mt-5">
                     Already have an account?{' '}
-                    <motion.button onClick={onSwitch} className="font-bold hover:underline" style={{ color: '#FF6B00', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}
+                    <motion.button onClick={onSwitch} className="font-bold hover:underline" style={{ color: '#c2410c', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}
                         whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.96 }}>
                         Sign In
                     </motion.button>
