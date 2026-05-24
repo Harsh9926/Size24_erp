@@ -197,7 +197,6 @@ exports.processExcel = async (req, res) => {
         }
 
         const todayIST = getTodayIST();
-        const skipDateCheck = req.body.skip_date_check === 'true' || req.body.skip_date_check === true;
         if (!skipDateCheck && uploadDate !== todayIST) {
             return res.status(422).json({
                 success: false,
