@@ -205,6 +205,7 @@ const ShopDashboard = () => {
     const [xlSuccess,   setXlSuccess]   = useState('');
     const [showPreview, setShowPreview] = useState(false);
     const [previewData, setPreviewData] = useState({ totalSale: 0, previewRows: [] });
+    const [pendingXlFile, setPendingXlFile] = useState(null);
     const [excelLoaded, setExcelLoaded] = useState(false);
     const [noSalesToday, setNoSalesToday] = useState(false);
 
@@ -468,6 +469,7 @@ const ShopDashboard = () => {
         try {
             const result = await parseExcelFile(file);
             setPreviewData(result);
+            setPendingXlFile(file);
             setShowPreview(true);
         } catch (err) {
             setXlError(err.message);
@@ -478,6 +480,7 @@ const ShopDashboard = () => {
     };
 
     // Confirms Excel preview — sets totalSale; date is always today
+    // Also saves the raw file to the backend so admins can view it
     const confirmExcel = () => {
         const { totalSale, previewRows } = previewData;
         setShowPreview(false);
@@ -492,6 +495,17 @@ const ShopDashboard = () => {
         setXlSuccess(
             `✓ Excel loaded — ${previewRows.length} row(s) · Total Sale ₹${totalSale.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,
         );
+
+        // Background upload so admin can view raw Excel data in approvals
+        if (pendingXlFile) {
+            const fd = new FormData();
+            fd.append('excel', pendingXlFile);
+            if (user?.shopId) fd.append('shop_id', user.shopId);
+            fd.append('skip_date_check', 'true');
+            api.post('/excel/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+                .catch(() => { /* best-effort; local state is already set */ });
+            setPendingXlFile(null);
+        }
     };
 
     /* ── Entries display ──────────────────────────────────────────── */

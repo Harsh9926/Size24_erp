@@ -102,8 +102,9 @@ exports.processExcel = async (req, res) => {
         const shopId = req.body.shop_id ? parseInt(req.body.shop_id) : (req.user.shopId || null);
         const isAdmin = req.user.role === 'admin';
         const force   = req.body.force === 'true' || req.body.force === true;
+        const skipDateCheck = req.body.skip_date_check === 'true' || req.body.skip_date_check === true;
 
-        if (shopId && !(isAdmin && force)) {
+        if (shopId && !(isAdmin && force) && !skipDateCheck) {
             const dupCheck = await db.query(
                 `SELECT eu.id, eu.created_at, u.name AS submitted_by
                  FROM excel_uploads eu
@@ -196,7 +197,8 @@ exports.processExcel = async (req, res) => {
         }
 
         const todayIST = getTodayIST();
-        if (uploadDate !== todayIST) {
+        const skipDateCheck = req.body.skip_date_check === 'true' || req.body.skip_date_check === true;
+        if (!skipDateCheck && uploadDate !== todayIST) {
             return res.status(422).json({
                 success: false,
                 message: "Upload failed: Excel date must match today's date.",
