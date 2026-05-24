@@ -178,7 +178,7 @@ const LoginForm = ({ onSwitch }) => {
             <motion.div variants={stagger} initial="initial" animate="animate">
                 <motion.div variants={item} className="mb-8">
                     <h2 className="text-3xl font-extrabold" style={{ color: '#1E1E2F' }}>Welcome back 👋</h2>
-                    <p className="text-gray-500 text-sm mt-1.5">Sign in to manage your stores</p>
+                    <p className="text-gray-700 text-sm mt-1.5">Sign in to manage your stores</p>
                 </motion.div>
 
                 <AnimatePresence>
@@ -192,12 +192,12 @@ const LoginForm = ({ onSwitch }) => {
 
                 <form onSubmit={handleLogin}>
                     <motion.div variants={item} className="mb-4">
-                        <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Mobile Number</label>
+                        <label htmlFor="login-mobile" className="block text-xs font-bold uppercase tracking-widest text-gray-700 mb-2">Mobile Number</label>
                         <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 pointer-events-none">
                                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
                             </span>
-                            <input type="text" value={mobile} onChange={e => setMobile(e.target.value)}
+                            <input id="login-mobile" type="text" value={mobile} onChange={e => setMobile(e.target.value)}
                                 style={inputBase} placeholder="Mobile number"
                                 onFocus={e => { e.target.style.borderColor = '#FF6B00'; e.target.style.boxShadow = '0 0 0 3px rgba(255,107,0,0.12)'; e.target.style.background = '#fff'; }}
                                 onBlur={e => { e.target.style.borderColor = '#f3f4f6'; e.target.style.boxShadow = 'none'; e.target.style.background = '#f9fafb'; }}
@@ -206,18 +206,18 @@ const LoginForm = ({ onSwitch }) => {
                     </motion.div>
 
                     <motion.div variants={item} className="mb-6">
-                        <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Password</label>
+                        <label htmlFor="login-password" className="block text-xs font-bold uppercase tracking-widest text-gray-700 mb-2">Password</label>
                         <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 pointer-events-none">
                                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                             </span>
-                            <input type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
+                            <input id="login-password" type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
                                 style={{ ...inputBase, paddingRight: 44 }} placeholder="Password"
                                 onFocus={e => { e.target.style.borderColor = '#FF6B00'; e.target.style.boxShadow = '0 0 0 3px rgba(255,107,0,0.12)'; e.target.style.background = '#fff'; }}
                                 onBlur={e => { e.target.style.borderColor = '#f3f4f6'; e.target.style.boxShadow = 'none'; e.target.style.background = '#f9fafb'; }}
                                 required />
-                            <button type="button" onClick={() => setShowPass(v => !v)}
-                                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition-colors">
+                            <button type="button" aria-label={showPass ? 'Hide password' : 'Show password'} onClick={() => setShowPass(v => !v)}
+                                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-700 transition-colors">
                                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     {showPass
                                         ? <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
@@ -244,11 +244,11 @@ const LoginForm = ({ onSwitch }) => {
 
                 <motion.div variants={item} className="flex items-center my-5">
                     <div className="flex-1 h-px bg-gray-100" />
-                    <span className="mx-3 text-xs text-gray-400">or</span>
+                    <span className="mx-3 text-xs text-gray-600">or</span>
                     <div className="flex-1 h-px bg-gray-100" />
                 </motion.div>
 
-                <motion.p variants={item} className="text-center text-sm text-gray-500">
+                <motion.p variants={item} className="text-center text-sm text-gray-700">
                     Don't have an account?{' '}
                     <motion.button onClick={onSwitch} className="font-bold hover:underline" style={{ color: '#FF6B00', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}
                         whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.96 }}>
@@ -295,7 +295,7 @@ const SignupForm = ({ onSwitch }) => {
             <motion.div variants={stagger} initial="initial" animate="animate">
                 <motion.div variants={item} className="mb-7">
                     <h2 className="text-3xl font-extrabold" style={{ color: '#1E1E2F' }}>Create Account 🎓</h2>
-                    <p className="text-gray-500 text-sm mt-1">Join SIZE24 ERP — School Uniform Retail</p>
+                    <p className="text-gray-700 text-sm mt-1">Join SIZE24 ERP — School Uniform Retail</p>
                 </motion.div>
 
                 <AnimatePresence>
@@ -310,7 +310,7 @@ const SignupForm = ({ onSwitch }) => {
                         { label: 'Password', field: 'password', type: 'password', ph: 'Choose a password', req: true },
                     ].map(({ label, field, type, ph, req }) => (
                         <motion.div key={field} variants={item}>
-                            <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-1.5">{label}</label>
+                            <label className="block text-xs font-bold uppercase tracking-widest text-gray-700 mb-1.5">{label}</label>
                             <input type={type} style={inputBase} placeholder={ph} required={req}
                                 value={form[field]} onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))}
                                 onFocus={e => { e.target.style.borderColor = '#FF6B00'; e.target.style.boxShadow = '0 0 0 3px rgba(255,107,0,0.12)'; e.target.style.background = '#fff'; }}
@@ -318,7 +318,7 @@ const SignupForm = ({ onSwitch }) => {
                         </motion.div>
                     ))}
                     <motion.div variants={item}>
-                        <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-1.5">Role</label>
+                        <label className="block text-xs font-bold uppercase tracking-widest text-gray-700 mb-1.5">Role</label>
                         <select style={{ ...inputBase, background: '#f9fafb' }} value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
                             <option value="manager">Manager</option>
                             <option value="shop_user">Shop User</option>
@@ -338,7 +338,7 @@ const SignupForm = ({ onSwitch }) => {
                     </motion.div>
                 </form>
 
-                <p className="text-center text-sm text-gray-500 mt-5">
+                <p className="text-center text-sm text-gray-700 mt-5">
                     Already have an account?{' '}
                     <motion.button onClick={onSwitch} className="font-bold hover:underline" style={{ color: '#FF6B00', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}
                         whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.96 }}>
@@ -492,7 +492,7 @@ const LoginPage = () => {
                     <h2 className="text-2xl font-extrabold text-white mb-2">
                         School Uniform <span style={{ color: '#FF6B00' }}>Retail ERP</span>
                     </h2>
-                    <p className="text-gray-400 text-sm mb-5 max-w-xs mx-auto">Manage uniforms, track inventory, and grow your school uniform business.</p>
+                    <p className="text-gray-600 text-sm mb-5 max-w-xs mx-auto">Manage uniforms, track inventory, and grow your school uniform business.</p>
                     <motion.a href="https://www.size24.in/" target="_blank" rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 px-7 py-3 rounded-full text-sm font-bold text-white"
                         style={{ background: 'linear-gradient(90deg,#FF6B00,#ff8c42)', boxShadow: '0 4px 20px rgba(255,107,0,0.45)' }}

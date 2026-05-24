@@ -85,7 +85,7 @@ const EditModal = ({ entry, onClose, onSaved }) => {
                             {wasApproved && <span className="ml-2 text-teal-600 font-semibold">APPROVED</span>}
                         </p>
                     </div>
-                    <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-200 transition-colors"
+                    <button onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg hover:bg-gray-200 transition-colors"
                         style={{ color: 'var(--text-secondary)' }}>
                         <X className="h-5 w-5" />
                     </button>
@@ -425,16 +425,16 @@ const AdminDashboard = () => {
                     style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
                     <div className="px-4 py-3 border-b flex items-center gap-2"
                         style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
-                        <Radio className={`h-4 w-4 ${isLive ? 'text-emerald-500' : 'text-gray-400'}`} />
+                        <Radio className={`h-4 w-4 ${isLive ? 'text-emerald-500' : 'text-gray-600'}`} />
                         <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Live Feed</span>
-                        <span className={`ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${isLive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                        <span className={`ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${isLive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}`}>
                             <span className={`h-1.5 w-1.5 rounded-full ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
                             {isLive ? 'LIVE' : 'OFFLINE'}
                         </span>
                     </div>
                     <div className="divide-y" style={{ borderColor: 'var(--border-color)' }}>
                         {liveEvents.length === 0 ? (
-                            <p className="px-4 py-6 text-xs text-center text-gray-400">
+                            <p className="px-4 py-6 text-xs text-center text-gray-600">
                                 {isLive ? 'Waiting for activity…' : 'Connecting…'}
                             </p>
                         ) : liveEvents.map(ev => (
@@ -447,7 +447,7 @@ const AdminDashboard = () => {
                                         </p>
                                     )}
                                 </div>
-                                <span className="text-[10px] text-gray-400 whitespace-nowrap">{ev.time}</span>
+                                <span className="text-[10px] text-gray-600 whitespace-nowrap">{ev.time}</span>
                             </div>
                         ))}
                     </div>
@@ -467,11 +467,11 @@ const AdminDashboard = () => {
                             <div className="flex gap-4 mb-3">
                                 <div className="text-center">
                                     <p className="text-2xl font-extrabold text-amber-500">{anomalySummary.today_count}</p>
-                                    <p className="text-[10px] font-semibold text-gray-400 uppercase">Today</p>
+                                    <p className="text-[10px] font-semibold text-gray-600 uppercase">Today</p>
                                 </div>
                                 <div className="text-center">
                                     <p className="text-2xl font-extrabold" style={{ color: 'var(--text-primary)' }}>{anomalySummary.week_count}</p>
-                                    <p className="text-[10px] font-semibold text-gray-400 uppercase">This Week</p>
+                                    <p className="text-[10px] font-semibold text-gray-600 uppercase">This Week</p>
                                 </div>
                             </div>
                             {anomalySummary.by_type.slice(0, 4).map(t => (
@@ -485,7 +485,7 @@ const AdminDashboard = () => {
                             )}
                         </div>
                     ) : (
-                        <p className="px-4 py-8 text-xs text-center text-gray-400 animate-pulse">Loading…</p>
+                        <p className="px-4 py-8 text-xs text-center text-gray-600 animate-pulse">Loading…</p>
                     )}
                 </div>
             </div>
@@ -504,12 +504,12 @@ const AdminDashboard = () => {
                         </div>
                         <div className="flex items-center gap-2">
                             <span className="text-sm font-extrabold text-emerald-600">{todayStatus.submittedCount}</span>
-                            <span className="text-sm text-gray-400">/</span>
+                            <span className="text-sm text-gray-600">/</span>
                             <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{todayStatus.totalShops}</span>
                             <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>shops submitted</span>
                             <button
                                 onClick={() => api.get('/entries/today-status').then(r => setTodayStatus(r.data)).catch(() => {})}
-                                className="ml-2 text-gray-400 hover:text-orange-500 transition-colors">
+                                className="ml-2 text-gray-600 hover:text-orange-500 transition-colors">
                                 <RefreshCw className="h-3.5 w-3.5" />
                             </button>
                         </div>
@@ -564,6 +564,7 @@ const AdminDashboard = () => {
                 <Store className="h-4 w-4 flex-shrink-0" style={{ color: '#FF6B00' }} />
                 <span className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>Select Store:</span>
                 <select
+                    aria-label="Select store"
                     value={filters.shop_id}
                     onChange={e => setFilters(f => ({ ...f, shop_id: e.target.value }))}
                     className="flex-1 min-w-0 max-w-xs px-3 py-1.5 text-sm border rounded-lg outline-none"
@@ -588,11 +589,11 @@ const AdminDashboard = () => {
 
                 {filters.shop_id && (
                     <button onClick={() => setFilters(f => ({ ...f, shop_id: '' }))}
-                        className="text-xs text-gray-400 hover:text-gray-600 underline ml-auto">
+                        className="text-xs text-gray-600 hover:text-gray-600 underline ml-auto">
                         Clear filter
                     </button>
                 )}
-                {loading && <span className="text-xs text-gray-400 animate-pulse ml-auto">Refreshing…</span>}
+                {loading && <span className="text-xs text-gray-600 animate-pulse ml-auto">Refreshing…</span>}
             </div>
 
             {/* ── Date Range Filter Bar ──────────────────────────── */}
@@ -607,19 +608,19 @@ const AdminDashboard = () => {
                         {label}
                     </button>
                 ))}
-                <span className="text-xs text-gray-400">or</span>
-                <input type="date" value={filters.startDate}
+                <span className="text-xs text-gray-600">or</span>
+                <input type="date" aria-label="Start date" value={filters.startDate}
                     onChange={e => setFilters(f => ({ ...f, startDate: e.target.value }))}
                     className="px-3 py-1.5 text-sm border rounded-lg outline-none"
                     style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                <span className="text-sm text-gray-400">to</span>
-                <input type="date" value={filters.endDate}
+                <span className="text-sm text-gray-600">to</span>
+                <input type="date" aria-label="End date" value={filters.endDate}
                     onChange={e => setFilters(f => ({ ...f, endDate: e.target.value }))}
                     className="px-3 py-1.5 text-sm border rounded-lg outline-none"
                     style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
                 {(filters.startDate || filters.endDate) && (
                     <button onClick={() => setQuickFilter('clear')}
-                        className="text-xs text-gray-400 hover:text-gray-600 underline ml-auto">
+                        className="text-xs text-gray-600 hover:text-gray-600 underline ml-auto">
                         Clear dates
                     </button>
                 )}
@@ -640,7 +641,7 @@ const AdminDashboard = () => {
                     </div>
                 </div>
                 {loading
-                    ? <div className="h-64 flex items-center justify-center text-gray-400 animate-pulse">Loading chart…</div>
+                    ? <div className="h-64 flex items-center justify-center text-gray-600 animate-pulse">Loading chart…</div>
                     : (
                         <ResponsiveContainer width="100%" height={280}>
                             <BarChart data={data.chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
@@ -694,7 +695,7 @@ const AdminDashboard = () => {
                                         </span>
                                         <span className="font-bold" style={{ color: d.color }}>
                                             {fmt(d.value)} &nbsp;
-                                            <span className="text-xs font-normal text-gray-400">
+                                            <span className="text-xs font-normal text-gray-600">
                                                 ({((d.value / grandTotal) * 100).toFixed(1)}%)
                                             </span>
                                         </span>
@@ -722,7 +723,7 @@ const AdminDashboard = () => {
                     <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
                             {cardFilter ? CARD_FILTERS[cardFilter]?.label : 'Recent Daily Entries'}
-                            <span className="ml-1.5 text-xs font-normal text-gray-400">
+                            <span className="ml-1.5 text-xs font-normal text-gray-600">
                                 ({displayedEntries.length} shown)
                             </span>
                         </h3>
@@ -796,13 +797,13 @@ const AdminDashboard = () => {
                             {displayedEntries.length === 0 && (
                                 <tr>
                                     <td colSpan="8" className="text-center py-12">
-                                        <p className="text-gray-400 text-sm">
+                                        <p className="text-gray-600 text-sm">
                                             {cardFilter
                                                 ? `No entries match "${CARD_FILTERS[cardFilter]?.label}".`
                                                 : 'No entries found.'}
                                         </p>
                                         {!cardFilter && (
-                                            <p className="text-gray-400 text-xs mt-1">
+                                            <p className="text-gray-600 text-xs mt-1">
                                                 Summary totals count only <strong>Approved</strong> entries.{' '}
                                                 <a href="/admin/approvals" className="text-indigo-500 underline">Go to Approvals →</a>
                                             </p>
@@ -823,10 +824,10 @@ const AdminDashboard = () => {
                     <div className="flex items-center gap-2">
                         <ArrowRightLeft className="h-4 w-4 text-indigo-500" />
                         <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Cash Transfers</h3>
-                        <span className="text-xs text-gray-400">({transfers.length})</span>
+                        <span className="text-xs text-gray-600">({transfers.length})</span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <select value={txStatusFilter}
+                        <select aria-label="Transfer status filter" value={txStatusFilter}
                             onChange={e => { setTxStatusFilter(e.target.value); fetchTransfers(e.target.value); }}
                             className="text-xs border rounded-lg px-2 py-1.5 outline-none"
                             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
@@ -863,11 +864,11 @@ const AdminDashboard = () => {
                                     <tr key={t.id} style={{ borderTop: '1px solid var(--border-color)' }}>
                                         <td className="px-4 py-3">
                                             <p className="font-medium" style={{ color: 'var(--text-primary)' }}>{t.from_name || '—'}</p>
-                                            <p className="text-xs text-gray-400">{t.from_mobile}</p>
+                                            <p className="text-xs text-gray-600">{t.from_mobile}</p>
                                         </td>
                                         <td className="px-4 py-3">
                                             <p className="font-medium text-indigo-600">{t.to_name || '—'}</p>
-                                            <p className="text-xs text-gray-400">{t.to_mobile}</p>
+                                            <p className="text-xs text-gray-600">{t.to_mobile}</p>
                                         </td>
                                         <td className="px-4 py-3 font-bold text-emerald-600 whitespace-nowrap">
                                             {fmt(t.amount)}
@@ -889,7 +890,7 @@ const AdminDashboard = () => {
                             })}
                             {transfers.length === 0 && !txLoading && (
                                 <tr>
-                                    <td colSpan="6" className="text-center py-10 text-gray-400">No transfers found.</td>
+                                    <td colSpan="6" className="text-center py-10 text-gray-600">No transfers found.</td>
                                 </tr>
                             )}
                         </tbody>

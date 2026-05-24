@@ -505,13 +505,13 @@ const ShopDashboard = () => {
     const inputCls = (disabled) =>
         `w-full px-3 py-2.5 border rounded-lg text-sm outline-none transition-colors ${
             disabled
-                ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+                ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed'
                 : 'border-gray-200 focus:ring-2 focus:ring-teal-500 bg-white'
         }`;
 
     const fmtAmt = (v) => `₹${parseFloat(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
-    if (loading) return <div className="p-8 text-center text-gray-400 animate-pulse">Loading...</div>;
+    if (loading) return <div className="p-8 text-center text-gray-600 animate-pulse">Loading...</div>;
 
     /* ══════════════════════════════════════════════════════════════
        RENDER
@@ -590,8 +590,9 @@ const ShopDashboard = () => {
                             {/* Transfer Form */}
                             <form onSubmit={handleTransfer} className="space-y-3">
                                 <div>
-                                    <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Select Manager</label>
+                                    <label htmlFor="transfer-manager" className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Select Manager</label>
                                     <select
+                                        id="transfer-manager"
                                         value={transferForm.to_user_id}
                                         onChange={e => setTransferForm(p => ({ ...p, to_user_id: e.target.value }))}
                                         className="w-full px-3 py-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500"
@@ -608,10 +609,11 @@ const ShopDashboard = () => {
                                 </div>
 
                                 <div>
-                                    <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
-                                        Amount (₹) <span className="font-normal text-gray-400">— Available: ₹{walletBalance.toFixed(2)}</span>
+                                    <label htmlFor="transfer-amount" className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                                        Amount (₹) <span className="font-normal text-gray-600">— Available: ₹{walletBalance.toFixed(2)}</span>
                                     </label>
                                     <input
+                                        id="transfer-amount"
                                         type="number" min="1" step="0.01"
                                         value={transferForm.amount}
                                         onChange={e => setTransferForm(p => ({ ...p, amount: e.target.value }))}
@@ -622,8 +624,9 @@ const ShopDashboard = () => {
                                 </div>
 
                                 <div>
-                                    <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Note (optional)</label>
+                                    <label htmlFor="transfer-note" className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Note (optional)</label>
                                     <input
+                                        id="transfer-note"
                                         type="text"
                                         value={transferForm.note}
                                         onChange={e => setTransferForm(p => ({ ...p, note: e.target.value }))}
@@ -661,7 +664,7 @@ const ShopDashboard = () => {
                                 </p>
                                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                                     {myTransfers.length === 0 && (
-                                        <p className="text-sm text-gray-400 py-4 text-center">No transfers yet.</p>
+                                        <p className="text-sm text-gray-600 py-4 text-center">No transfers yet.</p>
                                     )}
                                     {myTransfers.map(t => {
                                         const statusCfg = {
@@ -677,9 +680,9 @@ const ShopDashboard = () => {
                                                     <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>
                                                         ₹{parseFloat(t.amount).toLocaleString('en-IN')} → {t.to_name || t.to_mobile}
                                                     </p>
-                                                    <p className="text-gray-400">by {t.from_name || 'Unknown'}</p>
-                                                    {t.note && <p className="text-gray-400 truncate max-w-[160px]">{t.note}</p>}
-                                                    <p className="text-gray-400">{new Date(t.created_at).toLocaleDateString('en-IN')}</p>
+                                                    <p className="text-gray-600">by {t.from_name || 'Unknown'}</p>
+                                                    {t.note && <p className="text-gray-600 truncate max-w-[160px]">{t.note}</p>}
+                                                    <p className="text-gray-600">{new Date(t.created_at).toLocaleDateString('en-IN')}</p>
                                                 </div>
                                                 <span className={`px-2 py-0.5 rounded-full font-semibold ${statusCfg.cls}`}>{statusCfg.label}</span>
                                             </div>
@@ -732,7 +735,7 @@ const ShopDashboard = () => {
                                     <input id="field-date" type="date"
                                         className={inputCls(true) + ' pr-8'}
                                         value={form.date} disabled readOnly />
-                                    <Lock className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                                    <Lock className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-600 pointer-events-none" />
                                 </div>
                             </div>
 
@@ -748,7 +751,7 @@ const ShopDashboard = () => {
                                         value={excelLoaded ? `₹ ${fmtAmt(form.excel_total_sale).replace('₹','').trim()}` : 'Upload Excel to set Total Sale'}
                                         disabled readOnly
                                         aria-label="Total Sale (locked from Excel)" />
-                                    <Lock className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                                    <Lock className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-600 pointer-events-none" />
                                 </div>
                                 {!excelLoaded && (
                                     <p className="mt-1 text-[11px] text-amber-600 flex items-center gap-1">
@@ -836,7 +839,7 @@ const ShopDashboard = () => {
                                             : <><XCircle className="h-4 w-4 text-red-600" /><span className="text-xs font-bold text-red-700">Breakdown must match Total Sale</span></>
                                         }
                                     </div>
-                                    <p className="text-[10px] text-center mt-1 text-gray-400">
+                                    <p className="text-[10px] text-center mt-1 text-gray-600">
                                         Cash + RazorPay + QR/Card/Bank = Total Sale
                                     </p>
                                 </div>
@@ -865,7 +868,7 @@ const ShopDashboard = () => {
                                 <div>
                                     <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
                                         Bank / Paytm Screenshot
-                                        <span className="ml-1 text-[10px] font-normal text-gray-400">(optional)</span>
+                                        <span className="ml-1 text-[10px] font-normal text-gray-600">(optional)</span>
                                     </label>
                                     <div className="flex items-center gap-2">
                                         <button type="button" onClick={() => fileRef.current?.click()}
@@ -901,7 +904,7 @@ const ShopDashboard = () => {
                                 }
                             </button>
                             {excelLoaded && !isFormLocked && (
-                                <p className="text-[11px] text-center text-gray-400">
+                                <p className="text-[11px] text-center text-gray-600">
                                     Entry will be sent to admin for approval before it appears in final records.
                                 </p>
                             )}
@@ -927,19 +930,19 @@ const ShopDashboard = () => {
                                     </button>
                                     <input ref={xlRef} type="file" accept=".xls,.xlsx" className="hidden"
                                         onChange={(e) => handleExcelFile(e.target.files[0])} />
-                                    <button onClick={fetchData} className="p-1 text-teal-600 hover:text-teal-800"><RefreshCw className="h-4 w-4" /></button>
+                                    <button aria-label="Refresh entries" onClick={fetchData} className="p-1 text-teal-600 hover:text-teal-800"><RefreshCw className="h-4 w-4" /></button>
                                 </div>
                             </div>
 
                             {/* Date filter */}
                             <div className="flex items-center gap-1.5">
-                                <Calendar className="h-3.5 w-3.5 text-gray-400" />
-                                <input type="date" value={dateFilter}
+                                <Calendar className="h-3.5 w-3.5 text-gray-600" />
+                                <input type="date" aria-label="Filter by date" value={dateFilter}
                                     onChange={(e) => setDateFilter(e.target.value)}
                                     className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-teal-400"
                                     style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)' }} />
                                 {dateFilter && (
-                                    <button onClick={() => setDateFilter('')} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-0.5">
+                                    <button onClick={() => setDateFilter('')} className="text-xs text-gray-600 hover:text-gray-600 flex items-center gap-0.5">
                                         <X className="h-3 w-3" /> Clear
                                     </button>
                                 )}
@@ -955,7 +958,7 @@ const ShopDashboard = () => {
                                 <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
                                     <XCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                                     <span className="flex-1">{xlError}</span>
-                                    <button onClick={() => setXlError('')}><X className="h-3 w-3" /></button>
+                                    <button aria-label="Dismiss error" onClick={() => setXlError('')}><X className="h-3 w-3" /></button>
                                 </div>
                             )}
                         </div>
@@ -996,7 +999,7 @@ const ShopDashboard = () => {
                                                 {status !== 'APPROVED' && (
                                                     <button type="button" title="Edit entry"
                                                         onClick={(ev) => { ev.stopPropagation(); loadEntryForEdit(e); }}
-                                                        className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors">
+                                                        className="p-1.5 rounded-lg text-gray-600 hover:text-teal-600 hover:bg-teal-50 transition-colors">
                                                         <Pencil className="h-3.5 w-3.5" />
                                                     </button>
                                                 )}
@@ -1005,7 +1008,7 @@ const ShopDashboard = () => {
                                         );
                                     })}
                                     {displayEntries.length === 0 && (
-                                        <tr><td colSpan="7" className="text-center py-12 text-gray-400 text-sm">No entries yet</td></tr>
+                                        <tr><td colSpan="7" className="text-center py-12 text-gray-600 text-sm">No entries yet</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -1037,7 +1040,7 @@ const ShopDashboard = () => {
                             </div>
                             <button onClick={() => setShowPreview(false)}
                                 className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
-                                <X className="h-5 w-5 text-gray-400" />
+                                <X className="h-5 w-5 text-gray-600" />
                             </button>
                         </div>
 
@@ -1064,7 +1067,7 @@ const ShopDashboard = () => {
                                 <tbody>
                                     {previewData.previewRows.map((r, i) => (
                                         <tr key={i} style={{ borderTop: '1px solid var(--border-color)' }} className="hover:opacity-80">
-                                            <td className="px-4 py-2.5 text-xs text-gray-400">{i + 1}</td>
+                                            <td className="px-4 py-2.5 text-xs text-gray-600">{i + 1}</td>
                                             <td className="px-4 py-2.5 font-bold text-teal-700">
                                                 ₹{r.receivedAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                             </td>
@@ -1164,7 +1167,7 @@ const ShopDashboard = () => {
                                         if (key === 'history') fetchWalletHistory(walletHistoryFilter, walletCustomFrom, walletCustomTo);
                                         if (key === 'summary') runSummaryQuick(summaryQuick);
                                     }}
-                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold border-b-2 transition-colors ${walletViewMode === key ? 'border-teal-600 text-teal-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold border-b-2 transition-colors ${walletViewMode === key ? 'border-teal-600 text-teal-600' : 'border-transparent text-gray-600 hover:text-gray-600'}`}
                                     style={{ background: 'transparent' }}>
                                     <Icon className="h-3.5 w-3.5" />
                                     {label}
@@ -1196,12 +1199,12 @@ const ShopDashboard = () => {
                                 ))}
                                 {walletHistoryFilter === 'custom' && (
                                     <div className="flex items-center gap-2 ml-1 flex-wrap">
-                                        <input type="date" value={walletCustomFrom}
+                                        <input type="date" aria-label="Wallet history from date" value={walletCustomFrom}
                                             onChange={e => setWalletCustomFrom(e.target.value)}
                                             className="px-2 py-1 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-teal-500"
                                             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                                        <span className="text-xs text-gray-400">to</span>
-                                        <input type="date" value={walletCustomTo}
+                                        <span className="text-xs text-gray-600">to</span>
+                                        <input type="date" aria-label="Wallet history to date" value={walletCustomTo}
                                             onChange={e => setWalletCustomTo(e.target.value)}
                                             className="px-2 py-1 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-teal-500"
                                             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
@@ -1221,14 +1224,14 @@ const ShopDashboard = () => {
                                     <div className="text-center py-12">
                                         <AlertCircle className="h-10 w-10 mx-auto mb-3 text-red-300" />
                                         <p className="text-sm font-semibold text-red-500">Failed to load history</p>
-                                        <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">{walletHistoryError}</p>
+                                        <p className="text-xs text-gray-600 mt-1 max-w-xs mx-auto">{walletHistoryError}</p>
                                         <button onClick={() => fetchWalletHistory(walletHistoryFilter, walletCustomFrom, walletCustomTo)}
                                             className="mt-3 px-4 py-1.5 text-xs font-semibold rounded-lg bg-teal-600 text-white hover:bg-teal-700 transition-colors">Retry</button>
                                     </div>
                                 ) : txns.length === 0 ? (
                                     <div className="text-center py-12">
                                         <Wallet className="h-10 w-10 mx-auto mb-3 text-gray-300" />
-                                        <p className="text-sm font-semibold text-gray-400">No cash transactions in this period</p>
+                                        <p className="text-sm font-semibold text-gray-600">No cash transactions in this period</p>
                                         <p className="text-xs text-gray-300 mt-1">
                                             Only entries with cash &gt; ₹0 appear here.
                                             {walletHistoryFilter !== 'all' && <> Try <button onClick={() => { setWalletHistoryFilter('all'); fetchWalletHistory('all','',''); }} className="underline text-teal-500 font-semibold">All</button>.</>}
@@ -1254,7 +1257,7 @@ const ShopDashboard = () => {
                                                         </p>
                                                         <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
                                                             {new Date(txn.created_at).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}
-                                                            {txn.done_by && <span className="ml-1.5 text-gray-400">· {txn.done_by}</span>}
+                                                            {txn.done_by && <span className="ml-1.5 text-gray-600">· {txn.done_by}</span>}
                                                         </p>
                                                     </div>
                                                     <div className="flex-shrink-0 text-right">
@@ -1308,8 +1311,8 @@ const ShopDashboard = () => {
                                 ))}
                                 {summaryQuick === 'custom' && (
                                     <div className="flex items-center gap-2 ml-1">
-                                        <Calendar className="h-3.5 w-3.5 text-gray-400" />
-                                        <input type="date" value={summaryDate}
+                                        <Calendar className="h-3.5 w-3.5 text-gray-600" />
+                                        <input type="date" aria-label="Summary date" value={summaryDate}
                                             max={today}
                                             onChange={e => {
                                                 setSummaryDate(e.target.value);
@@ -1358,7 +1361,7 @@ const ShopDashboard = () => {
                                 {!walletHistoryLoading && !walletHistoryError && txns.length === 0 && (
                                     <div className="text-center py-10">
                                         <Wallet className="h-9 w-9 mx-auto mb-2 text-gray-300" />
-                                        <p className="text-sm font-semibold text-gray-400">No cash transactions in this period</p>
+                                        <p className="text-sm font-semibold text-gray-600">No cash transactions in this period</p>
                                         <p className="text-xs text-gray-300 mt-1">Opening = Closing = ₹{fmt(sumOpening)}</p>
                                     </div>
                                 )}
@@ -1379,7 +1382,7 @@ const ShopDashboard = () => {
                                                     </div>
                                                     <div className="flex-1 min-w-0">
                                                         <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{txn.description}</p>
-                                                        <p className="text-[10px] mt-0.5 text-gray-400">
+                                                        <p className="text-[10px] mt-0.5 text-gray-600">
                                                             {new Date(txn.created_at).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}
                                                         </p>
                                                     </div>
@@ -1387,7 +1390,7 @@ const ShopDashboard = () => {
                                                         <p className={`text-xs font-bold ${isCredit ? 'text-green-600' : 'text-red-600'}`}>
                                                             {isCredit ? '+' : '−'}₹{fmt(Math.abs(txn.amount))}
                                                         </p>
-                                                        <p className="text-[10px] text-gray-400">Bal: ₹{fmt(txn.balance_after)}</p>
+                                                        <p className="text-[10px] text-gray-600">Bal: ₹{fmt(txn.balance_after)}</p>
                                                     </div>
                                                 </div>
                                             );
