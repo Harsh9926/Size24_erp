@@ -186,6 +186,8 @@ const AdminManagerFundsPage = () => {
     const [sendModal,    setSendModal]    = useState(false);
     const [sendActing,   setSendActing]   = useState(false);
     const [historyShop,  setHistoryShop]  = useState(null); // { id, name }
+    const [selectedIds,  setSelectedIds]  = useState(new Set());
+    const [bulkActing,   setBulkActing]   = useState(false);
 
     /* ── Data fetching ─────────────────────────────────────────────── */
     const fetchAll = useCallback(async () => {
@@ -240,6 +242,27 @@ const AdminManagerFundsPage = () => {
         } finally { setActing(null); }
     };
 
+    /* ── Bulk Approve ─────────────────────────────────────────────── */
+    const handleBulkApprove = async () => {
+        if (selectedIds.size === 0) return;
+        setBulkActing(true);
+        let successCount = 0;
+        let failCount = 0;
+        for (const id of selectedIds) {
+            try {
+                await api.put(`/manager-transfers/${id}/approve`);
+                successCount++;
+            } catch {
+                failCount++;
+            }
+        }
+        setSelectedIds(new Set());
+        setBulkActing(false);
+        if (failCount === 0) showToast('success', `${successCount} transfer(s) approved successfully.`);
+        else showToast('error', `${successCount} approved, ${failCount} failed.`);
+        fetchAll();
+    };
+
     /* ── Send to Manager ───────────────────────────────────────────── */
     const handleSendToManager = async (form) => {
         setSendActing(true);
@@ -259,6 +282,13 @@ const AdminManagerFundsPage = () => {
         }
     };
 
+    /* ── Selection helpers ─────────────────────────────────────────── */
+    const toggleSelect = (id) => setSelectedIds(prev => {
+        const next = new Set(prev);
+        next.has(id) ? next.delete(id) : next.add(id);
+        return next;
+    });
+
     /* ── Filter logic ──────────────────────────────────────────────── */
     const filtered = transfers.filter(t => {
         const normalStatus = t.status === 'accepted' ? 'approved' : t.status;
@@ -271,6 +301,15 @@ const AdminManagerFundsPage = () => {
     const pendingCount = transfers.filter(t =>
         t.status === 'pending' && t.type !== 'user_to_manager'
     ).length;
+
+    const selectableIds = filtered
+        .filter(t => t.status === 'pending' && t.type !== 'user_to_manager')
+        .map(t => t.id);
+    const allSelected = selectableIds.length > 0 && selectableIds.every(id => selectedIds.has(id));
+    const toggleAll = () => {
+        if (allSelected) setSelectedIds(new Set());
+        else setSelectedIds(new Set(selectableIds));
+    };
 
     /* ── Summary cards ─────────────────────────────────────────────── */
     const totalReceived = transfers
@@ -541,6 +580,17 @@ const AdminManagerFundsPage = () => {
                             <option value="all">All</option>
                         </select>
 
+                        {selectedIds.size > 0 && (
+                            <button onClick={handleBulkApprove} disabled={bulkActing}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white rounded-lg transition-all"
+                                style={{ background: bulkActing ? '#9ca3af' : 'linear-gradient(135deg,#059669,#10b981)' }}>
+                                {bulkActing
+                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    : <CheckCircle2 className="h-3.5 w-3.5" />}
+                                Bulk Approve ({selectedIds.size})
+                            </button>
+                        )}
+
                         <button onClick={fetchAll} disabled={loading}
                             className="flex items-center gap-1.5 text-xs text-orange-600 hover:underline font-medium">
                             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -554,6 +604,14 @@ const AdminManagerFundsPage = () => {
                     <table className="min-w-full text-sm">
                         <thead style={{ background: 'var(--bg-primary)' }}>
                             <tr>
+                                <th className="px-4 py-3">
+                                    <input type="checkbox"
+                                        checked={allSelected}
+                                        onChange={toggleAll}
+                                        disabled={selectableIds.length === 0}
+                                        className="w-4 h-4 rounded accent-orange-500 cursor-pointer"
+                                        title="Select all pending" />
+                                </th>
                                 {['Manager', 'Type', 'From / Note', 'Amount', 'Receipt', 'Status', 'Date', 'Action'].map(h => (
                                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
                                         style={{ color: 'var(--text-secondary)' }}>{h}</th>
@@ -567,6 +625,14 @@ const AdminManagerFundsPage = () => {
                                 return (
                                     <tr key={`${t.type}-${t.id}`}
                                         style={{ borderTop: '1px solid var(--border-color)' }}>
+                                        <td className="px-4 py-3">
+                                            {canAct && (
+                                                <input type="checkbox"
+                                                    checked={selectedIds.has(t.id)}
+                                                    onChange={() => toggleSelect(t.id)}
+                                                    className="w-4 h-4 rounded accent-orange-500 cursor-pointer" />
+                                            )}
+                                        </td>
                                         <td className="px-4 py-3">
                                             <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>
                                                 {t.manager_name}
@@ -649,14 +715,14 @@ const AdminManagerFundsPage = () => {
                             })}
                             {filtered.length === 0 && !loading && (
                                 <tr>
-                                    <td colSpan={8} className="text-center py-12 text-gray-400">
+                                    <td colSpan={9} className="text-center py-12 text-gray-400">
                                         No transfers found for the selected filters.
                                     </td>
                                 </tr>
                             )}
                             {loading && (
                                 <tr>
-                                    <td colSpan={8} className="text-center py-12 text-gray-400 animate-pulse">
+                                    <td colSpan={9} className="text-center py-12 text-gray-400 animate-pulse">
                                         Loading…
                                     </td>
                                 </tr>
