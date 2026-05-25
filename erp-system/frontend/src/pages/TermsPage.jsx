@@ -32,7 +32,7 @@ const TermsPage = () => (
                 </p>
 
                 <Section title="1. Software Ownership &amp; Intellectual Property">
-                    <p>ShopSize24 ERP ("the Software") is the exclusive intellectual property of ShopSize24, owned and operated by <strong>Harsh Chandel</strong>. All rights, title, and interest in and to the Software — including but not limited to source code, design, architecture, database schemas, algorithms, and documentation — are and shall remain the sole property of ShopSize24.</p>
+                    <p>ShopSize24 ERP ("the Software") is the exclusive intellectual property of ShopSize24, owned and operated by <strong>Ssahebh Siingh</strong>. All rights, title, and interest in and to the Software — including but not limited to source code, design, architecture, database schemas, algorithms, and documentation — are and shall remain the sole property of ShopSize24.</p>
                     <p>The Software is protected under the <strong>Indian Copyright Act, 1957</strong> and the <strong>Information Technology Act, 2000</strong>. Unauthorized reproduction, copying, distribution, or use of any part of this Software without express written consent from ShopSize24 management is strictly prohibited.</p>
                 </Section>
 
@@ -109,8 +109,13 @@ const TermsPage = () => (
                     </div>
                 </Section>
 
+                {/* Developer credit */}
+                <div className="mt-6 p-4 rounded-xl border border-gray-100 bg-gray-50 text-xs text-gray-500">
+                    Designed &amp; Developed by <strong className="text-gray-700">Harsh Chandel</strong>
+                </div>
+
                 {/* Legal notice */}
-                <div className="mt-8 p-4 rounded-xl bg-gray-900 text-gray-300 text-xs leading-relaxed">
+                <div className="mt-3 p-4 rounded-xl bg-gray-900 text-gray-300 text-xs leading-relaxed">
                     © ShopSize24. All Rights Reserved. Unauthorized copying, resale, reverse engineering, distribution, or duplication of this software is strictly prohibited and may lead to legal action under Indian IT and Copyright laws.
                 </div>
             </div>
