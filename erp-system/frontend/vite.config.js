@@ -27,11 +27,12 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        navigateFallback: null,
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/shopsize24\.in\/api\/.*/i,
-            handler: 'NetworkFirst',
-            options: { cacheName: 'api-cache', networkTimeoutSeconds: 10 },
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'google-fonts', cacheableResponse: { statuses: [0, 200] } },
           },
         ],
       },
