@@ -1,11 +1,12 @@
 require('dotenv').config();
-const express  = require('express');
-const http     = require('http');
+const express   = require('express');
+const http      = require('http');
 const { Server: SocketServer } = require('socket.io');
-const cors     = require('cors');
-const path     = require('path');
-const cron     = require('node-cron');
-const db       = require('./config/db');
+const cors      = require('cors');
+const path      = require('path');
+const cron      = require('node-cron');
+const rateLimit = require('express-rate-limit');
+const db        = require('./config/db');
 
 const app        = express();
 const httpServer = http.createServer(app);
@@ -56,6 +57,24 @@ io.on('connection', (socket) => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// ── Rate limiting ────────────────────────────────────────────────
+// Strict limit on auth endpoints to prevent brute-force
+app.use('/api/auth/login', rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 15,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many login attempts. Please try again after 15 minutes.' },
+}));
+// General API limit
+app.use('/api/', rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests. Please slow down.' },
+}));
+
 // ── Static uploads ───────────────────────────────────────────────
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -83,6 +102,7 @@ app.use('/api/ai',                 require('./routes/ai'));
 app.use('/api/mcp',                require('./routes/mcp'));
 app.use('/api/expenses',           require('./routes/expenses'));
 app.use('/api/anomalies',          require('./routes/anomalies'));
+app.use('/api/activity',           require('./routes/activity'));
 
 // ── 404 handler — catches any unknown /api/* path ────────────────
 app.use('/api/*path', (req, res) => {

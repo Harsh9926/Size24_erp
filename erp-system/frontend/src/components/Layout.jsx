@@ -1,4 +1,5 @@
 import React, { useContext, useState } from 'react';
+import { Link } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import AIChat from './AIChat';
 import { AuthContext } from '../context/AuthContext';
@@ -71,10 +72,19 @@ const Layout = ({ children, title }) => {
 
                 {/* Footer */}
                 <footer
-                    className="px-4 sm:px-8 py-3 text-center text-xs border-t"
-                    style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-color)', background: 'var(--bg-surface)' }}
+                    className="px-4 sm:px-8 py-4 border-t space-y-1"
+                    style={{ borderColor: 'var(--border-color)', background: 'var(--bg-surface)' }}
                 >
-                    Powered by <span className="font-bold" style={{ color: '#c2410c' }}>SIZE24</span> &middot; Smart Retail ERP System
+                    <p className="text-center text-xs" style={{ color: 'var(--text-secondary)' }}>
+                        Powered by <span className="font-bold" style={{ color: '#c2410c' }}>SIZE24</span> &middot; Smart Retail ERP System
+                        &nbsp;&middot;&nbsp;
+                        <Link to="/terms"   className="hover:underline" style={{ color: '#c2410c' }}>Terms</Link>
+                        &nbsp;&middot;&nbsp;
+                        <Link to="/privacy" className="hover:underline" style={{ color: '#c2410c' }}>Privacy</Link>
+                    </p>
+                    <p className="text-center text-[10px]" style={{ color: 'var(--text-secondary)', opacity: 0.7 }}>
+                        &copy; ShopSize24. All Rights Reserved. Unauthorized copying, resale, or reverse engineering is prohibited under Indian IT &amp; Copyright laws.
+                    </p>
                 </footer>
             </div>
 

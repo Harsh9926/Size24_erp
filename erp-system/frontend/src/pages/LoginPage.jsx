@@ -257,7 +257,12 @@ const LoginForm = ({ onSwitch }) => {
                 </motion.p>
 
                 <motion.p variants={item} className="text-center text-xs text-gray-600 mt-6">
-                    © 2025 SIZE24 · ERP v2.0
+                    &copy; ShopSize24. All Rights Reserved.
+                </motion.p>
+                <motion.p variants={item} className="text-center text-[10px] text-gray-400 mt-1.5 space-x-2">
+                    <Link to="/terms"   className="hover:underline" style={{ color: '#c2410c' }}>Terms &amp; Conditions</Link>
+                    <span>&middot;</span>
+                    <Link to="/privacy" className="hover:underline" style={{ color: '#c2410c' }}>Privacy Policy</Link>
                 </motion.p>
             </motion.div>
         </motion.div>

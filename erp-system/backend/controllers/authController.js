@@ -1,6 +1,7 @@
 const bcrypt = require('bcrypt');
 const jwt    = require('jsonwebtoken');
 const db     = require('../config/db');
+const { logActivity } = require('../middleware/activityLogger');
 
 exports.login = async (req, res) => {
     try {
@@ -47,14 +48,37 @@ exports.login = async (req, res) => {
             { expiresIn: '24h' }
         );
 
+        // Log successful login
+        logActivity(user.id, user.name, user.role, 'LOGIN', 'auth',
+            { mobile: user.mobile }, req);
+
         res.json({
             message: 'Login successful',
             token,
-            user: { id: user.id, name: user.name, mobile: user.mobile, role: user.role, shopId, shopName }
+            user: {
+                id: user.id, name: user.name, mobile: user.mobile,
+                role: user.role, shopId, shopName,
+                termsAccepted: !!user.terms_accepted_at,
+            }
         });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server error during login' });
+    }
+};
+
+// ── Accept Terms & Conditions ────────────────────────────────────────────────
+exports.acceptTerms = async (req, res) => {
+    try {
+        await db.query(
+            'UPDATE users SET terms_accepted_at = NOW() WHERE id = $1',
+            [req.user.id]
+        );
+        logActivity(req.user.id, req.user.name, req.user.role,
+            'TERMS_ACCEPTED', 'auth', {}, req);
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
     }
 };
 
