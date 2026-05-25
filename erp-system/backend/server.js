@@ -182,8 +182,8 @@ cron.schedule('30 18 * * *', async () => {
         const grandTotal = shopSales.reduce((sum, r) => sum + parseFloat(r.total_sale), 0);
         const totalStr   = grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 });
         const breakdown  = shopSales
-            .map(r => `${r.shop_name}: ₹${parseFloat(r.total_sale).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`)
-            .join('\n');
+            .map(r => `${r.shop_name}: Rs.${parseFloat(r.total_sale).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`)
+            .join(' | ');
 
         const { rows: admins } = await db.query(`
             SELECT mobile FROM users
