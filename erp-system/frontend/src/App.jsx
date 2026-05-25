@@ -46,7 +46,7 @@ function AppInner() {
   return (
     <>
       {/* Show terms modal if logged in but hasn't accepted yet */}
-      {user && user.termsAccepted === false && (
+      {user && !user.termsAccepted && (
         <TermsAcceptanceModal onAccepted={handleTermsAccepted} />
       )}
       <Routes>
