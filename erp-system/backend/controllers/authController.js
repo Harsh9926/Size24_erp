@@ -23,22 +23,24 @@ exports.login = async (req, res) => {
             return res.status(403).json({ error: 'Your account is inactive. Please contact the admin.' });
         }
 
-        // Fetch assigned shop for shop_user
+        // Fetch all assigned shops for shop_user
         let shopId = null;
         let shopName = null;
+        let shops = [];
         if (user.role === 'shop_user') {
             const shopResult = await db.query(
                 `SELECT s.id, s.shop_name
                  FROM shop_users su
                  JOIN shops s ON s.id = su.shop_id
                  WHERE su.user_id = $1
-                 ORDER BY su.assigned_at ASC
-                 LIMIT 1`,
+                 ORDER BY su.assigned_at ASC`,
                 [user.id]
             );
-            if (shopResult.rows.length > 0) {
-                shopId = shopResult.rows[0].id;
-                shopName = shopResult.rows[0].shop_name;
+            shops = shopResult.rows.map(r => ({ id: r.id, shop_name: r.shop_name }));
+            // Auto-select if only one shop assigned
+            if (shops.length === 1) {
+                shopId = shops[0].id;
+                shopName = shops[0].shop_name;
             }
         }
 
@@ -57,7 +59,7 @@ exports.login = async (req, res) => {
             token,
             user: {
                 id: user.id, name: user.name, mobile: user.mobile,
-                role: user.role, shopId, shopName,
+                role: user.role, shopId, shopName, shops,
                 termsAccepted: !!user.terms_accepted_at,
             }
         });

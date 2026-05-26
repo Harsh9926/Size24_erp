@@ -145,8 +145,12 @@ const LoginForm = ({ onSwitch }) => {
         try {
             const res = await api.post('/auth/login', { mobile, password });
             login(res.data.user, res.data.token);
-            const role = res.data.user.role;
-            navigate(role === 'admin' ? '/admin' : role === 'manager' ? '/manager' : '/shop');
+            const { role, shops } = res.data.user;
+            if (role === 'shop_user' && shops && shops.length > 1) {
+                navigate('/shop/select');
+            } else {
+                navigate(role === 'admin' ? '/admin' : role === 'manager' ? '/manager' : '/shop');
+            }
         } catch (err) {
             setError(err.response?.data?.error || 'Login failed.');
         } finally { setLoading(false); }

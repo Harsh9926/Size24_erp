@@ -184,6 +184,13 @@ const ShopDashboard = () => {
     const fileRef  = useRef(null);
     const xlRef    = useRef(null);
 
+    // Multi-shop: if no shop selected yet, redirect to selector
+    React.useEffect(() => {
+        if (user && !user.shopId && user.shops && user.shops.length > 1) {
+            navigate('/shop/select', { replace: true });
+        }
+    }, [user, navigate]);
+
     /* ── state ───────────────────────────────────────────────────── */
     const [data,       setData]       = useState({ summary: {}, latestEntries: [], shop: null });
     const [loading,    setLoading]    = useState(true);
@@ -547,6 +554,16 @@ const ShopDashboard = () => {
                         <p className="text-white text-[10px] sm:text-xs">Locks in</p>
                         <p className={`font-mono font-bold text-xs sm:text-sm ${countdown < '00:30:00' ? 'text-red-300' : 'text-white'}`}>{countdown}</p>
                     </div>
+                    {user?.shops && user.shops.length > 1 && (
+                        <button
+                            onClick={() => navigate('/shop/select')}
+                            className="flex items-center gap-1 text-xs text-white border border-teal-400 px-2 py-1.5 rounded-lg transition-all hover:bg-teal-700"
+                            title="Switch Store"
+                        >
+                            <Store className="h-4 w-4" />
+                            <span className="hidden sm:inline">Switch</span>
+                        </button>
+                    )}
                     <button
                         onClick={() => { logout(); navigate('/login'); }}
                         className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-white hover:text-white border border-teal-400 px-2 sm:px-3 py-1.5 rounded-lg transition-all"

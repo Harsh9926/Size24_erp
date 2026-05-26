@@ -28,8 +28,18 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
     };
 
+    // Called after user selects a shop from the multi-shop selector
+    const selectShop = (shopId, shopName) => {
+        setUser(prev => {
+            if (!prev) return prev;
+            const updated = { ...prev, shopId, shopName };
+            localStorage.setItem('user', JSON.stringify(updated));
+            return updated;
+        });
+    };
+
     return (
-        <AuthContext.Provider value={{ user, setUser, login, logout, loading }}>
+        <AuthContext.Provider value={{ user, setUser, login, logout, loading, selectShop }}>
             {!loading && children}
         </AuthContext.Provider>
     );

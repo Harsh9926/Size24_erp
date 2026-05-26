@@ -34,7 +34,8 @@ import ExpensesPage   from './pages/ExpensesPage';
 import AnomaliesPage  from './pages/AnomaliesPage';
 
 // Shop User Pages
-import ShopDashboard from './pages/ShopDashboard';
+import ShopDashboard   from './pages/ShopDashboard';
+import ShopSelectPage  from './pages/ShopSelectPage';
 
 function AppInner() {
   const { user, setUser } = useContext(AuthContext);
@@ -76,8 +77,9 @@ function AppInner() {
         <Route path="/manager"               element={<PrivateRoute allowedRoles={['manager']}><ManagerDashboard /></PrivateRoute>} />
         <Route path="/manager/cash-transfer" element={<PrivateRoute allowedRoles={['manager']}><ManagerCashTransferPage /></PrivateRoute>} />
 
-        {/* Shop User Route */}
-        <Route path="/shop" element={<PrivateRoute allowedRoles={['shop_user']}><ShopDashboard /></PrivateRoute>} />
+        {/* Shop User Routes */}
+        <Route path="/shop/select" element={<PrivateRoute allowedRoles={['shop_user']}><ShopSelectPage /></PrivateRoute>} />
+        <Route path="/shop"        element={<PrivateRoute allowedRoles={['shop_user']}><ShopDashboard /></PrivateRoute>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />

@@ -338,9 +338,13 @@ exports.getWalletHistory = async (req, res) => {
         const { shopId } = req.params;
         const { period, from_date, to_date } = req.query;
 
-        // Auth: shop_user can only see their own shop
-        if (req.user.role === 'shop_user' && req.user.shopId !== parseInt(shopId)) {
-            return res.status(403).json({ error: 'Access denied.' });
+        // Auth: shop_user can only see shops they are assigned to
+        if (req.user.role === 'shop_user') {
+            const access = await db.query(
+                'SELECT 1 FROM shop_users WHERE shop_id = $1 AND user_id = $2',
+                [shopId, req.user.id]
+            );
+            if (access.rows.length === 0) return res.status(403).json({ error: 'Access denied.' });
         }
 
         // Fetch ALL transactions (unfiltered) to compute correct running balance
