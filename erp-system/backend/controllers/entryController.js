@@ -740,7 +740,9 @@ exports.unlockEntry = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────
 exports.getTodayStatus = async (req, res) => {
     try {
-        const today = req.query.date || getTodayUTC();
+        const today = getTodayUTC();
+        const from = req.query.from || req.query.date || today;
+        const to   = req.query.to   || from;
         const isManager = req.user.role === 'manager';
 
         const shopsQ = isManager
@@ -749,26 +751,37 @@ exports.getTodayStatus = async (req, res) => {
 
         const allShops = shopsQ.rows;
         if (allShops.length === 0) {
-            return res.json({ date: today, totalShops: 0, submittedCount: 0, pendingCount: 0, submittedShops: [], pendingShops: [] });
+            return res.json({ from, to, totalShops: 0, submittedCount: 0, pendingCount: 0, allShops: [] });
         }
 
         const shopIds     = allShops.map(s => s.id);
-        const placeholder = shopIds.map((_, i) => `$${i + 2}`).join(',');
+        const placeholder = shopIds.map((_, i) => `$${i + 3}`).join(',');
         const entriesQ    = await db.query(
-            `SELECT DISTINCT shop_id FROM daily_entries WHERE date = $1 AND shop_id IN (${placeholder})`,
-            [today, ...shopIds]
+            `SELECT shop_id, COUNT(*) AS entry_count, MAX(date) AS last_date
+             FROM daily_entries
+             WHERE date >= $1 AND date <= $2 AND shop_id IN (${placeholder})
+             GROUP BY shop_id`,
+            [from, to, ...shopIds]
         );
-        const submittedIds  = new Set(entriesQ.rows.map(r => r.shop_id));
-        const submittedShops = allShops.filter(s => submittedIds.has(s.id));
-        const pendingShops   = allShops.filter(s => !submittedIds.has(s.id));
+
+        const map = {};
+        entriesQ.rows.forEach(r => { map[r.shop_id] = { count: parseInt(r.entry_count), lastDate: r.last_date }; });
+
+        const shopsWithStatus = allShops.map(s => ({
+            id:         s.id,
+            shop_name:  s.shop_name,
+            submitted:  !!map[s.id],
+            entryCount: map[s.id]?.count  || 0,
+            lastDate:   map[s.id]?.lastDate || null,
+        }));
 
         res.json({
-            date:           today,
+            from,
+            to,
             totalShops:     allShops.length,
-            submittedCount: submittedShops.length,
-            pendingCount:   pendingShops.length,
-            submittedShops,
-            pendingShops,
+            submittedCount: shopsWithStatus.filter(s => s.submitted).length,
+            pendingCount:   shopsWithStatus.filter(s => !s.submitted).length,
+            allShops:       shopsWithStatus,
         });
     } catch (err) {
         res.status(500).json({ error: err.message });

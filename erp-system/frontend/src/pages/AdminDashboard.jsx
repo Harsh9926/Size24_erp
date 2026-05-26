@@ -205,8 +205,11 @@ const CARD_FILTERS = {
 /* ─── MAIN COMPONENT ───────────────────────────────────────────── */
 const AdminDashboard = () => {
     const [data, setData]       = useState({ summary: {}, chartData: [], latestEntries: [], pendingUsersCount: 0, pendingEntriesCount: 0 });
-    const [todayStatus, setTodayStatus] = useState(null);
-    const [statusDate,  setStatusDate]  = useState(() => new Date().toISOString().split('T')[0]);
+    const [todayStatus,   setTodayStatus]   = useState(null);
+    const [statusFrom,    setStatusFrom]    = useState(() => new Date().toISOString().split('T')[0]);
+    const [statusTo,      setStatusTo]      = useState(() => new Date().toISOString().split('T')[0]);
+    const [statusPage,    setStatusPage]    = useState(1);
+    const STATUS_PAGE_SIZE = 10;
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState(null);
     const [period, setPeriod]   = useState('monthly');
@@ -294,18 +297,19 @@ const AdminDashboard = () => {
         finally { setTxLoading(false); }
     };
 
-    const fetchTodayStatus = useCallback((date) => {
-        api.get(`/entries/today-status?date=${date}`).then(r => setTodayStatus(r.data)).catch(() => {});
+    const fetchTodayStatus = useCallback((from, to) => {
+        setStatusPage(1);
+        api.get(`/entries/today-status?from=${from}&to=${to}`).then(r => setTodayStatus(r.data)).catch(() => {});
     }, []);
 
     useEffect(() => {
         api.get('/shops').then(r => setShops(r.data)).catch(() => {});
-        fetchTodayStatus(statusDate);
+        fetchTodayStatus(statusFrom, statusTo);
         fetchData();
         fetchTransfers();
     }, []);
 
-    useEffect(() => { fetchTodayStatus(statusDate); }, [statusDate]);
+    useEffect(() => { fetchTodayStatus(statusFrom, statusTo); }, [statusFrom, statusTo]);
 
     useEffect(() => { fetchData(); }, [period, filters]);
 
@@ -497,55 +501,121 @@ const AdminDashboard = () => {
                 </div>
             </div>
 
-            {/* ── Today's Entry Status ───────────────────────────── */}
-            {todayStatus && (
-                <div className="mb-6 rounded-xl border shadow-sm overflow-hidden"
-                    style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-                    <div className="px-5 py-3.5 flex items-center justify-between gap-3 flex-wrap border-b"
-                        style={{ borderColor: 'var(--border-color)' }}>
-                        <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-orange-500" />
-                            <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                                Entry Status
-                            </span>
+            {/* ── Entry Status Table ─────────────────────────────── */}
+            {todayStatus && (() => {
+                const allRows = todayStatus.allShops || [];
+                const totalPages = Math.ceil(allRows.length / STATUS_PAGE_SIZE);
+                const pageRows  = allRows.slice((statusPage - 1) * STATUS_PAGE_SIZE, statusPage * STATUS_PAGE_SIZE);
+                return (
+                    <div className="mb-6 rounded-xl border shadow-sm overflow-hidden"
+                        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+
+                        {/* Header */}
+                        <div className="px-5 py-3.5 flex items-center justify-between gap-3 flex-wrap border-b"
+                            style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
+                            <div className="flex items-center gap-2">
+                                <Calendar className="h-4 w-4 text-orange-500" />
+                                <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Entry Status</span>
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-semibold">
+                                    {todayStatus.submittedCount}/{todayStatus.totalShops} submitted
+                                </span>
+                                {todayStatus.pendingCount > 0 && (
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">
+                                        {todayStatus.pendingCount} pending
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>From</span>
+                                <input type="date" value={statusFrom}
+                                    onChange={e => setStatusFrom(e.target.value)}
+                                    className="px-2.5 py-1 text-xs border rounded-lg outline-none"
+                                    style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                                <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>To</span>
+                                <input type="date" value={statusTo}
+                                    onChange={e => setStatusTo(e.target.value)}
+                                    className="px-2.5 py-1 text-xs border rounded-lg outline-none"
+                                    style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                                <button onClick={() => fetchTodayStatus(statusFrom, statusTo)}
+                                    className="text-gray-600 hover:text-orange-500 transition-colors" aria-label="Refresh">
+                                    <RefreshCw className="h-3.5 w-3.5" />
+                                </button>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <input
-                                type="date"
-                                value={statusDate}
-                                onChange={e => setStatusDate(e.target.value)}
-                                className="px-2.5 py-1 text-xs border rounded-lg outline-none"
-                                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                            />
-                            <span className="text-sm font-extrabold text-emerald-700">{todayStatus.submittedCount}</span>
-                            <span className="text-sm text-gray-600">/</span>
-                            <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{todayStatus.totalShops}</span>
-                            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>shops submitted</span>
-                            <button
-                                aria-label="Refresh status"
-                                onClick={() => fetchTodayStatus(statusDate)}
-                                className="ml-1 text-gray-600 hover:text-orange-500 transition-colors">
-                                <RefreshCw className="h-3.5 w-3.5" />
-                            </button>
+
+                        {/* Table */}
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                                <thead style={{ background: 'var(--bg-primary)' }}>
+                                    <tr>
+                                        {['#', 'Shop Name', 'Entries', 'Last Submission', 'Status'].map(h => (
+                                            <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider"
+                                                style={{ color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>{h}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {pageRows.map((s, i) => (
+                                        <tr key={s.id} style={{ borderTop: '1px solid var(--border-color)' }}>
+                                            <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                                {(statusPage - 1) * STATUS_PAGE_SIZE + i + 1}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                                                {s.shop_name}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-sm font-bold" style={{ color: s.entryCount > 0 ? '#059669' : 'var(--text-secondary)' }}>
+                                                {s.entryCount}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                                {s.lastDate ? fmtDate(s.lastDate) : '—'}
+                                            </td>
+                                            <td className="px-4 py-2.5">
+                                                {s.submitted
+                                                    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700 border border-green-200"><ShieldCheck className="h-3 w-3" />Submitted</span>
+                                                    : <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-700 border border-red-200"><AlertCircle className="h-3 w-3" />Pending</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
-                    </div>
-                    <div className="px-5 py-3 flex flex-wrap gap-2">
-                        {todayStatus.submittedShops.map(s => (
-                            <span key={s.id} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700 border border-green-200">
-                                <ShieldCheck className="h-3 w-3" />{s.shop_name}
-                            </span>
-                        ))}
-                        {todayStatus.pendingShops.map(s => (
-                            <span key={s.id} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-700 border border-red-200">
-                                <AlertCircle className="h-3 w-3" />{s.shop_name}
-                            </span>
-                        ))}
-                        {todayStatus.pendingCount === 0 && (
-                            <span className="text-xs text-emerald-700 font-semibold">All shops submitted today!</span>
+
+                        {/* Pagination */}
+                        {totalPages > 1 && (
+                            <div className="px-5 py-3 flex items-center justify-between border-t"
+                                style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
+                                <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                    Page {statusPage} of {totalPages} · {allRows.length} shops
+                                </span>
+                                <div className="flex items-center gap-1">
+                                    <button disabled={statusPage === 1} onClick={() => setStatusPage(p => p - 1)}
+                                        className="px-2.5 py-1 text-xs font-semibold rounded-lg border disabled:opacity-40 transition-colors"
+                                        style={{ borderColor: 'var(--border-color)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}>
+                                        ← Prev
+                                    </button>
+                                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                                        <button key={p} onClick={() => setStatusPage(p)}
+                                            className="px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors"
+                                            style={{
+                                                borderColor: p === statusPage ? '#FF6B00' : 'var(--border-color)',
+                                                background: p === statusPage ? '#FF6B00' : 'var(--bg-surface)',
+                                                color: p === statusPage ? '#fff' : 'var(--text-primary)',
+                                            }}>
+                                            {p}
+                                        </button>
+                                    ))}
+                                    <button disabled={statusPage === totalPages} onClick={() => setStatusPage(p => p + 1)}
+                                        className="px-2.5 py-1 text-xs font-semibold rounded-lg border disabled:opacity-40 transition-colors"
+                                        style={{ borderColor: 'var(--border-color)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}>
+                                        Next →
+                                    </button>
+                                </div>
+                            </div>
                         )}
                     </div>
-                </div>
-            )}
+                );
+            })()}
 
             {/* ── Shop Wallet Card (visible when a shop is selected) ── */}
             {filters.shop_id && data.shopWallet && (
