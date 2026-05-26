@@ -82,7 +82,9 @@ exports.getAdminDashboard = async (req, res) => {
 
         // ── Pending entries count ────────────────────────────────
         const pendingEntriesQ = await db.query(
-            "SELECT COUNT(*) FROM daily_entries WHERE approval_status = 'PENDING'"
+            `SELECT COUNT(*) FROM daily_entries e
+             JOIN shops s ON e.shop_id = s.id
+             WHERE e.approval_status = 'PENDING'`
         );
 
         const summary = summaryQ.rows[0];
