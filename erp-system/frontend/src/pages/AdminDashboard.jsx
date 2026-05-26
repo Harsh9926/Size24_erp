@@ -391,6 +391,69 @@ const AdminDashboard = () => {
                 </div>
             )}
 
+            {/* ── Dashboard Date Filter ─────────────────────────── */}
+            <div className="mb-4 flex flex-wrap items-center gap-2 px-4 py-3 rounded-xl border shadow-sm"
+                style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                <Calendar className="h-4 w-4 flex-shrink-0" style={{ color: '#FF6B00' }} />
+                <span className="text-sm font-semibold mr-1" style={{ color: 'var(--text-secondary)' }}>Period:</span>
+                {[
+                    { key: 'today',     label: 'Today' },
+                    { key: 'yesterday', label: 'Yesterday' },
+                    { key: 'week',      label: 'This Week' },
+                    { key: 'month',     label: 'This Month' },
+                    { key: 'clear',     label: 'All Time' },
+                ].map(({ key, label }) => {
+                    const isActive = (() => {
+                        const iso = (d) => d.toISOString().split('T')[0];
+                        const t = new Date(); const td = iso(t);
+                        const yd = iso(new Date(t - 86400000));
+                        if (key === 'today')     return filters.startDate === td && filters.endDate === td;
+                        if (key === 'yesterday') return filters.startDate === yd && filters.endDate === yd;
+                        if (key === 'week')      { const s = new Date(t); s.setDate(t.getDate() - t.getDay()); return filters.startDate === iso(s) && filters.endDate === td; }
+                        if (key === 'month')     { const s = new Date(t.getFullYear(), t.getMonth(), 1); return filters.startDate === iso(s) && filters.endDate === td; }
+                        if (key === 'clear')     return !filters.startDate && !filters.endDate;
+                        return false;
+                    })();
+                    return (
+                        <button key={key}
+                            onClick={() => {
+                                const iso = (d) => d.toISOString().split('T')[0];
+                                const t = new Date(); const td = iso(t);
+                                if (key === 'today')     setFilters(f => ({ ...f, startDate: td, endDate: td }));
+                                else if (key === 'yesterday') { const yd = iso(new Date(t - 86400000)); setFilters(f => ({ ...f, startDate: yd, endDate: yd })); }
+                                else if (key === 'week')  { const s = new Date(t); s.setDate(t.getDate() - t.getDay()); setFilters(f => ({ ...f, startDate: iso(s), endDate: td })); }
+                                else if (key === 'month') { const s = new Date(t.getFullYear(), t.getMonth(), 1); setFilters(f => ({ ...f, startDate: iso(s), endDate: td })); }
+                                else                      setFilters(f => ({ ...f, startDate: '', endDate: '' }));
+                            }}
+                            className="px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all"
+                            style={{
+                                background: isActive ? '#FF6B00' : 'var(--bg-primary)',
+                                color: isActive ? '#fff' : 'var(--text-secondary)',
+                                borderColor: isActive ? '#FF6B00' : 'var(--border-color)',
+                            }}>
+                            {label}
+                        </button>
+                    );
+                })}
+                <span className="text-xs text-gray-400 mx-1">|</span>
+                <input type="date" value={filters.startDate} placeholder="From"
+                    onChange={e => setFilters(f => ({ ...f, startDate: e.target.value }))}
+                    className="px-2.5 py-1.5 text-xs border rounded-lg outline-none"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>→</span>
+                <input type="date" value={filters.endDate} placeholder="To"
+                    onChange={e => setFilters(f => ({ ...f, endDate: e.target.value }))}
+                    className="px-2.5 py-1.5 text-xs border rounded-lg outline-none"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                {(filters.startDate || filters.endDate) && (
+                    <span className="ml-1 text-xs font-semibold px-2 py-0.5 rounded-full"
+                        style={{ background: 'rgba(255,107,0,0.1)', color: '#FF6B00' }}>
+                        {filters.startDate || '…'} → {filters.endDate || '…'}
+                    </span>
+                )}
+                {loading && <span className="ml-auto text-xs text-gray-400 animate-pulse">Refreshing…</span>}
+            </div>
+
             {/* ── KPI Cards (clickable) ──────────────────────────── */}
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
                 {cards.map(({ label, value, icon: Icon, color, bg, isCurrency, filterKey, href }) => {
@@ -681,35 +744,6 @@ const AdminDashboard = () => {
                 {loading && <span className="text-xs text-gray-600 animate-pulse ml-auto">Refreshing…</span>}
             </div>
 
-            {/* ── Date Range Filter Bar ──────────────────────────── */}
-            <div className="mb-6 flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3 sm:py-3.5 rounded-xl border shadow-sm"
-                style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-                <Calendar className="h-4 w-4 flex-shrink-0" style={{ color: '#FF6B00' }} />
-                <span className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>Date Range:</span>
-                {[{ key: 'today', label: 'Today' }, { key: 'week', label: 'This Week' }, { key: 'month', label: 'This Month' }].map(({ key, label }) => (
-                    <button key={key} onClick={() => setQuickFilter(key)}
-                        className="px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors"
-                        style={{ background: '#f3f4f6', color: '#374151', borderColor: 'var(--border-color)' }}>
-                        {label}
-                    </button>
-                ))}
-                <span className="text-xs text-gray-600">or</span>
-                <input type="date" aria-label="Start date" value={filters.startDate}
-                    onChange={e => setFilters(f => ({ ...f, startDate: e.target.value }))}
-                    className="px-3 py-1.5 text-sm border rounded-lg outline-none"
-                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                <span className="text-sm text-gray-600">to</span>
-                <input type="date" aria-label="End date" value={filters.endDate}
-                    onChange={e => setFilters(f => ({ ...f, endDate: e.target.value }))}
-                    className="px-3 py-1.5 text-sm border rounded-lg outline-none"
-                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
-                {(filters.startDate || filters.endDate) && (
-                    <button onClick={() => setQuickFilter('clear')}
-                        className="text-xs text-gray-600 hover:text-gray-600 underline ml-auto">
-                        Clear dates
-                    </button>
-                )}
-            </div>
 
             {/* ── Chart ──────────────────────────────────────────── */}
             <div className="rounded-xl shadow-sm border p-4 sm:p-6 mb-6" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
