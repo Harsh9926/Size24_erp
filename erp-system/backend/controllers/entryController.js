@@ -740,7 +740,7 @@ exports.unlockEntry = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────
 exports.getTodayStatus = async (req, res) => {
     try {
-        const today = getTodayUTC();
+        const today = req.query.date || getTodayUTC();
         const isManager = req.user.role === 'manager';
 
         const shopsQ = isManager

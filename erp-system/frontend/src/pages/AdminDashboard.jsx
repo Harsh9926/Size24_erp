@@ -206,6 +206,7 @@ const CARD_FILTERS = {
 const AdminDashboard = () => {
     const [data, setData]       = useState({ summary: {}, chartData: [], latestEntries: [], pendingUsersCount: 0, pendingEntriesCount: 0 });
     const [todayStatus, setTodayStatus] = useState(null);
+    const [statusDate,  setStatusDate]  = useState(() => new Date().toISOString().split('T')[0]);
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState(null);
     const [period, setPeriod]   = useState('monthly');
@@ -293,12 +294,18 @@ const AdminDashboard = () => {
         finally { setTxLoading(false); }
     };
 
+    const fetchTodayStatus = useCallback((date) => {
+        api.get(`/entries/today-status?date=${date}`).then(r => setTodayStatus(r.data)).catch(() => {});
+    }, []);
+
     useEffect(() => {
         api.get('/shops').then(r => setShops(r.data)).catch(() => {});
-        api.get('/entries/today-status').then(r => setTodayStatus(r.data)).catch(() => {});
+        fetchTodayStatus(statusDate);
         fetchData();
         fetchTransfers();
     }, []);
+
+    useEffect(() => { fetchTodayStatus(statusDate); }, [statusDate]);
 
     useEffect(() => { fetchData(); }, [period, filters]);
 
@@ -355,7 +362,7 @@ const AdminDashboard = () => {
         { label: 'Total Cash',        value: data.totalCash        ?? 0, icon: IndianRupee, color: 'text-blue-600',    bg: 'bg-blue-50',    isCurrency: true,  filterKey: 'cash'     },
         { label: 'Total Online',      value: data.totalOnline      ?? 0, icon: CreditCard,  color: 'text-purple-600',  bg: 'bg-purple-50',  isCurrency: true,  filterKey: 'online'   },
         { label: 'Approved Entries',  value: data.totalEntries     ?? 0, icon: ShieldCheck, color: 'text-teal-600',    bg: 'bg-teal-50',    isCurrency: false, filterKey: 'approved' },
-        { label: 'Pending Approvals', value: data.pendingEntriesCount ?? 0, icon: AlertCircle, color: 'text-amber-600', bg: 'bg-amber-50', isCurrency: false, filterKey: 'pending'  },
+        { label: 'Pending Approvals', value: data.pendingEntriesCount ?? 0, icon: AlertCircle, color: 'text-amber-600', bg: 'bg-amber-50', isCurrency: false, filterKey: 'pending', href: '/admin/approvals' },
     ];
 
     return (
@@ -382,11 +389,11 @@ const AdminDashboard = () => {
 
             {/* ── KPI Cards (clickable) ──────────────────────────── */}
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
-                {cards.map(({ label, value, icon: Icon, color, bg, isCurrency, filterKey }) => {
+                {cards.map(({ label, value, icon: Icon, color, bg, isCurrency, filterKey, href }) => {
                     const isActive = cardFilter === filterKey;
                     return (
                         <div key={label}
-                            onClick={() => setCardFilter(prev => prev === filterKey ? null : filterKey)}
+                            onClick={() => href ? window.location.href = href : setCardFilter(prev => prev === filterKey ? null : filterKey)}
                             className="rounded-xl p-3 sm:p-4 shadow-sm border transition-all cursor-pointer hover:shadow-md select-none flex flex-col justify-between min-h-[100px] sm:min-h-[108px]"
                             style={{
                                 background: 'var(--bg-surface)',
@@ -494,23 +501,30 @@ const AdminDashboard = () => {
             {todayStatus && (
                 <div className="mb-6 rounded-xl border shadow-sm overflow-hidden"
                     style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-                    <div className="px-5 py-3.5 flex items-center justify-between border-b"
+                    <div className="px-5 py-3.5 flex items-center justify-between gap-3 flex-wrap border-b"
                         style={{ borderColor: 'var(--border-color)' }}>
                         <div className="flex items-center gap-2">
                             <Calendar className="h-4 w-4 text-orange-500" />
                             <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                                Today's Entries
+                                Entry Status
                             </span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <input
+                                type="date"
+                                value={statusDate}
+                                onChange={e => setStatusDate(e.target.value)}
+                                className="px-2.5 py-1 text-xs border rounded-lg outline-none"
+                                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                            />
                             <span className="text-sm font-extrabold text-emerald-700">{todayStatus.submittedCount}</span>
                             <span className="text-sm text-gray-600">/</span>
                             <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{todayStatus.totalShops}</span>
                             <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>shops submitted</span>
                             <button
-                                aria-label="Refresh today's status"
-                                onClick={() => api.get('/entries/today-status').then(r => setTodayStatus(r.data)).catch(() => {})}
-                                className="ml-2 text-gray-600 hover:text-orange-500 transition-colors">
+                                aria-label="Refresh status"
+                                onClick={() => fetchTodayStatus(statusDate)}
+                                className="ml-1 text-gray-600 hover:text-orange-500 transition-colors">
                                 <RefreshCw className="h-3.5 w-3.5" />
                             </button>
                         </div>
