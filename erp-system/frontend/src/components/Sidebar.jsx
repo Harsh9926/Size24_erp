@@ -28,7 +28,6 @@ const managerLinks = [
     { to: '/admin/approvals',       label: 'Approvals',     icon: ShieldCheck },
     { to: '/admin/entries',         label: 'Entries',       icon: ClipboardList },
     { to: '/admin/expenses',        label: 'Expenses',      icon: Receipt },
-    { to: '/admin/anomalies',       label: 'Anomalies',     icon: TriangleAlert },
     { to: '/manager/cash-transfer', label: 'Cash Transfer', icon: Banknote },
 ];
 

@@ -71,7 +71,7 @@ function AppInner() {
         <Route path="/admin/manager-funds" element={<PrivateRoute allowedRoles={['admin']}><AdminManagerFundsPage /></PrivateRoute>} />
         <Route path="/admin/manager/:id"   element={<PrivateRoute allowedRoles={['admin']}><AdminManagerProfilePage /></PrivateRoute>} />
         <Route path="/admin/expenses"      element={<PrivateRoute allowedRoles={['admin', 'manager']}><ExpensesPage /></PrivateRoute>} />
-        <Route path="/admin/anomalies"     element={<PrivateRoute allowedRoles={['admin', 'manager']}><AnomaliesPage /></PrivateRoute>} />
+        <Route path="/admin/anomalies"     element={<PrivateRoute allowedRoles={['admin']}><AnomaliesPage /></PrivateRoute>} />
 
         {/* Manager Routes */}
         <Route path="/manager"               element={<PrivateRoute allowedRoles={['manager']}><ManagerDashboard /></PrivateRoute>} />
