@@ -316,9 +316,8 @@ const EntriesPage = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {[...todayStatus.submittedShops.map(s => ({ ...s, submitted: true })),
-                              ...todayStatus.pendingShops.map(s => ({ ...s, submitted: false }))]
-                              .sort((a, b) => a.shop_name.localeCompare(b.shop_name))
+                            {(todayStatus.allShops || [])
+                              .slice().sort((a, b) => a.shop_name.localeCompare(b.shop_name))
                               .map(s => (
                                 <tr key={s.id} className="border-t border-gray-100">
                                     <td className="px-4 py-2.5 font-medium text-gray-800">{s.shop_name}</td>

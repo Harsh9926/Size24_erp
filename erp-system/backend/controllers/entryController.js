@@ -743,11 +743,7 @@ exports.getTodayStatus = async (req, res) => {
         const today = getTodayUTC();
         const from = req.query.from || req.query.date || today;
         const to   = req.query.to   || from;
-        const isManager = req.user.role === 'manager';
-
-        const shopsQ = isManager
-            ? await db.query(`SELECT id, shop_name FROM shops WHERE user_id = $1 ORDER BY shop_name`, [req.user.id])
-            : await db.query(`SELECT id, shop_name FROM shops ORDER BY shop_name`);
+        const shopsQ = await db.query(`SELECT id, shop_name FROM shops ORDER BY shop_name`);
 
         const allShops = shopsQ.rows;
         if (allShops.length === 0) {
