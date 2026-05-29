@@ -123,10 +123,10 @@ app.use((err, req, res, next) => {
     res.status(status).json({ error: err.message || 'Internal server error' });
 });
 
-// ── Cron: daily reminder at 8 PM IST (14:30 UTC) ────────────────
+// ── Cron: daily reminder at 7 PM IST (13:30 UTC) ────────────────
 // 1. Sends individual WhatsApp reminder to EVERY user of each missing shop
 // 2. Sends consolidated summary to ALL admin users
-cron.schedule('30 14 * * *', async () => {
+cron.schedule('30 13 * * *', async () => {
     const wa = require('./services/aiSensyService');
     if (!wa.ENABLED) return;
     try {
@@ -183,8 +183,8 @@ cron.schedule('30 14 * * *', async () => {
     }
 });
 
-// ── Cron: 12 AM IST sales summary to all admins (18:30 UTC) ────
-cron.schedule('30 18 * * *', async () => {
+// ── Cron: 9 PM IST sales summary to all admins (15:30 UTC) ────
+cron.schedule('30 15 * * *', async () => {
     const wa = require('./services/aiSensyService');
     if (!wa.ENABLED) return;
     try {
