@@ -3,7 +3,7 @@ import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 
 const BOT_AVATAR = '🤖';
-const WELCOME = 'Namaste! Main SIZE24 ERP ka AI assistant hoon. Aaj ki sales, cash, shop wallets ya kuch bhi poochho — Hindi ya English mein.';
+const WELCOME = 'Hello! I am SIZE24 ERP\'s AI assistant. Ask me anything — shops, users, sales, entries, wallets, managers, features, or anything about this portal.';
 
 export default function AIChat() {
     const { user } = useContext(AuthContext);
@@ -37,7 +37,7 @@ export default function AIChat() {
             const { data } = await api.post('/ai/chat', { message: text, history });
             setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
         } catch (err) {
-            const errMsg = err.response?.data?.error || 'Kuch error aa gayi. Dobara try karo.';
+            const errMsg = err.response?.data?.error || 'Something went wrong. Please try again.';
             setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${errMsg}` }]);
         } finally {
             setLoading(false);
