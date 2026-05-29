@@ -166,17 +166,17 @@ cron.schedule('30 13 * * *', async () => {
         }
         console.log(`[cron] Sent ${shopUsers.length} individual reminders`);
 
-        // ── 2. Admin summary — send to all admin users ───────────
-        const { rows: admins } = await db.query(`
+        // ── 2. Admin + Manager summary ───────────────────────────
+        const { rows: adminManagers } = await db.query(`
             SELECT mobile FROM users
-            WHERE role = 'admin' AND mobile IS NOT NULL AND is_active = true
+            WHERE role IN ('admin', 'manager') AND mobile IS NOT NULL AND is_active = true
         `);
 
-        for (const admin of admins) {
-            await wa.notifyAdminSummary(admin.mobile, dateStr, missingShops.length, shopNames);
+        for (const u of adminManagers) {
+            await wa.notifyAdminSummary(u.mobile, dateStr, missingShops.length, shopNames);
             await new Promise(r => setTimeout(r, 300));
         }
-        console.log(`[cron] Sent admin summary to ${admins.length} admins`);
+        console.log(`[cron] Sent summary to ${adminManagers.length} admins/managers`);
 
     } catch (err) {
         console.error('[cron] Daily reminder failed:', err.message);
@@ -208,16 +208,16 @@ cron.schedule('30 15 * * *', async () => {
             .map(r => `${r.shop_name}: Rs.${parseFloat(r.total_sale).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`)
             .join(' | ');
 
-        const { rows: admins } = await db.query(`
+        const { rows: adminManagers } = await db.query(`
             SELECT mobile FROM users
-            WHERE role = 'admin' AND mobile IS NOT NULL AND is_active = true
+            WHERE role IN ('admin', 'manager') AND mobile IS NOT NULL AND is_active = true
         `);
 
-        for (const admin of admins) {
-            await wa.notifySalesSummary(admin.mobile, dateStr, totalStr, breakdown);
+        for (const u of adminManagers) {
+            await wa.notifySalesSummary(u.mobile, dateStr, totalStr, breakdown);
             await new Promise(r => setTimeout(r, 300));
         }
-        console.log(`[cron] Sent 11 PM sales summary to ${admins.length} admins (₹${totalStr})`);
+        console.log(`[cron] Sent 9 PM sales summary to ${adminManagers.length} admins/managers (₹${totalStr})`);
 
     } catch (err) {
         console.error('[cron] Sales summary failed:', err.message);
