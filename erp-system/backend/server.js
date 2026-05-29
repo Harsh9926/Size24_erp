@@ -11,6 +11,9 @@ const db        = require('./config/db');
 const app        = express();
 const httpServer = http.createServer(app);
 
+// Trust nginx proxy (required for rate limiter + correct client IPs)
+app.set('trust proxy', 1);
+
 // ── CORS ─────────────────────────────────────────────────────────
 // Set CORS_ORIGIN in .env as a comma-separated list of allowed origins.
 // Example: CORS_ORIGIN=http://snugg.in,https://snugg.in
