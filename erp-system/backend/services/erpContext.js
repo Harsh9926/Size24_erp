@@ -3,16 +3,33 @@ const db = require('../config/db');
 async function buildContext() {
     const today = new Date().toISOString().split('T')[0];
 
-    const [entries, shops, managerFunds, transfers, users, pendingEntries, allTimeTotals] = await Promise.all([
+    const [entries, recentEntries, shops, managerFunds, transfers, users, pendingEntries, allTimeTotals] = await Promise.all([
         db.query(
             `SELECT de.date, s.shop_name, u.name AS submitted_by,
-                    de.entry_type, de.total_sale, de.excel_total_sale,
-                    de.cash, de.online, de.razorpay, de.approval_status
+                    de.entry_type, de.total_sale, de.cash, de.online, de.razorpay,
+                    de.approval_status, de.created_at,
+                    ap.name AS approved_by_name, de.approved_at, de.rejection_note
              FROM daily_entries de
              JOIN shops s ON de.shop_id = s.id
              LEFT JOIN users u ON de.created_by = u.id
+             LEFT JOIN users ap ON de.approved_by = ap.id
              WHERE de.date = $1
              ORDER BY s.shop_name`,
+            [today],
+        ),
+        db.query(
+            `SELECT de.date, s.shop_name, u.name AS submitted_by,
+                    de.entry_type, de.total_sale, de.cash, de.online, de.razorpay,
+                    de.approval_status, de.created_at,
+                    ap.name AS approved_by_name, de.approved_at, de.rejection_note
+             FROM daily_entries de
+             JOIN shops s ON de.shop_id = s.id
+             LEFT JOIN users u ON de.created_by = u.id
+             LEFT JOIN users ap ON de.approved_by = ap.id
+             WHERE de.date >= CURRENT_DATE - INTERVAL '30 days'
+               AND de.date < $1
+             ORDER BY de.date DESC, s.shop_name
+             LIMIT 200`,
             [today],
         ),
         db.query(
@@ -101,19 +118,23 @@ async function buildContext() {
     lines.push('');
 
     // ── Today's entries ──────────────────────────────────────
+    const formatEntry = (e) => {
+        const type    = e.entry_type === 'no_sale' ? 'No Sale' : 'Normal';
+        const sale    = e.total_sale != null ? `₹${Number(e.total_sale).toLocaleString('en-IN')}` : 'N/A';
+        const cash    = e.cash != null ? `₹${Number(e.cash).toLocaleString('en-IN')}` : 'N/A';
+        const online  = Number(e.online || 0) + Number(e.razorpay || 0);
+        const submAt  = e.created_at ? new Date(e.created_at).toLocaleString('en-IN') : 'N/A';
+        const appBy   = e.approved_by_name ? `Approved by: ${e.approved_by_name}` : '';
+        const appAt   = e.approved_at ? ` at ${new Date(e.approved_at).toLocaleString('en-IN')}` : '';
+        const rej     = e.rejection_note ? `, Rejection reason: ${e.rejection_note}` : '';
+        return `  * ${e.shop_name}: ${type}, Sale ${sale}, Cash ${cash}, Online ₹${online.toLocaleString('en-IN')}, Status: ${e.approval_status}, Submitted by: ${e.submitted_by || 'N/A'} at ${submAt}${appBy ? ', ' + appBy + appAt : ''}${rej}`;
+    };
+
     if (entries.rows.length === 0) {
         lines.push('Today: No shop has submitted an entry yet.');
     } else {
         lines.push(`Today's entries (${entries.rows.length} shops submitted):`);
-        for (const e of entries.rows) {
-            const type   = e.entry_type === 'no_sale' ? 'No Sale' : 'Normal';
-            const sale   = e.total_sale != null ? `₹${Number(e.total_sale).toLocaleString('en-IN')}` : 'N/A';
-            const cash   = e.cash != null ? `₹${Number(e.cash).toLocaleString('en-IN')}` : 'N/A';
-            const online = Number(e.online || 0) + Number(e.razorpay || 0);
-            lines.push(
-                `  * ${e.shop_name}: ${type}, Sale ${sale}, Cash ${cash}, Online ₹${online.toLocaleString('en-IN')}, Status: ${e.approval_status}, By: ${e.submitted_by || 'N/A'}`
-            );
-        }
+        for (const e of entries.rows) lines.push(formatEntry(e));
     }
     lines.push('');
 
@@ -126,6 +147,21 @@ async function buildContext() {
         lines.push(`  Total Sale: ₹${totalSale.toLocaleString('en-IN')}`);
         lines.push(`  Cash: ₹${totalCash.toLocaleString('en-IN')}`);
         lines.push(`  Online/Razorpay: ₹${totalOnline.toLocaleString('en-IN')}`);
+        lines.push('');
+    }
+
+    // ── Recent entries (last 30 days) ────────────────────────────
+    if (recentEntries.rows.length > 0) {
+        lines.push(`Recent entries (last 30 days, ${recentEntries.rows.length} total):`);
+        let currentDate = '';
+        for (const e of recentEntries.rows) {
+            const dateKey = String(e.date).split('T')[0];
+            if (dateKey !== currentDate) {
+                currentDate = dateKey;
+                lines.push(`  [${dateKey}]`);
+            }
+            lines.push(formatEntry(e));
+        }
         lines.push('');
     }
 
