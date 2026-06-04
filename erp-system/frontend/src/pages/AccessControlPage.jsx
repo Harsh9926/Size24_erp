@@ -17,7 +17,8 @@ const MODULES = [
     { key: 'manager_funds',label: 'Manager Funds',  desc: 'Monitor and transfer manager wallets' },
     { key: 'anomalies',    label: 'Anomalies',      desc: 'View detected anomalies and alerts' },
     { key: 'reports',      label: 'Reports',        desc: 'Generate and export sales reports' },
-    { key: 'new_entry',    label: 'New Entry',      desc: 'Create manual entries for any shop' },
+    { key: 'new_entry',      label: 'New Entry',      desc: 'Create manual entries for any shop' },
+    { key: 'access_control', label: 'Access Control', desc: 'Manage module-level permissions for users' },
 ];
 
 const LEVELS = [
@@ -97,7 +98,8 @@ const AccessControlPage = () => {
         setDirty(false);
         try {
             const res = await api.get(`/permissions/${userId}`);
-            setPermissions(res.data);
+            // Merge with full defaults so all 10 modules always appear even if API returns partial data
+            setPermissions({ ...initialPerms(), ...(res.data || {}) });
         } catch (err) {
             showToast('error', err.response?.data?.error || 'Failed to load permissions');
             setPermissions(initialPerms());

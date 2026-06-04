@@ -3,6 +3,7 @@ const db = require('../config/db');
 const MODULES = [
     'dashboard', 'approvals', 'shops', 'users', 'entries',
     'expenses', 'manager_funds', 'anomalies', 'reports', 'new_entry',
+    'access_control',
 ];
 
 // Role-based defaults: applied when no explicit DB record exists for a user+module.
@@ -10,16 +11,17 @@ const MODULES = [
 const ROLE_DEFAULTS = {
     admin: Object.fromEntries(MODULES.map(m => [m, 'WRITE'])),
     manager: {
-        dashboard:    'WRITE',
-        approvals:    'WRITE',
-        entries:      'WRITE',
-        expenses:     'WRITE',
-        reports:      'WRITE',
-        shops:        'NO_ACCESS',
-        users:        'NO_ACCESS',
-        manager_funds:'NO_ACCESS',
-        anomalies:    'NO_ACCESS',
-        new_entry:    'NO_ACCESS',
+        dashboard:      'WRITE',
+        approvals:      'WRITE',
+        entries:        'WRITE',
+        expenses:       'WRITE',
+        reports:        'WRITE',
+        shops:          'NO_ACCESS',
+        users:          'NO_ACCESS',
+        manager_funds:  'NO_ACCESS',
+        anomalies:      'NO_ACCESS',
+        new_entry:      'NO_ACCESS',
+        access_control: 'NO_ACCESS',
     },
     shop_user: Object.fromEntries(MODULES.map(m => [m, 'NO_ACCESS'])),
 };
@@ -55,7 +57,12 @@ const permissionCache = {
         const entries = await Promise.all(
             MODULES.map(async m => [m, await this.get(userId, role, m)])
         );
-        return Object.fromEntries(entries);
+        const result = Object.fromEntries(entries);
+        // Guarantee all 10 modules are present with a valid level
+        for (const m of MODULES) {
+            if (!result[m]) result[m] = ROLE_DEFAULTS[role]?.[m] ?? 'NO_ACCESS';
+        }
+        return result;
     },
 
     invalidate(userId) {

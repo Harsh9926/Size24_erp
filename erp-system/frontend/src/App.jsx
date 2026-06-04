@@ -73,8 +73,8 @@ function AppInner() {
         <Route path="/admin/expenses"   element={<PrivateRoute allowedRoles={['admin', 'manager']}         module="expenses"     ><ExpensesPage /></PrivateRoute>} />
         <Route path="/admin/anomalies"  element={<PrivateRoute allowedRoles={['admin']}                    module="anomalies"    ><AnomaliesPage /></PrivateRoute>} />
 
-        {/* Access Control — admin only, no module check (admin always has full access) */}
-        <Route path="/admin/access-control" element={<PrivateRoute allowedRoles={['admin']}><AccessControlPage /></PrivateRoute>} />
+        {/* Access Control — admin only, protected by access_control module permission */}
+        <Route path="/admin/access-control" element={<PrivateRoute allowedRoles={['admin']} module="access_control"><AccessControlPage /></PrivateRoute>} />
 
         {/* Manager Routes */}
         <Route path="/manager"               element={<PrivateRoute allowedRoles={['manager']} module="dashboard"    ><ManagerDashboard /></PrivateRoute>} />

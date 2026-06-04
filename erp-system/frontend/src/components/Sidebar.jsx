@@ -213,8 +213,8 @@ const Sidebar = ({ isOpen, onClose }) => {
         baseLinks = adminLinks.filter(l => !l.module || hasAccess(l.module));
     }
 
-    // Access Control link — always visible for admin role so no one gets locked out
-    const showAccessControl = user?.role === 'admin';
+    // Access Control link — visible for admin role + has access_control permission
+    const showAccessControl = user?.role === 'admin' && hasAccess('access_control');
     const links = baseLinks;
 
     return (
