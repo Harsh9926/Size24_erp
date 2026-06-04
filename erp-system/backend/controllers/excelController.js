@@ -204,6 +204,13 @@ exports.processExcel = async (req, res) => {
             });
         }
 
+        // When caller provides an override date (e.g. ShopDashboard background upload),
+        // store that date so the admin can find this upload by the entry's date.
+        if (skipDateCheck && req.body.upload_date_override) {
+            const override = String(req.body.upload_date_override).split('T')[0];
+            if (/^\d{4}-\d{2}-\d{2}$/.test(override)) uploadDate = override;
+        }
+
         /* Limit row_data to 500 rows to avoid huge JSONB */
         const rowData = rows.slice(0, 500);
 

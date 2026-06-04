@@ -509,6 +509,7 @@ const ShopDashboard = () => {
             fd.append('excel', pendingXlFile);
             if (user?.shopId) fd.append('shop_id', user.shopId);
             fd.append('skip_date_check', 'true');
+            fd.append('upload_date_override', getTodayISO());
             api.post('/excel/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
                 .catch(() => { /* best-effort; local state is already set */ });
             setPendingXlFile(null);

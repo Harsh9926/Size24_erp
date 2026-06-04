@@ -6,7 +6,9 @@ const cors      = require('cors');
 const path      = require('path');
 const cron      = require('node-cron');
 const rateLimit = require('express-rate-limit');
+const jwt       = require('jsonwebtoken');
 const db        = require('./config/db');
+const { permissionCache, LEVELS } = require('./middleware/checkPermission');
 
 const app        = express();
 const httpServer = http.createServer(app);
@@ -84,10 +86,68 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // ── Health check ─────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
+// ── Module-level RBAC permission middleware ───────────────────────
+// Runs before every protected /api route.
+// Admin role always passes. Non-admin users are checked against
+// module_permissions table (with role-based defaults as fallback).
+// JWT is decoded here without a DB round-trip; full auth still happens
+// inside each route's authenticateToken middleware.
+const RBAC_SKIP_PATHS = [
+    '/auth', '/health', '/locations', '/upload', '/notifications',
+    '/permissions', '/excel', '/ai', '/mcp', '/activity', '/cashflow',
+    '/audit', '/transfers/balance', '/transfers/managers',
+];
+
+// Maps req.path (after /api) patterns to {module, alwaysWrite}
+const RBAC_ROUTE_MAP = [
+    { re: /^\/entries\/\d+\/approve(\/|$)/, module: 'approvals',     write: true  },
+    { re: /^\/entries\/\d+\/reject(\/|$)/,  module: 'approvals',     write: true  },
+    { re: /^\/entries\/bulk-action(\/|$)/,  module: 'approvals',     write: true  },
+    { re: /^\/entries/,                     module: 'entries'                      },
+    { re: /^\/shops/,                       module: 'shops'                        },
+    { re: /^\/users/,                       module: 'users'                        },
+    { re: /^\/expenses/,                    module: 'expenses'                     },
+    { re: /^\/transfers/,                   module: 'manager_funds'                },
+    { re: /^\/manager-transfers/,           module: 'manager_funds'                },
+    { re: /^\/anomalies/,                   module: 'anomalies'                    },
+    { re: /^\/reports/,                     module: 'reports'                      },
+    { re: /^\/dashboard/,                   module: 'dashboard'                    },
+];
+
+app.use('/api', async (req, res, next) => {
+    if (RBAC_SKIP_PATHS.some(p => req.path.startsWith(p))) return next();
+
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return next();
+
+    let decoded;
+    try { decoded = jwt.verify(token, process.env.JWT_SECRET); }
+    catch { return next(); } // invalid token handled by authenticateToken in route
+
+    if (decoded.role === 'admin') return next();
+
+    const rule = RBAC_ROUTE_MAP.find(r => r.re.test(req.path));
+    if (!rule) return next();
+
+    const isWrite   = rule.write || req.method !== 'GET';
+    const minLevel  = isWrite ? 'WRITE' : 'VIEW';
+    const permission = await permissionCache.get(decoded.id, decoded.role, rule.module);
+
+    if ((LEVELS[permission] ?? 0) < LEVELS[minLevel]) {
+        return res.status(403).json({
+            error: `Access denied: you don't have ${minLevel.toLowerCase()} access to '${rule.module}'.`,
+            module: rule.module,
+        });
+    }
+    next();
+});
+
 // ── Routes ───────────────────────────────────────────────────────
 // All routes are prefixed with /api so Nginx can proxy /api/* → :5000
 // Route files define paths WITHOUT the /api prefix (e.g. router.post('/login'))
 app.use('/api/auth',          require('./routes/auth'));
+app.use('/api/permissions',   require('./routes/permissions'));
 app.use('/api/locations',     require('./routes/locations'));
 app.use('/api/shops',         require('./routes/shops'));
 app.use('/api/entries',       require('./routes/entries'));
@@ -273,6 +333,44 @@ httpServer.listen(PORT, async () => {
     } catch (err) {
         console.error('[migrate] shop_users migration failed:', err.message);
         console.error('[migrate] Run: bash erp-system/backend/db/setup_production.sh');
+    }
+
+    // Auto-migrate: RBAC tables (module_permissions + permission_logs)
+    try {
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS module_permissions (
+                id              SERIAL PRIMARY KEY,
+                user_id         INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                module_name     VARCHAR(50) NOT NULL,
+                permission_type VARCHAR(20) NOT NULL DEFAULT 'NO_ACCESS'
+                                CHECK (permission_type IN ('NO_ACCESS','VIEW','WRITE')),
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, module_name)
+            )
+        `);
+        await db.query(`
+            CREATE INDEX IF NOT EXISTS idx_module_perms_user
+            ON module_permissions(user_id)
+        `);
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS permission_logs (
+                id             SERIAL PRIMARY KEY,
+                admin_id       INT REFERENCES users(id) ON DELETE SET NULL,
+                user_id        INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                module_name    VARCHAR(50) NOT NULL,
+                old_permission VARCHAR(20),
+                new_permission VARCHAR(20) NOT NULL,
+                timestamp      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        await db.query(`
+            CREATE INDEX IF NOT EXISTS idx_perm_logs_user
+            ON permission_logs(user_id)
+        `);
+        console.log('[migrate] RBAC tables ready (module_permissions, permission_logs)');
+    } catch (err) {
+        console.error('[migrate] RBAC migration failed:', err.message);
     }
 
     // Auto-seed Indian states & cities if DB is empty

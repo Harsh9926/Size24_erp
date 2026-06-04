@@ -1,34 +1,36 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import { usePermissions } from '../context/PermissionsContext';
 import {
     LayoutDashboard, Store, Users, ClipboardList,
     Banknote, LogOut, ChevronRight,
     BarChart3, Sun, Moon, FileUp, ShieldCheck, PlusCircle,
     KeyRound, Eye, EyeOff, X, CheckCircle2, AlertCircle,
-    Wallet, Receipt, TriangleAlert,
+    Wallet, Receipt, TriangleAlert, Lock,
 } from 'lucide-react';
 import api from '../services/api';
 
+// module field maps each link to its RBAC module for permission filtering
 const adminLinks = [
-    { to: '/admin',                label: 'Dashboard',     icon: LayoutDashboard },
-    { to: '/admin/approvals',      label: 'Approvals',     icon: ShieldCheck },
-    { to: '/admin/shops',          label: 'Shops',         icon: Store },
-    { to: '/admin/users',          label: 'Users',         icon: Users },
-    { to: '/admin/entries',        label: 'Entries',       icon: ClipboardList },
-    { to: '/admin/expenses',       label: 'Expenses',      icon: Receipt },
-    { to: '/admin/manager-funds',  label: 'Manager Funds', icon: Wallet },
-    { to: '/admin/anomalies',      label: 'Anomalies',     icon: TriangleAlert },
-    { to: '/admin/reports',        label: 'Reports',       icon: BarChart3 },
-    { to: '/admin/new-entry',      label: 'New Entry',     icon: PlusCircle },
+    { to: '/admin',                label: 'Dashboard',     icon: LayoutDashboard, module: 'dashboard'     },
+    { to: '/admin/approvals',      label: 'Approvals',     icon: ShieldCheck,     module: 'approvals'     },
+    { to: '/admin/shops',          label: 'Shops',         icon: Store,           module: 'shops'         },
+    { to: '/admin/users',          label: 'Users',         icon: Users,           module: 'users'         },
+    { to: '/admin/entries',        label: 'Entries',       icon: ClipboardList,   module: 'entries'       },
+    { to: '/admin/expenses',       label: 'Expenses',      icon: Receipt,         module: 'expenses'      },
+    { to: '/admin/manager-funds',  label: 'Manager Funds', icon: Wallet,          module: 'manager_funds' },
+    { to: '/admin/anomalies',      label: 'Anomalies',     icon: TriangleAlert,   module: 'anomalies'     },
+    { to: '/admin/reports',        label: 'Reports',       icon: BarChart3,       module: 'reports'       },
+    { to: '/admin/new-entry',      label: 'New Entry',     icon: PlusCircle,      module: 'new_entry'     },
 ];
 
 const managerLinks = [
-    { to: '/manager',               label: 'Dashboard',     icon: LayoutDashboard },
-    { to: '/admin/approvals',       label: 'Approvals',     icon: ShieldCheck },
-    { to: '/admin/entries',         label: 'Entries',       icon: ClipboardList },
-    { to: '/admin/expenses',        label: 'Expenses',      icon: Receipt },
-    { to: '/manager/cash-transfer', label: 'Cash Transfer', icon: Banknote },
+    { to: '/manager',               label: 'Dashboard',     icon: LayoutDashboard, module: 'dashboard'  },
+    { to: '/admin/approvals',       label: 'Approvals',     icon: ShieldCheck,     module: 'approvals'  },
+    { to: '/admin/entries',         label: 'Entries',       icon: ClipboardList,   module: 'entries'    },
+    { to: '/admin/expenses',        label: 'Expenses',      icon: Receipt,         module: 'expenses'   },
+    { to: '/manager/cash-transfer', label: 'Cash Transfer', icon: Banknote,        module: 'manager_funds' },
 ];
 
 const shopLinks = [
@@ -167,8 +169,9 @@ const ChangePasswordModal = ({ onClose }) => {
    SIDEBAR
 ══════════════════════════════════════════════════════════════ */
 const Sidebar = ({ isOpen, onClose }) => {
-    const { logout, user } = useContext(AuthContext);
-    const navigate = useNavigate();
+    const { logout, user }      = useContext(AuthContext);
+    const { hasAccess }         = usePermissions();
+    const navigate              = useNavigate();
     const [dark, setDark]               = useState(() => localStorage.getItem('erp_theme') === 'dark');
     const [pendingCount, setPendingCount] = useState(0);
     const [showChangePw, setShowChangePw] = useState(false);
@@ -178,9 +181,12 @@ const Sidebar = ({ isOpen, onClose }) => {
         localStorage.setItem('erp_theme', dark ? 'dark' : 'light');
     }, [dark]);
 
-    /* Poll pending count every 60 s for admin / manager */
+    /* Poll pending count every 60 s — only when user has approvals access */
     useEffect(() => {
-        if (user?.role !== 'admin' && user?.role !== 'manager') return;
+        const canSeeApprovals =
+            user?.role === 'admin' ||
+            (user?.role === 'manager' && hasAccess('approvals'));
+        if (!canSeeApprovals) { setPendingCount(0); return; }
 
         const fetchPending = async () => {
             try {
@@ -192,12 +198,24 @@ const Sidebar = ({ isOpen, onClose }) => {
         fetchPending();
         const iv = setInterval(fetchPending, 60_000);
         return () => clearInterval(iv);
-    }, [user?.role]);
+    }, [user?.role, hasAccess]);
 
     const handleLogout = () => { logout(); navigate('/login'); };
-    const links = user?.role === 'manager' ? managerLinks
-        : user?.role === 'shop_user' ? shopLinks
-        : adminLinks;
+
+    // Build visible link list based on role + RBAC permissions
+    let baseLinks;
+    if (user?.role === 'manager') {
+        baseLinks = managerLinks.filter(l => !l.module || hasAccess(l.module));
+    } else if (user?.role === 'shop_user') {
+        baseLinks = shopLinks;
+    } else {
+        // Admin: always show all links (admin bypasses RBAC)
+        baseLinks = adminLinks;
+    }
+
+    // Access Control link — admin only, always last
+    const showAccessControl = user?.role === 'admin';
+    const links = baseLinks;
 
     return (
         <>
@@ -248,6 +266,28 @@ const Sidebar = ({ isOpen, onClose }) => {
                             <ChevronRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-50 transition-opacity" />
                         </NavLink>
                     ))}
+
+                    {/* Access Control — admin only, separated by a subtle divider */}
+                    {showAccessControl && (
+                        <>
+                            <div className="my-2 border-t border-white/10" />
+                            <NavLink
+                                to="/admin/access-control"
+                                onClick={() => { if (onClose) onClose(); }}
+                                className={({ isActive }) =>
+                                    `flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${isActive
+                                        ? 'text-white shadow-lg'
+                                        : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                                    }`
+                                }
+                                style={({ isActive }) => isActive ? { backgroundColor: '#c2410c' } : {}}
+                            >
+                                <Lock className="h-5 w-5 flex-shrink-0" />
+                                <span className="flex-1">Access Control</span>
+                                <ChevronRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-50 transition-opacity" />
+                            </NavLink>
+                        </>
+                    )}
                 </nav>
 
                 {/* Dark mode + Change Password + Logout */}
