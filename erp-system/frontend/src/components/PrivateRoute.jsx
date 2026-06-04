@@ -27,8 +27,8 @@ const PrivateRoute = ({ children, allowedRoles, module }) => {
         return <Navigate to="/login" replace />;
     }
 
-    // Module permission check (admin always passes; wait until permissions are loaded)
-    if (module && user.role !== 'admin') {
+    // Module permission check for all users (wait until permissions are loaded)
+    if (module) {
         if (loading) return null; // Brief blank while permissions load
         if (!hasAccess(module)) return <ForbiddenPage />;
     }

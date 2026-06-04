@@ -204,16 +204,16 @@ const Sidebar = ({ isOpen, onClose }) => {
 
     // Build visible link list based on role + RBAC permissions
     let baseLinks;
-    if (user?.role === 'manager') {
-        baseLinks = managerLinks.filter(l => !l.module || hasAccess(l.module));
-    } else if (user?.role === 'shop_user') {
+    if (user?.role === 'shop_user') {
         baseLinks = shopLinks;
+    } else if (user?.role === 'manager') {
+        baseLinks = managerLinks.filter(l => !l.module || hasAccess(l.module));
     } else {
-        // Admin: always show all links (admin bypasses RBAC)
-        baseLinks = adminLinks;
+        // Admin: also filtered by RBAC permissions (Harsh controls what each admin sees)
+        baseLinks = adminLinks.filter(l => !l.module || hasAccess(l.module));
     }
 
-    // Access Control link — admin only, always last
+    // Access Control link — always visible for admin role so no one gets locked out
     const showAccessControl = user?.role === 'admin';
     const links = baseLinks;
 

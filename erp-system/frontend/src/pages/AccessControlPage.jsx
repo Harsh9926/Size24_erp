@@ -291,45 +291,8 @@ const AccessControlPage = () => {
                         )}
                     </div>
 
-                    {/* Admin user — read-only notice */}
-                    {selectedUser?.role === 'admin' && (
-                        <div
-                            className="rounded-2xl border overflow-hidden"
-                            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}
-                        >
-                            <div className="flex items-center gap-3 px-5 py-4 border-b"
-                                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
-                                <Shield className="h-4 w-4" style={{ color: '#FF6B00' }} />
-                                <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                                    Permissions for{' '}
-                                    <span style={{ color: '#FF6B00' }}>{selectedUser.name || selectedUser.mobile}</span>
-                                </span>
-                            </div>
-                            <div className="flex flex-col items-center justify-center py-12 gap-3 text-center px-6">
-                                <div className="h-14 w-14 rounded-full flex items-center justify-center"
-                                    style={{ background: 'rgba(255,107,0,0.1)' }}>
-                                    <Lock className="h-7 w-7" style={{ color: '#FF6B00' }} />
-                                </div>
-                                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                                    Full Admin Access
-                                </p>
-                                <p className="text-xs max-w-xs" style={{ color: 'var(--text-secondary)' }}>
-                                    Admin users always have full Write access to all modules. Their permissions cannot be restricted.
-                                </p>
-                                <div className="flex flex-wrap justify-center gap-2 mt-2">
-                                    {MODULES.map(m => (
-                                        <span key={m.key}
-                                            className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                            {m.label}: Write
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
                     {/* Permission matrix */}
-                    {selectedUser && selectedUser.role !== 'admin' && (
+                    {selectedUser && (
                         <div
                             className="rounded-2xl border overflow-hidden"
                             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}

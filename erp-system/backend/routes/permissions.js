@@ -7,13 +7,9 @@ const { permissionCache, MODULES, ROLE_DEFAULTS } = require('../middleware/check
 const VALID_LEVELS = ['NO_ACCESS', 'VIEW', 'WRITE'];
 
 /* ── GET /api/permissions/me ─────────────────────────────────────────
-   Returns the calling user's module permissions.
-   Admin always gets WRITE on all modules.
+   Returns the calling user's module permissions (DB + role defaults).
 */
 router.get('/me', authenticateToken, async (req, res) => {
-    if (req.user.role === 'admin') {
-        return res.json(Object.fromEntries(MODULES.map(m => [m, 'WRITE'])));
-    }
     try {
         const perms = await permissionCache.getAll(req.user.id, req.user.role);
         res.json(perms);
@@ -53,12 +49,7 @@ router.get('/:userId', authenticateToken, requireRole('admin'), async (req, res)
         const userResult = await db.query('SELECT id, role FROM users WHERE id = $1', [userId]);
         if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
 
-        const { role } = userResult.rows[0];
-        if (role === 'admin') {
-            return res.json(Object.fromEntries(MODULES.map(m => [m, 'WRITE'])));
-        }
-
-        const perms = await permissionCache.getAll(userId, role);
+        const perms = await permissionCache.getAll(userId, userResult.rows[0].role);
         res.json(perms);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -83,7 +74,6 @@ router.put('/:userId', authenticateToken, requireRole('admin'), async (req, res)
         const userResult = await db.query('SELECT id, role FROM users WHERE id = $1', [userId]);
         if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
         const { role } = userResult.rows[0];
-        if (role === 'admin') return res.status(400).json({ error: 'Cannot modify admin permissions' });
 
         // Fetch current explicit permissions for audit diffing
         const currentResult = await db.query(

@@ -6,8 +6,9 @@ const MODULES = [
 ];
 
 // Role-based defaults: applied when no explicit DB record exists for a user+module.
-// Ensures existing managers don't lose access after RBAC is deployed.
+// Ensures existing users don't lose access after RBAC is deployed.
 const ROLE_DEFAULTS = {
+    admin: Object.fromEntries(MODULES.map(m => [m, 'WRITE'])),
     manager: {
         dashboard:    'WRITE',
         approvals:    'WRITE',

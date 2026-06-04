@@ -25,12 +25,6 @@ export const PermissionsProvider = ({ children }) => {
             setLoading(false);
             return;
         }
-        // Admin has implicit WRITE on everything — no server round-trip needed
-        if (user.role === 'admin') {
-            setPermissions({});
-            setLoading(false);
-            return;
-        }
         try {
             const res = await api.get('/permissions/me');
             setPermissions(res.data || {});
@@ -41,13 +35,13 @@ export const PermissionsProvider = ({ children }) => {
         }
     }, [user?.id, user?.role]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Fetch on user change + poll for live admin updates
+    // Fetch on user change + poll for live permission updates
     useEffect(() => {
         setLoading(true);
         fetchPermissions();
 
         if (timerRef.current) clearInterval(timerRef.current);
-        if (user && user.role !== 'admin') {
+        if (user) {
             timerRef.current = setInterval(fetchPermissions, POLL_INTERVAL_MS);
         }
         return () => { if (timerRef.current) clearInterval(timerRef.current); };
@@ -66,20 +60,17 @@ export const PermissionsProvider = ({ children }) => {
 
     const hasAccess = useCallback((module) => {
         if (!user) return false;
-        if (user.role === 'admin') return true;
         const p = permissions[module];
         return p === 'VIEW' || p === 'WRITE';
     }, [user, permissions]);
 
     const canWrite = useCallback((module) => {
         if (!user) return false;
-        if (user.role === 'admin') return true;
         return permissions[module] === 'WRITE';
     }, [user, permissions]);
 
     const getPermission = useCallback((module) => {
         if (!user) return 'NO_ACCESS';
-        if (user.role === 'admin') return 'WRITE';
         return permissions[module] ?? 'NO_ACCESS';
     }, [user, permissions]);
 
