@@ -125,6 +125,10 @@ app.use('/api', async (req, res, next) => {
     try { decoded = jwt.verify(token, process.env.JWT_SECRET); }
     catch { return next(); } // invalid token handled by authenticateToken in route
 
+    // RBAC module system only applies to admin/manager roles.
+    // Shop users are governed by requireRole() guards inside each route file.
+    if (decoded.role === 'shop_user') return next();
+
     const rule = RBAC_ROUTE_MAP.find(r => r.re.test(req.path));
     if (!rule) return next();
 

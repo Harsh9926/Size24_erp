@@ -902,13 +902,20 @@ const ShopDashboard = () => {
                                         Bank / Paytm Screenshot
                                         <span className="ml-1 text-[10px] font-normal text-gray-600">(optional)</span>
                                     </label>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-col gap-2">
                                         <button type="button" onClick={() => fileRef.current?.click()}
-                                            className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
+                                            className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors w-fit">
                                             <Camera className="h-3.5 w-3.5" />
                                             {photoFile ? 'Change Screenshot' : 'Upload Screenshot'}
                                         </button>
-                                        {photoPreview && <img src={photoPreview} alt="bank screenshot preview" className="h-10 w-10 object-cover rounded-md border" />}
+                                        {photoPreview && (
+                                            <img
+                                                src={photoPreview}
+                                                alt="bank screenshot preview"
+                                                className="w-full max-w-xs rounded-xl border object-contain"
+                                                style={{ maxHeight: '180px' }}
+                                            />
+                                        )}
                                     </div>
                                     <input ref={fileRef} type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
                                 </div>
