@@ -23,15 +23,18 @@ router.get('/me', authenticateToken, async (req, res) => {
 });
 
 /* ── GET /api/permissions/users ──────────────────────────────────────
-   Returns non-admin users for the access-control dropdown (admin only).
+   Returns all users for the access-control dropdown (admin only).
+   Admins are included but their permissions cannot be modified.
 */
 router.get('/users', authenticateToken, requireRole('admin'), async (req, res) => {
     try {
         const result = await db.query(
             `SELECT id, name, mobile, role
              FROM users
-             WHERE role != 'admin' AND status = 'active'
-             ORDER BY role, name`
+             WHERE status = 'active'
+             ORDER BY
+               CASE role WHEN 'admin' THEN 0 WHEN 'manager' THEN 1 ELSE 2 END,
+               name`
         );
         res.json(result.rows);
     } catch (err) {
