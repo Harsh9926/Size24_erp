@@ -64,8 +64,8 @@ exports.createEntry = async (req, res) => {
             const result = await client.query(
                 `INSERT INTO daily_entries
                     (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay,
-                     approval_status, locked, approved_by, approved_at, wallet_credited, entry_type)
-                 VALUES ($1, $2, $3, $3, $4, $5, $6, 'APPROVED', true, $7, NOW(), true, $8)
+                     approval_status, locked, approved_by, approved_at, wallet_credited, entry_type, created_by)
+                 VALUES ($1, $2, $3, $3, $4, $5, $6, 'APPROVED', true, $7, NOW(), true, $8, $7)
                  RETURNING *`,
                 [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0, req.user.id, entryType],
             );
@@ -103,10 +103,10 @@ exports.createEntry = async (req, res) => {
         const result = await client.query(
             `INSERT INTO daily_entries
                 (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay,
-                 approval_status, wallet_credited, entry_type)
-             VALUES ($1, $2, $3, $3, $4, $5, $6, 'PENDING', true, $7)
+                 approval_status, wallet_credited, entry_type, created_by)
+             VALUES ($1, $2, $3, $3, $4, $5, $6, 'PENDING', true, $7, $8)
              RETURNING *`,
-            [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0, entryType],
+            [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0, entryType, req.user.id],
         );
 
         // Credit ONLY the cash portion to the shop wallet immediately on submission
@@ -294,7 +294,7 @@ exports.getEntries = async (req, res) => {
             JOIN shops s   ON e.shop_id    = s.id
             LEFT JOIN cities c  ON s.city_id    = c.id
             LEFT JOIN users au  ON e.approved_by = au.id
-            LEFT JOIN users su  ON s.user_id     = su.id
+            LEFT JOIN users su  ON e.created_by  = su.id
         `;
 
         const params  = [];
@@ -375,7 +375,7 @@ exports.getPendingEntries = async (req, res) => {
              FROM daily_entries e
              JOIN shops s ON e.shop_id = s.id
              LEFT JOIN cities c ON s.city_id = c.id
-             LEFT JOIN users u  ON s.user_id  = u.id
+             LEFT JOIN users u  ON e.created_by = u.id
              WHERE e.approval_status = 'PENDING'
              ORDER BY e.created_at ASC`,
         );
