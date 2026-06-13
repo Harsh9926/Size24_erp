@@ -34,6 +34,16 @@ import AdminManagerProfilePage from './pages/AdminManagerProfilePage';
 import ExpensesPage   from './pages/ExpensesPage';
 import AnomaliesPage  from './pages/AnomaliesPage';
 
+// Inventory Pages
+import InventoryDashboard  from './pages/inventory/InventoryDashboard';
+import ItemMasterPage      from './pages/inventory/ItemMasterPage';
+import StockSummaryPage    from './pages/inventory/StockSummaryPage';
+import PurchaseRegisterPage from './pages/inventory/PurchaseRegisterPage';
+import SalesInvoicePage    from './pages/inventory/SalesInvoicePage';
+import SuppliersPage       from './pages/inventory/SuppliersPage';
+import CustomersPage       from './pages/inventory/CustomersPage';
+import SchoolMappingPage   from './pages/inventory/SchoolMappingPage';
+
 // Shop User Pages
 import ShopDashboard   from './pages/ShopDashboard';
 import ShopSelectPage  from './pages/ShopSelectPage';
@@ -83,6 +93,16 @@ function AppInner() {
         {/* Shop User Routes */}
         <Route path="/shop/select" element={<PrivateRoute allowedRoles={['shop_user']}><ShopSelectPage /></PrivateRoute>} />
         <Route path="/shop"        element={<PrivateRoute allowedRoles={['shop_user']}><ShopDashboard /></PrivateRoute>} />
+
+        {/* Inventory Routes — admin + manager */}
+        <Route path="/inventory"          element={<PrivateRoute allowedRoles={['admin','manager']}><InventoryDashboard /></PrivateRoute>} />
+        <Route path="/inventory/items"    element={<PrivateRoute allowedRoles={['admin','manager']}><ItemMasterPage /></PrivateRoute>} />
+        <Route path="/inventory/stock"    element={<PrivateRoute allowedRoles={['admin','manager']}><StockSummaryPage /></PrivateRoute>} />
+        <Route path="/inventory/purchase" element={<PrivateRoute allowedRoles={['admin','manager']}><PurchaseRegisterPage /></PrivateRoute>} />
+        <Route path="/inventory/sales"    element={<PrivateRoute allowedRoles={['admin','manager']}><SalesInvoicePage /></PrivateRoute>} />
+        <Route path="/inventory/suppliers" element={<PrivateRoute allowedRoles={['admin','manager']}><SuppliersPage /></PrivateRoute>} />
+        <Route path="/inventory/customers" element={<PrivateRoute allowedRoles={['admin','manager']}><CustomersPage /></PrivateRoute>} />
+        <Route path="/inventory/schools"  element={<PrivateRoute allowedRoles={['admin','manager']}><SchoolMappingPage /></PrivateRoute>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />

@@ -8,6 +8,7 @@ import {
     BarChart3, Sun, Moon, FileUp, ShieldCheck, PlusCircle,
     KeyRound, Eye, EyeOff, X, CheckCircle2, AlertCircle,
     Wallet, Receipt, TriangleAlert, Lock,
+    Package, ShoppingCart, TrendingUp, Truck, BookOpen, ChevronDown,
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -168,6 +169,17 @@ const ChangePasswordModal = ({ onClose }) => {
 /* ══════════════════════════════════════════════════════════════
    SIDEBAR
 ══════════════════════════════════════════════════════════════ */
+const inventoryLinks = [
+    { to: '/inventory',           label: 'Overview',    icon: LayoutDashboard },
+    { to: '/inventory/items',     label: 'Items',       icon: Package         },
+    { to: '/inventory/stock',     label: 'Stock',       icon: BarChart3       },
+    { to: '/inventory/purchase',  label: 'Purchase',    icon: ShoppingCart    },
+    { to: '/inventory/sales',     label: 'Sales',       icon: TrendingUp      },
+    { to: '/inventory/suppliers', label: 'Suppliers',   icon: Truck           },
+    { to: '/inventory/customers', label: 'Customers',   icon: Users           },
+    { to: '/inventory/schools',   label: 'Schools',     icon: BookOpen        },
+];
+
 const Sidebar = ({ isOpen, onClose }) => {
     const { logout, user }      = useContext(AuthContext);
     const { hasAccess }         = usePermissions();
@@ -175,6 +187,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     const [dark, setDark]               = useState(() => localStorage.getItem('erp_theme') === 'dark');
     const [pendingCount, setPendingCount] = useState(0);
     const [showChangePw, setShowChangePw] = useState(false);
+    const [invOpen, setInvOpen]           = useState(false);
 
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
@@ -266,6 +279,40 @@ const Sidebar = ({ isOpen, onClose }) => {
                             <ChevronRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-50 transition-opacity" />
                         </NavLink>
                     ))}
+
+                    {/* Inventory Section — admin + manager */}
+                    {(user?.role === 'admin' || user?.role === 'manager') && (
+                        <>
+                            <div className="my-2 border-t border-white/10" />
+                            <button
+                                onClick={() => setInvOpen(o => !o)}
+                                className="flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-white/10 hover:text-white transition-all duration-150"
+                            >
+                                <Package className="h-5 w-5 flex-shrink-0" />
+                                <span className="flex-1 text-left">Inventory</span>
+                                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${invOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {invOpen && (
+                                <div className="ml-4 pl-3 border-l border-white/10 space-y-0.5 mt-0.5">
+                                    {inventoryLinks.map(({ to, label, icon: Icon }) => (
+                                        <NavLink key={to} to={to} end={to === '/inventory'}
+                                            onClick={() => { if (onClose) onClose(); }}
+                                            className={({ isActive }) =>
+                                                `flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 group ${isActive
+                                                    ? 'text-white shadow-lg'
+                                                    : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                                                }`
+                                            }
+                                            style={({ isActive }) => isActive ? { backgroundColor: '#c2410c' } : {}}
+                                        >
+                                            <Icon className="h-4 w-4 flex-shrink-0" />
+                                            <span className="flex-1">{label}</span>
+                                        </NavLink>
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    )}
 
                     {/* Access Control — admin only, separated by a subtle divider */}
                     {showAccessControl && (

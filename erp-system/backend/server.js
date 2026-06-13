@@ -169,6 +169,13 @@ app.use('/api/expenses',           require('./routes/expenses'));
 app.use('/api/anomalies',          require('./routes/anomalies'));
 app.use('/api/activity',           require('./routes/activity'));
 
+// ── Inventory / Purchase / Sales modules ─────────────────────────────
+app.use('/api/inv',          require('./routes/inventory'));
+app.use('/api/inv/purchase', require('./routes/purchase'));
+app.use('/api/inv/sales',    require('./routes/invSales'));
+app.use('/api/inv/parties',  require('./routes/parties'));
+app.use('/api/inv/schools',  require('./routes/invSchools'));
+
 // ── 404 handler — catches any unknown /api/* path ────────────────
 app.use('/api/*path', (req, res) => {
     res.status(404).json({
@@ -245,8 +252,8 @@ cron.schedule('30 13 * * *', async () => {
     }
 });
 
-// ── Cron: 9 PM IST sales summary to all admins (15:30 UTC) ────
-cron.schedule('30 15 * * *', async () => {
+// ── Cron: 11 PM IST sales summary to all admins (17:30 UTC) ────
+cron.schedule('30 17 * * *', async () => {
     const wa = require('./services/aiSensyService');
     if (!wa.ENABLED) return;
     try {
@@ -335,6 +342,17 @@ httpServer.listen(PORT, async () => {
     } catch (err) {
         console.error('[migrate] shop_users migration failed:', err.message);
         console.error('[migrate] Run: bash erp-system/backend/db/setup_production.sh');
+    }
+
+    // Auto-migrate: Inventory module tables
+    try {
+        const fs = require('fs');
+        const path = require('path');
+        const invSql = fs.readFileSync(path.join(__dirname, 'db', 'inv_schema.sql'), 'utf8');
+        await db.query(invSql);
+        console.log('[migrate] Inventory schema ready');
+    } catch (err) {
+        console.error('[migrate] Inventory schema failed:', err.message);
     }
 
     // Auto-migrate: RBAC tables (module_permissions + permission_logs)
