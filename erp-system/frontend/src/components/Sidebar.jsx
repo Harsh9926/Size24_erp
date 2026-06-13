@@ -254,12 +254,12 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </div>
 
                 {/* Nav Links */}
-                <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+                <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
                     {links.map(({ to, label, icon: Icon }) => (
                         <NavLink key={to} to={to} end={to === '/admin' || to === '/manager'}
                             onClick={() => { if (onClose) onClose(); }}
                             className={({ isActive }) =>
-                                `flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group ${isActive
+                                `flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 group ${isActive
                                     ? 'text-white shadow-lg'
                                     : 'text-gray-400 hover:bg-white/10 hover:text-white'
                                 }`
@@ -286,7 +286,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                             <div className="my-2 border-t border-white/10" />
                             <button
                                 onClick={() => setInvOpen(o => !o)}
-                                className="flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-white/10 hover:text-white transition-all duration-150"
+                                className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:bg-white/10 hover:text-white transition-all duration-150"
                             >
                                 <Package className="h-5 w-5 flex-shrink-0" />
                                 <span className="flex-1 text-left">Inventory</span>
