@@ -51,11 +51,13 @@ const StatusBadge = ({ status }) => {
 
 /* ── Empty form ──────────────────────────────────────────────────── */
 const EMPTY_FORM = () => ({
-    date:             getTodayISO(),
-    excel_total_sale: '',   // locked from Excel
-    cash:             '',
-    online:           '',   // QR / Card / Bank
-    razorpay:         '',
+    date:                 getTodayISO(),
+    excel_total_sale:     '',   // locked from Excel
+    cash:                 '',
+    online:               '',   // QR / Card / Bank
+    razorpay:             '',
+    payment_in:           '',
+    payment_in_admin_id:  '',
 });
 
 /* ══════════════════════════════════════════════════════════════════
@@ -228,6 +230,9 @@ const ShopDashboard = () => {
     const [transferring,      setTransferring]      = useState(false);
     const [transferMsg,       setTransferMsg]       = useState(null); // {type, text}
 
+    // ── Payment In (inline in entry form) ────────────────────────
+    const [paymentInAdmins, setPaymentInAdmins] = useState([]);
+
     // ── Wallet History state ──────────────────────────────────────
     const [showWalletHistory,    setShowWalletHistory]    = useState(false);
     const [walletHistory,        setWalletHistory]        = useState(null);
@@ -284,6 +289,15 @@ const ShopDashboard = () => {
         }
     }, [user?.shopId]);
 
+    const fetchPaymentInAdmins = useCallback(async () => {
+        try {
+            const res = await api.get('/payment-in/admins');
+            setPaymentInAdmins(Array.isArray(res.data) ? res.data : []);
+        } catch (err) {
+            console.error('[PaymentIn] fetchAdmins error:', err.response?.status, err.response?.data || err.message);
+        }
+    }, []);
+
     const handleTransfer = async (e) => {
         e.preventDefault();
         const amt = parseFloat(transferForm.amount);
@@ -315,6 +329,7 @@ const ShopDashboard = () => {
         fetchBalance();
         fetchManagers();
         fetchMyTransfers();
+        fetchPaymentInAdmins();
     }, []);
     useEffect(() => {
         if (!xlSuccess) return;
@@ -343,7 +358,7 @@ const ShopDashboard = () => {
 
     /* ── Computed validation ──────────────────────────────────────── */
     const excelTotal   = parseFloat(form.excel_total_sale || 0);
-    const breakdownSum = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0);
+    const breakdownSum = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + parseFloat(form.payment_in || 0);
     const difference   = (breakdownSum - excelTotal).toFixed(2);
     const isMatch      = Math.abs(breakdownSum - excelTotal) <= 0.01;
 
@@ -393,11 +408,13 @@ const ShopDashboard = () => {
         setEditLocked((entry.locked || entry.approval_status === 'APPROVED') && !unlockActive);
         setExcelLoaded(true);
         setForm({
-            date:             normDate(entry.date) || getTodayISO(),
-            excel_total_sale: String(entry.excel_total_sale ?? entry.total_sale ?? ''),
-            cash:             String(entry.cash      ?? ''),
-            online:           String(entry.online    ?? entry.paytm ?? ''),
-            razorpay:         String(entry.razorpay  ?? ''),
+            date:                normDate(entry.date) || getTodayISO(),
+            excel_total_sale:    String(entry.excel_total_sale ?? entry.total_sale ?? ''),
+            cash:                String(entry.cash      ?? ''),
+            online:              String(entry.online    ?? entry.paytm ?? ''),
+            razorpay:            String(entry.razorpay  ?? ''),
+            payment_in:          String(entry.payment_in          ?? ''),
+            payment_in_admin_id: String(entry.payment_in_admin_id ?? ''),
         });
     }, []);
 
@@ -411,7 +428,7 @@ const ShopDashboard = () => {
     const handleNoSalesToggle = (checked) => {
         setNoSalesToday(checked);
         if (checked) {
-            setForm(f => ({ ...f, excel_total_sale: '0', cash: '0', online: '0', razorpay: '0' }));
+            setForm(f => ({ ...f, excel_total_sale: '0', cash: '0', online: '0', razorpay: '0', payment_in: '0', payment_in_admin_id: '' }));
             setExcelLoaded(true);
             setXlError(''); setXlSuccess('');
         } else {
@@ -425,6 +442,8 @@ const ShopDashboard = () => {
         e.preventDefault();
         if (!isMatch) return alert('Breakdown must match Total Sale before submitting.');
         if (!noSalesToday && excelTotal <= 0) return alert('Please upload an Excel file first to set Total Sale.');
+        if (parseFloat(form.payment_in) > 0 && !form.payment_in_admin_id)
+            return alert('Please select an Admin Bank Account for the Payment In amount.');
         if (data.shop?.latitude && gpsStatus !== 'ok' && gpsStatus !== 'no_coords')
             return alert('GPS check required. Click "Check Location" first.');
 
@@ -434,13 +453,15 @@ const ShopDashboard = () => {
             if (photoFile) photoUrl = await uploadPhoto();
 
             const payload = {
-                date:             form.date,
-                excel_total_sale: form.excel_total_sale,
-                cash:             form.cash     || '0',
-                online:           form.online   || '0',
-                razorpay:         form.razorpay || '0',
-                photo_url:        photoUrl,
-                entry_type:       noSalesToday ? 'no_sale' : 'normal',
+                date:                form.date,
+                excel_total_sale:    form.excel_total_sale,
+                cash:                form.cash     || '0',
+                online:              form.online   || '0',
+                razorpay:            form.razorpay || '0',
+                payment_in:          form.payment_in          || '0',
+                payment_in_admin_id: form.payment_in_admin_id || null,
+                photo_url:           photoUrl,
+                entry_type:          noSalesToday ? 'no_sale' : 'normal',
             };
 
             if (editId !== null) {
@@ -850,6 +871,42 @@ const ShopDashboard = () => {
                                     disabled={isFormLocked || !excelLoaded} />
                             </div>
 
+                            {/* ── Payment In ────────────────────────── */}
+                            <div>
+                                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                                    Payment In (₹)
+                                    <span className="ml-1 text-[10px] font-normal text-indigo-500">(optional · not counted as sale)</span>
+                                </label>
+                                <input id="field-payment-in" type="number" min="0" step="0.01"
+                                    className={inputCls(isFormLocked)}
+                                    value={form.payment_in}
+                                    onChange={(e) => {
+                                        if (isFormLocked) return;
+                                        setForm((p) => ({ ...p, payment_in: e.target.value }));
+                                        if (paymentInAdmins.length === 0) fetchPaymentInAdmins();
+                                    }}
+                                    placeholder="0.00"
+                                    disabled={isFormLocked} />
+                                {parseFloat(form.payment_in) > 0 && (
+                                    <div className="mt-1">
+                                        <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                                            Admin Bank Account *
+                                        </label>
+                                        <select
+                                            value={form.payment_in_admin_id}
+                                            onChange={e => setForm(p => ({ ...p, payment_in_admin_id: e.target.value }))}
+                                            className={inputCls(isFormLocked) + ' w-full'}
+                                            disabled={isFormLocked}
+                                            required={parseFloat(form.payment_in) > 0}>
+                                            <option value="">— Select admin —</option>
+                                            {paymentInAdmins.map(a => (
+                                                <option key={a.id} value={a.id}>{a.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+
                             {/* ── Validation indicator ───────────────── */}
                             {excelLoaded && (
                                 <div className={`p-3 rounded-lg border transition-all ${isMatch
@@ -872,7 +929,7 @@ const ShopDashboard = () => {
                                         }
                                     </div>
                                     <p className="text-[10px] text-center mt-1 text-gray-600">
-                                        Cash + RazorPay + QR/Card/Bank = Total Sale
+                                        Cash + RazorPay + QR/Card/Bank + Payment In = Total Sale
                                     </p>
                                 </div>
                             )}
@@ -948,6 +1005,7 @@ const ShopDashboard = () => {
                                 </p>
                             )}
                         </form>
+
                     </div>
 
                     {/* ── MY ENTRIES ─────────────────────────────────── */}

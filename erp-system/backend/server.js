@@ -96,6 +96,7 @@ const RBAC_SKIP_PATHS = [
     '/auth', '/health', '/locations', '/upload', '/notifications',
     '/permissions', '/excel', '/ai', '/mcp', '/activity', '/cashflow',
     '/audit', '/transfers/balance', '/transfers/managers',
+    '/payment-in/admins',
 ];
 
 // Maps req.path (after /api) patterns to {module, alwaysWrite}
@@ -109,6 +110,7 @@ const RBAC_ROUTE_MAP = [
     { re: /^\/expenses/,                    module: 'expenses'                     },
     { re: /^\/transfers/,                   module: 'manager_funds'                },
     { re: /^\/manager-transfers/,           module: 'manager_funds'                },
+    { re: /^\/payment-in/,                 module: 'manager_funds'                },
     { re: /^\/anomalies/,                   module: 'anomalies'                    },
     { re: /^\/reports/,                     module: 'reports'                      },
     { re: /^\/dashboard/,                   module: 'dashboard'                    },
@@ -168,6 +170,7 @@ app.use('/api/mcp',                require('./routes/mcp'));
 app.use('/api/expenses',           require('./routes/expenses'));
 app.use('/api/anomalies',          require('./routes/anomalies'));
 app.use('/api/activity',           require('./routes/activity'));
+app.use('/api/payment-in',         require('./routes/paymentIn'));
 
 // ── Inventory / Purchase / Sales modules ─────────────────────────────
 app.use('/api/inv',          require('./routes/inventory'));
@@ -175,6 +178,11 @@ app.use('/api/inv/purchase', require('./routes/purchase'));
 app.use('/api/inv/sales',    require('./routes/invSales'));
 app.use('/api/inv/parties',  require('./routes/parties'));
 app.use('/api/inv/schools',  require('./routes/invSchools'));
+
+// ── Manufacturing: Product Master, Raw Materials, BOM ────────────────
+app.use('/api/mfg/product-master', require('./routes/productMaster'));
+app.use('/api/mfg/raw-materials',  require('./routes/rawMaterials'));
+app.use('/api/mfg/bom',            require('./routes/bom'));
 
 // ── 404 handler — catches any unknown /api/* path ────────────────
 app.use('/api/*path', (req, res) => {
@@ -353,6 +361,17 @@ httpServer.listen(PORT, async () => {
         console.log('[migrate] Inventory schema ready');
     } catch (err) {
         console.error('[migrate] Inventory schema failed:', err.message);
+    }
+
+    // Auto-migrate: Manufacturing module tables (Product Master, Raw Materials, BOM)
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const mfgSql = fs.readFileSync(path.join(__dirname, 'db', 'manufacturing_schema.sql'), 'utf8');
+        await db.query(mfgSql);
+        console.log('[migrate] Manufacturing schema ready');
+    } catch (err) {
+        console.error('[migrate] Manufacturing schema failed:', err.message);
     }
 
     // Auto-migrate: RBAC tables (module_permissions + permission_logs)

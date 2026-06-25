@@ -21,6 +21,7 @@ import ReportsPage         from './pages/ReportsPage';
 import ExcelUploadPage     from './pages/ExcelUploadPage';
 import AdminEntryPage      from './pages/AdminEntryPage';
 import AccessControlPage   from './pages/AccessControlPage';
+import AdminBankLedgerPage from './pages/AdminBankLedgerPage';
 
 // Manager Pages
 import ManagerDashboard       from './pages/ManagerDashboard';
@@ -43,6 +44,14 @@ import SalesInvoicePage    from './pages/inventory/SalesInvoicePage';
 import SuppliersPage       from './pages/inventory/SuppliersPage';
 import CustomersPage       from './pages/inventory/CustomersPage';
 import SchoolMappingPage   from './pages/inventory/SchoolMappingPage';
+
+// Manufacturing Pages
+import ManufacturingDashboard from './pages/manufacturing/ManufacturingDashboard';
+import RawMaterialsPage       from './pages/manufacturing/RawMaterialsPage';
+import FabricLotsPage         from './pages/manufacturing/FabricLotsPage';
+import BOMPage                from './pages/manufacturing/BOMPage';
+import SizeMatrixPage         from './pages/manufacturing/SizeMatrixPage';
+import ProductMasterPage      from './pages/manufacturing/ProductMasterPage';
 
 // Shop User Pages
 import ShopDashboard   from './pages/ShopDashboard';
@@ -83,6 +92,8 @@ function AppInner() {
         <Route path="/admin/expenses"   element={<PrivateRoute allowedRoles={['admin', 'manager']}         module="expenses"     ><ExpensesPage /></PrivateRoute>} />
         <Route path="/admin/anomalies"  element={<PrivateRoute allowedRoles={['admin']}                    module="anomalies"    ><AnomaliesPage /></PrivateRoute>} />
 
+        <Route path="/admin/bank-ledger" element={<PrivateRoute allowedRoles={['admin']} module="manager_funds"><AdminBankLedgerPage /></PrivateRoute>} />
+
         {/* Access Control — admin only, protected by access_control module permission */}
         <Route path="/admin/access-control" element={<PrivateRoute allowedRoles={['admin']} module="access_control"><AccessControlPage /></PrivateRoute>} />
 
@@ -103,6 +114,14 @@ function AppInner() {
         <Route path="/inventory/suppliers" element={<PrivateRoute allowedRoles={['admin','manager']}><SuppliersPage /></PrivateRoute>} />
         <Route path="/inventory/customers" element={<PrivateRoute allowedRoles={['admin','manager']}><CustomersPage /></PrivateRoute>} />
         <Route path="/inventory/schools"  element={<PrivateRoute allowedRoles={['admin','manager']}><SchoolMappingPage /></PrivateRoute>} />
+
+        {/* Manufacturing Routes — admin + manager */}
+        <Route path="/manufacturing"              element={<PrivateRoute allowedRoles={['admin','manager']}><ManufacturingDashboard /></PrivateRoute>} />
+        <Route path="/manufacturing/raw-materials" element={<PrivateRoute allowedRoles={['admin','manager']}><RawMaterialsPage /></PrivateRoute>} />
+        <Route path="/manufacturing/fabric-lots"   element={<PrivateRoute allowedRoles={['admin','manager']}><FabricLotsPage /></PrivateRoute>} />
+        <Route path="/manufacturing/bom"           element={<PrivateRoute allowedRoles={['admin','manager']}><BOMPage /></PrivateRoute>} />
+        <Route path="/manufacturing/size-matrix"   element={<PrivateRoute allowedRoles={['admin','manager']}><SizeMatrixPage /></PrivateRoute>} />
+        <Route path="/manufacturing/product-master" element={<PrivateRoute allowedRoles={['admin','manager']}><ProductMasterPage /></PrivateRoute>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />

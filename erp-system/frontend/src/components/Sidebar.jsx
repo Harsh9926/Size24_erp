@@ -9,6 +9,7 @@ import {
     KeyRound, Eye, EyeOff, X, CheckCircle2, AlertCircle,
     Wallet, Receipt, TriangleAlert, Lock,
     Package, ShoppingCart, TrendingUp, Truck, BookOpen, ChevronDown,
+    Scissors, Layers, List, Wrench, Building2,
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -21,6 +22,7 @@ const adminLinks = [
     { to: '/admin/entries',        label: 'Entries',       icon: ClipboardList,   module: 'entries'       },
     { to: '/admin/expenses',       label: 'Expenses',      icon: Receipt,         module: 'expenses'      },
     { to: '/admin/manager-funds',  label: 'Manager Funds', icon: Wallet,          module: 'manager_funds' },
+    { to: '/admin/bank-ledger',    label: 'Bank Ledger',   icon: Building2,       module: 'manager_funds' },
     { to: '/admin/anomalies',      label: 'Anomalies',     icon: TriangleAlert,   module: 'anomalies'     },
     { to: '/admin/reports',        label: 'Reports',       icon: BarChart3,       module: 'reports'       },
     { to: '/admin/new-entry',      label: 'New Entry',     icon: PlusCircle,      module: 'new_entry'     },
@@ -180,6 +182,15 @@ const inventoryLinks = [
     { to: '/inventory/schools',   label: 'Schools',     icon: BookOpen        },
 ];
 
+const manufacturingLinks = [
+    { to: '/manufacturing',                label: 'Overview',       icon: LayoutDashboard },
+    { to: '/manufacturing/product-master', label: 'Product Master', icon: Package         },
+    { to: '/manufacturing/raw-materials',  label: 'Raw Materials',  icon: Layers          },
+    { to: '/manufacturing/fabric-lots',    label: 'Fabric Lots',    icon: Scissors        },
+    { to: '/manufacturing/bom',            label: 'BOM',            icon: List            },
+    { to: '/manufacturing/size-matrix',    label: 'Size Matrix',    icon: Wrench          },
+];
+
 const Sidebar = ({ isOpen, onClose }) => {
     const { logout, user }      = useContext(AuthContext);
     const { hasAccess }         = usePermissions();
@@ -188,6 +199,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     const [pendingCount, setPendingCount] = useState(0);
     const [showChangePw, setShowChangePw] = useState(false);
     const [invOpen, setInvOpen]           = useState(false);
+    const [mfgOpen, setMfgOpen]           = useState(false);
 
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
@@ -296,6 +308,40 @@ const Sidebar = ({ isOpen, onClose }) => {
                                 <div className="ml-4 pl-3 border-l border-white/10 space-y-0.5 mt-0.5">
                                     {inventoryLinks.map(({ to, label, icon: Icon }) => (
                                         <NavLink key={to} to={to} end={to === '/inventory'}
+                                            onClick={() => { if (onClose) onClose(); }}
+                                            className={({ isActive }) =>
+                                                `flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 group ${isActive
+                                                    ? 'text-white shadow-lg'
+                                                    : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                                                }`
+                                            }
+                                            style={({ isActive }) => isActive ? { backgroundColor: '#c2410c' } : {}}
+                                        >
+                                            <Icon className="h-4 w-4 flex-shrink-0" />
+                                            <span className="flex-1">{label}</span>
+                                        </NavLink>
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    )}
+
+                    {/* Manufacturing Section — admin + manager */}
+                    {(user?.role === 'admin' || user?.role === 'manager') && (
+                        <>
+                            <div className="my-2 border-t border-white/10" />
+                            <button
+                                onClick={() => setMfgOpen(o => !o)}
+                                className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:bg-white/10 hover:text-white transition-all duration-150"
+                            >
+                                <Wrench className="h-5 w-5 flex-shrink-0" />
+                                <span className="flex-1 text-left">Manufacturing</span>
+                                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mfgOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {mfgOpen && (
+                                <div className="ml-4 pl-3 border-l border-white/10 space-y-0.5 mt-0.5">
+                                    {manufacturingLinks.map(({ to, label, icon: Icon }) => (
+                                        <NavLink key={to} to={to} end={to === '/manufacturing'}
                                             onClick={() => { if (onClose) onClose(); }}
                                             className={({ isActive }) =>
                                                 `flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 group ${isActive

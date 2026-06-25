@@ -445,6 +445,30 @@ exports.approveTransfer = async (req, res) => {
             [adminId, id]
         );
 
+        // When a manager deposits to bank, record it in the Admin Bank Ledger
+        if (transfer.type === 'manager_to_bank') {
+            const mgrQ = await client.query(
+                `SELECT name FROM users WHERE id = $1`, [transfer.manager_id]
+            );
+            const mgrName = mgrQ.rows[0]?.name || String(transfer.manager_id);
+            await client.query(
+                `INSERT INTO admin_bank_ledger
+                    (transaction_type, amount, manager_id, manager_name, admin_id,
+                     ref_id, remarks, created_by, created_by_name)
+                 VALUES ('MANAGER_BANK_DEPOSIT', $1, $2, $3, $4, $5, $6, $7, $8)`,
+                [
+                    amt,
+                    transfer.manager_id,
+                    mgrName,
+                    adminId,
+                    parseInt(id),
+                    transfer.note || null,
+                    adminId,
+                    'System (auto on bank approval)',
+                ]
+            );
+        }
+
         await client.query('COMMIT');
         console.log(
             `[ManagerTransfer] Approved ID:${id} | Type:${transfer.type} | ` +

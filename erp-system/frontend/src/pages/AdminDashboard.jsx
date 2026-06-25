@@ -787,9 +787,7 @@ const AdminDashboard = () => {
                     { name: 'QR/Card/Bank', value: totalOnline,   color: '#6366f1' },
                     { name: 'Razorpay',     value: totalRazorpay, color: '#f59e0b' },
                 ].filter(d => d.value > 0);
-                // Use totalSales (Excel-locked) as authoritative reference so it
-                // stays consistent with the Total Sales KPI card above.
-                const grandTotal = Number(data.totalSales || 0) || pieData.reduce((s, d) => s + d.value, 0);
+                const grandTotal = pieData.reduce((s, d) => s + d.value, 0);
 
                 return (
                     <div className="rounded-xl shadow-sm border p-4 sm:p-6 mb-6 flex flex-col sm:flex-row items-center gap-6"

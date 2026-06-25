@@ -28,7 +28,8 @@ const getTodayUTC = () => new Date().toISOString().split('T')[0];
 // - admin:     saves as APPROVED immediately, credits cash to wallet
 // ─────────────────────────────────────────────────────────────────
 exports.createEntry = async (req, res) => {
-    const { shop_id, date, excel_total_sale, cash, online, razorpay, entry_type } = req.body;
+    const { shop_id, date, excel_total_sale, cash, online, razorpay, entry_type,
+            payment_in, payment_in_admin_id } = req.body;
     const isAdmin   = req.user.role === 'admin';
     const entryType = entry_type === 'no_sale' ? 'no_sale' : 'normal';
 
@@ -46,7 +47,7 @@ exports.createEntry = async (req, res) => {
     }
 
     const excelTotal   = parseFloat(excel_total_sale || 0);
-    const breakdownSum = parseFloat(cash || 0) + parseFloat(online || 0) + parseFloat(razorpay || 0);
+    const breakdownSum = parseFloat(cash || 0) + parseFloat(online || 0) + parseFloat(razorpay || 0) + parseFloat(payment_in || 0);
 
     // Breakdown validation — strict for shop users, advisory-only for admin
     if (!isAdmin && Math.abs(excelTotal - breakdownSum) > 0.01) {
@@ -61,13 +62,18 @@ exports.createEntry = async (req, res) => {
         try {
             await client.query('BEGIN');
 
+            const piAmt   = parseFloat(payment_in || 0);
+            const piAdmin = payment_in_admin_id ? parseInt(payment_in_admin_id) : null;
+
             const result = await client.query(
                 `INSERT INTO daily_entries
                     (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay,
+                     payment_in, payment_in_admin_id,
                      approval_status, locked, approved_by, approved_at, wallet_credited, entry_type, created_by)
-                 VALUES ($1, $2, $3, $3, $4, $5, $6, 'APPROVED', true, $7, NOW(), true, $8, $7)
+                 VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, 'APPROVED', true, $9, NOW(), true, $10, $9)
                  RETURNING *`,
-                [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0, req.user.id, entryType],
+                [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0,
+                 piAmt, piAdmin, req.user.id, entryType],
             );
 
             // Credit cash portion to shop wallet
@@ -75,6 +81,20 @@ exports.createEntry = async (req, res) => {
                 'UPDATE shops SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
                 [parseFloat(cash || 0), shop_id],
             );
+
+            // Record Payment In to admin bank ledger (auto-approved path)
+            if (piAmt > 0 && piAdmin) {
+                const shopQ = await client.query('SELECT shop_name FROM shops WHERE id = $1', [shop_id]);
+                const adminQ = await client.query('SELECT name FROM users WHERE id = $1', [piAdmin]);
+                await client.query(
+                    `INSERT INTO admin_bank_ledger
+                        (transaction_type, amount, shop_id, shop_name, admin_id,
+                         ref_id, remarks, created_by, created_by_name)
+                     VALUES ('PAYMENT_IN', $1, $2, $3, $4, $5, $6, $7, $8)`,
+                    [piAmt, shop_id, shopQ.rows[0]?.shop_name || null, piAdmin,
+                     result.rows[0].id, null, req.user.id, 'System (entry)'],
+                );
+            }
 
             await client.query(
                 `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
@@ -100,13 +120,18 @@ exports.createEntry = async (req, res) => {
     try {
         await client.query('BEGIN');
 
+        const piAmt   = parseFloat(payment_in || 0);
+        const piAdmin = payment_in_admin_id ? parseInt(payment_in_admin_id) : null;
+
         const result = await client.query(
             `INSERT INTO daily_entries
                 (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay,
+                 payment_in, payment_in_admin_id,
                  approval_status, wallet_credited, entry_type, created_by)
-             VALUES ($1, $2, $3, $3, $4, $5, $6, 'PENDING', true, $7, $8)
+             VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, 'PENDING', true, $9, $10)
              RETURNING *`,
-            [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0, entryType, req.user.id],
+            [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0,
+             piAmt, piAdmin, entryType, req.user.id],
         );
 
         // Credit ONLY the cash portion to the shop wallet immediately on submission
@@ -164,7 +189,8 @@ exports.createEntry = async (req, res) => {
 exports.updateEntry = async (req, res) => {
     const { id } = req.params;
     const isAdmin = req.user.role === 'admin';
-    const { cash, online, razorpay, total_sale, excel_total_sale, date } = req.body;
+    const { cash, online, razorpay, total_sale, excel_total_sale, date,
+            payment_in, payment_in_admin_id } = req.body;
 
     const client = await db.pool.connect();
     try {
@@ -197,7 +223,8 @@ exports.updateEntry = async (req, res) => {
         const newCash      = parseFloat(cash     ?? entry.cash     ?? 0);
         const newOnline    = parseFloat(online   ?? entry.online   ?? 0);
         const newRazorpay  = parseFloat(razorpay ?? entry.razorpay ?? 0);
-        const breakdownSum = newCash + newOnline + newRazorpay;
+        const newPiAmtVal  = payment_in !== undefined ? parseFloat(payment_in || 0) : parseFloat(entry.payment_in || 0);
+        const breakdownSum = newCash + newOnline + newRazorpay + newPiAmtVal;
 
         // Admin can override totals; for shop_user the excel total is immutable
         const newTotal = isAdmin && total_sale !== undefined
@@ -216,9 +243,13 @@ exports.updateEntry = async (req, res) => {
         }
 
         // ── Build SET clause dynamically ─────────────────────────
-        const setCols  = ['cash = $1', 'online = $2', 'razorpay = $3'];
-        const setVals  = [newCash, newOnline, newRazorpay];
-        let   pIdx     = 4;
+        const newPiAdmin = payment_in_admin_id !== undefined
+            ? (payment_in_admin_id ? parseInt(payment_in_admin_id) : null)
+            : entry.payment_in_admin_id;
+
+        const setCols  = ['cash = $1', 'online = $2', 'razorpay = $3', 'payment_in = $4', 'payment_in_admin_id = $5'];
+        const setVals  = [newCash, newOnline, newRazorpay, newPiAmtVal, newPiAdmin];
+        let   pIdx     = 6;
 
         if (isAdmin) {
             setCols.push(`total_sale = $${pIdx++}`);       setVals.push(newTotal);
@@ -444,7 +475,29 @@ exports.approveEntry = async (req, res) => {
             console.log(`[approveEntry] Entry #${id} approved. Wallet already credited at submission (₹${cashAmt}), skipping.`);
         }
 
-        // 3. Audit log
+        // 3. Payment In → admin bank ledger (only if not yet recorded at submission)
+        const piAmt   = parseFloat(entry.payment_in || 0);
+        const piAdmin = entry.payment_in_admin_id ? parseInt(entry.payment_in_admin_id) : null;
+        if (piAmt > 0 && piAdmin) {
+            const already = await client.query(
+                `SELECT id FROM admin_bank_ledger WHERE transaction_type = 'PAYMENT_IN' AND ref_id = $1`,
+                [parseInt(id)],
+            );
+            if (already.rows.length === 0) {
+                const shopQ  = await client.query('SELECT shop_name FROM shops WHERE id = $1', [entry.shop_id]);
+                const adminQ = await client.query('SELECT name FROM users WHERE id = $1', [piAdmin]);
+                await client.query(
+                    `INSERT INTO admin_bank_ledger
+                        (transaction_type, amount, shop_id, shop_name, admin_id,
+                         ref_id, remarks, created_by, created_by_name)
+                     VALUES ('PAYMENT_IN', $1, $2, $3, $4, $5, $6, $7, $8)`,
+                    [piAmt, entry.shop_id, shopQ.rows[0]?.shop_name || null, piAdmin,
+                     parseInt(id), null, req.user.id, 'System (approval)'],
+                );
+            }
+        }
+
+        // 4. Audit log
         await client.query(
             `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
              VALUES ('daily_entries', $1, $2::jsonb, $3::jsonb, $4)`,
