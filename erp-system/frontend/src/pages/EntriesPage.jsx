@@ -135,6 +135,7 @@ const EntriesPage = () => {
     const [editForm,    setEditForm]    = useState({});
     const [editLoading, setEditLoading] = useState(false);
     const [editError,   setEditError]   = useState('');
+    const [piAdmins,    setPiAdmins]    = useState([]);
 
     // ── Excel sheet modal state ───────────────────────────────────
     const [excelModal,   setExcelModal]   = useState(null);
@@ -156,29 +157,56 @@ const EntriesPage = () => {
         }
     };
 
-    const openEdit = (entry) => {
+    const openEdit = async (entry) => {
         setEditEntry(entry);
         setEditForm({
-            date:             entry.date ? entry.date.split('T')[0] : '',
-            total_sale:       entry.excel_total_sale ?? entry.total_sale ?? '',
-            cash:             entry.cash     ?? '',
-            online:           entry.online   ?? entry.paytm ?? '',
-            razorpay:         entry.razorpay ?? '',
+            date:                entry.date ? entry.date.split('T')[0] : '',
+            total_sale:          entry.excel_total_sale ?? entry.total_sale ?? '',
+            cash:                entry.cash      ?? '',
+            online:              entry.online    ?? entry.paytm ?? '',
+            razorpay:            entry.razorpay  ?? '',
+            payment_in:          entry.payment_in          ?? '',
+            payment_in_admin_id: entry.payment_in_admin_id ?? '',
         });
         setEditError('');
+        if (piAdmins.length === 0) {
+            try {
+                const res = await api.get('/payment-in/admins');
+                setPiAdmins(res.data || []);
+            } catch {}
+        }
     };
 
     const handleEditSave = async () => {
+        const piAmt = parseFloat(editForm.payment_in || 0);
+        if (piAmt > 0 && !editForm.payment_in_admin_id) {
+            setEditError('Select an Admin Bank Account for Payment In.');
+            return;
+        }
+
+        // Breakdown must match total sale
+        const breakdown = parseFloat(editForm.cash || 0)
+            + parseFloat(editForm.online || 0)
+            + parseFloat(editForm.razorpay || 0)
+            + piAmt;
+        const total = parseFloat(editForm.total_sale || 0);
+        if (Math.abs(breakdown - total) > 0.01) {
+            setEditError(`Breakdown ₹${breakdown.toFixed(2)} must match Total Sale ₹${total.toFixed(2)}.`);
+            return;
+        }
+
         setEditLoading(true);
         setEditError('');
         try {
             await api.put(`/entries/${editEntry.id}`, {
-                date:             editForm.date,
-                total_sale:       parseFloat(editForm.total_sale  || 0),
-                excel_total_sale: parseFloat(editForm.total_sale  || 0),
-                cash:             parseFloat(editForm.cash        || 0),
-                online:           parseFloat(editForm.online      || 0),
-                razorpay:         parseFloat(editForm.razorpay    || 0),
+                date:                editForm.date,
+                total_sale:          total,
+                excel_total_sale:    total,
+                cash:                parseFloat(editForm.cash     || 0),
+                online:              parseFloat(editForm.online   || 0),
+                razorpay:            parseFloat(editForm.razorpay || 0),
+                payment_in:          piAmt,
+                payment_in_admin_id: editForm.payment_in_admin_id || null,
             });
             setEditEntry(null);
             loadEntries(page);
@@ -641,22 +669,72 @@ const EntriesPage = () => {
                         {/* Fields */}
                         <div className="space-y-3">
                             {[
-                                { label: 'Date',            key: 'date',       type: 'date'   },
-                                { label: 'Total Sale (₹)',  key: 'total_sale', type: 'number' },
-                                { label: 'Cash (₹)',        key: 'cash',       type: 'number' },
-                                { label: 'QR/Card/Bank (₹)',key: 'online',     type: 'number' },
-                                { label: 'RazorPay (₹)',    key: 'razorpay',   type: 'number' },
+                                { label: 'Date',             key: 'date',       type: 'date'   },
+                                { label: 'Total Sale (₹)',   key: 'total_sale', type: 'number' },
+                                { label: 'Cash (₹)',         key: 'cash',       type: 'number' },
+                                { label: 'QR/Card/Bank (₹)', key: 'online',     type: 'number' },
+                                { label: 'RazorPay (₹)',     key: 'razorpay',   type: 'number' },
                             ].map(({ label, key, type }) => (
                                 <div key={key}>
                                     <label className="block text-xs font-semibold text-gray-500 mb-1">{label}</label>
                                     <input
                                         type={type}
-                                        value={editForm[key]}
+                                        value={editForm[key] ?? ''}
                                         onChange={e => setEditForm(f => ({ ...f, [key]: e.target.value }))}
                                         className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
                                     />
                                 </div>
                             ))}
+
+                            {/* Payment In */}
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-500 mb-1">
+                                    Payment In (₹)
+                                    <span className="ml-1 font-normal text-indigo-400">(optional · not counted as sale)</span>
+                                </label>
+                                <input
+                                    type="number" min="0" step="0.01"
+                                    value={editForm.payment_in ?? ''}
+                                    onChange={e => setEditForm(f => ({ ...f, payment_in: e.target.value }))}
+                                    placeholder="0.00"
+                                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400"
+                                />
+                            </div>
+
+                            {/* Admin Bank Account — shown only when Payment In > 0 */}
+                            {parseFloat(editForm.payment_in) > 0 && (
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-500 mb-1">
+                                        Admin Bank Account *
+                                    </label>
+                                    <select
+                                        value={editForm.payment_in_admin_id ?? ''}
+                                        onChange={e => setEditForm(f => ({ ...f, payment_in_admin_id: e.target.value }))}
+                                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 bg-white text-gray-700"
+                                    >
+                                        <option value="">— Select admin —</option>
+                                        {piAdmins.map(a => (
+                                            <option key={a.id} value={a.id}>{a.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            {/* Breakdown indicator */}
+                            {(() => {
+                                const breakdown = parseFloat(editForm.cash || 0)
+                                    + parseFloat(editForm.online || 0)
+                                    + parseFloat(editForm.razorpay || 0)
+                                    + parseFloat(editForm.payment_in || 0);
+                                const total  = parseFloat(editForm.total_sale || 0);
+                                const ok     = Math.abs(breakdown - total) <= 0.01;
+                                return (
+                                    <div className={`px-3 py-2 rounded-lg border text-xs flex justify-between ${ok ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-600'}`}>
+                                        <span>Cash + Razorpay + QR + Payment In</span>
+                                        <span className="font-bold">{fmt(breakdown)} {ok ? '✓' : `≠ ${fmt(total)}`}</span>
+                                    </div>
+                                );
+                            })()}
                         </div>
 
                         {editError && (
