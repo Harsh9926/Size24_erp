@@ -26,20 +26,28 @@ const fmtShort = (v) => {
 /* ─── EDIT MODAL ───────────────────────────────────────────────── */
 const EditModal = ({ entry, onClose, onSaved }) => {
     const [form, setForm] = useState({
-        total_sale:      String(entry.total_sale      ?? 0),
-        excel_total_sale:String(entry.excel_total_sale ?? entry.total_sale ?? 0),
-        cash:            String(entry.cash             ?? 0),
-        razorpay:        String(entry.razorpay         ?? 0),
-        online:          String(entry.online            ?? 0),
-        date:            entry.date ? String(entry.date).split('T')[0] : '',
+        total_sale:          String(entry.total_sale           ?? 0),
+        excel_total_sale:    String(entry.excel_total_sale     ?? entry.total_sale ?? 0),
+        cash:                String(entry.cash                  ?? 0),
+        razorpay:            String(entry.razorpay              ?? 0),
+        online:              String(entry.online                 ?? 0),
+        payment_in:          String(entry.payment_in            ?? 0),
+        payment_in_admin_id: String(entry.payment_in_admin_id  ?? ''),
+        date:                entry.date ? String(entry.date).split('T')[0] : '',
     });
-    const [saving, setSaving] = useState(false);
-    const [error,  setError]  = useState('');
+    const [saving,    setSaving]    = useState(false);
+    const [error,     setError]     = useState('');
+    const [piAdmins,  setPiAdmins]  = useState([]);
+
+    useEffect(() => {
+        api.get('/payment-in/admins').then(r => setPiAdmins(r.data || [])).catch(() => {});
+    }, []);
 
     const set = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }));
 
-    const total       = parseFloat(form.total_sale       || 0);
-    const breakdown   = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0);
+    const total       = parseFloat(form.total_sale || 0);
+    const piAmt       = parseFloat(form.payment_in || 0);
+    const breakdown   = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + piAmt;
     const diff        = breakdown - total;
     const mismatch    = Math.abs(diff) > 0.01;
     const oldCash     = parseFloat(entry.cash || 0);
@@ -48,16 +56,22 @@ const EditModal = ({ entry, onClose, onSaved }) => {
     const wasApproved = (entry.approval_status || '').toUpperCase() === 'APPROVED';
 
     const handleSave = async () => {
+        if (piAmt > 0 && !form.payment_in_admin_id) {
+            setError('Select an Admin Bank Account for Payment In.');
+            return;
+        }
         setSaving(true);
         setError('');
         try {
             await api.put(`/entries/${entry.id}`, {
-                total_sale:       parseFloat(form.total_sale),
-                excel_total_sale: parseFloat(form.excel_total_sale),
-                cash:             parseFloat(form.cash),
-                online:           parseFloat(form.online),
-                razorpay:         parseFloat(form.razorpay),
-                date:             form.date || undefined,
+                total_sale:          parseFloat(form.total_sale),
+                excel_total_sale:    parseFloat(form.excel_total_sale),
+                cash:                parseFloat(form.cash),
+                online:              parseFloat(form.online),
+                razorpay:            parseFloat(form.razorpay),
+                payment_in:          piAmt,
+                payment_in_admin_id: form.payment_in_admin_id || null,
+                date:                form.date || undefined,
             });
             onSaved();
         } catch (e) {
@@ -126,11 +140,35 @@ const EditModal = ({ entry, onClose, onSaved }) => {
                         ))}
                     </div>
 
+                    {/* Payment In */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>
+                                Payment In (₹)
+                                <span className="ml-1 font-normal text-indigo-400">(not a sale)</span>
+                            </label>
+                            <input type="number" min="0" step="0.01" value={form.payment_in} onChange={set('payment_in')}
+                                className="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-indigo-400"
+                                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                        </div>
+                        {piAmt > 0 && (
+                            <div>
+                                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>Admin Bank Account *</label>
+                                <select value={form.payment_in_admin_id} onChange={set('payment_in_admin_id')}
+                                    className="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-indigo-400"
+                                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+                                    <option value="">— Select —</option>
+                                    {piAdmins.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                </select>
+                            </div>
+                        )}
+                    </div>
+
                     {/* Live Difference Calculator */}
                     <div className={`rounded-xl border overflow-hidden ${mismatch ? 'border-red-200' : 'border-green-200'}`}>
                         <div className={`px-4 pt-3 pb-2.5 space-y-1.5 ${mismatch ? 'bg-red-50' : 'bg-green-50'}`}>
                             <div className="flex justify-between items-center text-xs">
-                                <span style={{ color: 'var(--text-secondary)' }}>Breakdown (Cash + Razorpay + QR)</span>
+                                <span style={{ color: 'var(--text-secondary)' }}>Breakdown (Cash + Razorpay + QR + Payment In)</span>
                                 <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{fmt(breakdown)}</span>
                             </div>
                             <div className="flex justify-between items-center text-xs">
