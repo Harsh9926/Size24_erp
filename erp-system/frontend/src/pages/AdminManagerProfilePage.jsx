@@ -218,11 +218,11 @@ const AdminManagerProfilePage = () => {
                 {view === 'passbook' && (
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
-                            <thead style={{ background: 'var(--bg-primary)' }}>
+                            <thead style={{ background: 'var(--bg-primary)', position: 'sticky', top: 0, zIndex: 10 }}>
                                 <tr>
                                     {['Date', 'Description', 'Ref / Note', 'Credit (+)', 'Debit (−)', 'Balance'].map(h => (
                                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
-                                            style={{ color: 'var(--text-secondary)' }}>{h}</th>
+                                            style={{ color: 'var(--text-secondary)', background: 'var(--bg-primary)', boxShadow: '0 1px 0 var(--border-color)' }}>{h}</th>
                                     ))}
                                 </tr>
                             </thead>
