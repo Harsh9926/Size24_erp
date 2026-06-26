@@ -11,9 +11,11 @@ import {
 /* ── Flow type badge ─────────────────────────────────────────────── */
 const FlowBadge = ({ type }) => {
     const cfg = {
-        user_to_manager:  { cls: 'bg-emerald-100 text-emerald-700', label: 'User → Manager' },
+        user_to_manager:  { cls: 'bg-emerald-100 text-emerald-700', label: 'User → Manager'  },
+        admin_to_manager: { cls: 'bg-teal-100    text-teal-700',    label: 'Admin → Manager' },
         manager_to_admin: { cls: 'bg-blue-100    text-blue-700',    label: 'Manager → Admin' },
         manager_to_bank:  { cls: 'bg-purple-100  text-purple-700',  label: 'Manager → Bank'  },
+        manager_expense:  { cls: 'bg-red-100     text-red-700',     label: 'Expense'          },
     }[type] || { cls: 'bg-gray-100 text-gray-600', label: type };
     return (
         <span className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full ${cfg.cls}`}>
@@ -36,7 +38,7 @@ const StatusChip = ({ status }) => {
 };
 
 /* ── Passbook row helper ─────────────────────────────────────────── */
-const isCredited = (row) => row.flow_type === 'user_to_manager';
+const isCredited = (row) => ['user_to_manager', 'admin_to_manager'].includes(row.flow_type);
 const isSettled  = (row) => ['accepted', 'approved'].includes(row.status);
 
 /* ── Page ─────────────────────────────────────────────────────────── */
