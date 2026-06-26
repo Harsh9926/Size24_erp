@@ -275,14 +275,14 @@ const AdminManagerProfilePage = () => {
                                             {/* Credit */}
                                             <td className="px-4 py-3 text-right" style={{ borderLeft: '2px solid var(--border-color)' }}>
                                                 {row.credit && row.settled ? (
-                                                    <span className="font-bold text-emerald-600 border-b-2 border-emerald-400 pb-0.5">{fmtAmt}</span>
+                                                    <span className="font-bold text-emerald-600 border-b-2 border-emerald-400 pb-0.5">+{fmtAmt}</span>
                                                 ) : <span className="text-gray-300">—</span>}
                                             </td>
 
                                             {/* Debit */}
                                             <td className="px-4 py-3 text-right" style={{ borderLeft: '2px solid var(--border-color)' }}>
                                                 {!row.credit && row.settled ? (
-                                                    <span className="font-bold text-red-500 border-b-2 border-red-400 pb-0.5">{fmtAmt}</span>
+                                                    <span className="font-bold text-red-500 border-b-2 border-red-400 pb-0.5">−{fmtAmt}</span>
                                                 ) : <span className="text-gray-300">—</span>}
                                             </td>
 
