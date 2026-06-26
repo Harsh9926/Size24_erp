@@ -93,7 +93,7 @@ const AdminManagerProfilePage = () => {
         {
             label: 'Wallet Balance',
             value: summary.wallet_balance,
-            color: 'text-orange-600',
+            color: summary.wallet_balance >= 0 ? 'text-emerald-600' : 'text-red-600',
             bg:    'bg-orange-100',
             Icon:  Wallet,
             hint:  'Current cash in hand',
@@ -105,6 +105,14 @@ const AdminManagerProfilePage = () => {
             bg:    'bg-emerald-100',
             Icon:  TrendingUp,
             hint:  'Total accepted inflows',
+        },
+        {
+            label: 'Admin Gave',
+            value: summary.received_from_admin,
+            color: 'text-teal-600',
+            bg:    'bg-teal-100',
+            Icon:  ArrowDownCircle,
+            hint:  'Admin top-ups received',
         },
         {
             label: 'Given to Admin',
@@ -123,12 +131,20 @@ const AdminManagerProfilePage = () => {
             hint:  'Approved bank deposits',
         },
         {
+            label: 'Expenses',
+            value: summary.expenses_logged,
+            color: 'text-red-500',
+            bg:    'bg-red-100',
+            Icon:  ArrowUpCircle,
+            hint:  'Approved expenses',
+        },
+        {
             label: 'Remaining Cash',
-            value: summary.remaining_cash,
-            color: 'text-gray-700',
+            value: summary.wallet_balance,
+            color: summary.wallet_balance >= 0 ? 'text-emerald-600' : 'text-red-600',
             bg:    'bg-gray-100',
             Icon:  CheckCircle2,
-            hint:  '= wallet balance',
+            hint:  'Received + Admin Gave − Given to Admin − Bank − Expenses',
         },
     ];
 
@@ -161,7 +177,7 @@ const AdminManagerProfilePage = () => {
             </div>
 
             {/* ── Summary Cards ────────────────────────────────────── */}
-            <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-8">
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
                 {summaryCards.map(({ label, value, color, bg, Icon, hint }) => (
                     <div key={label} className="rounded-xl p-4 border shadow-sm"
                         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
@@ -181,7 +197,7 @@ const AdminManagerProfilePage = () => {
             {/* ── Formula note ─────────────────────────────────────── */}
             <div className="mb-6 px-4 py-3 rounded-xl text-xs font-medium"
                 style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', borderLeft: '3px solid #FF6B00' }}>
-                <strong>Wallet formula:</strong> Received from Users − Given to Admin − Deposited to Bank = Remaining Cash
+                <strong>Wallet formula:</strong> Received from Users + Admin Gave − Given to Admin − Deposited to Bank − Expenses = Remaining Cash
             </div>
 
             {/* ── Transaction History ──────────────────────────────── */}
