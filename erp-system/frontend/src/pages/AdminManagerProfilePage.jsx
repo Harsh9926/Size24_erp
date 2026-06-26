@@ -61,16 +61,19 @@ const AdminManagerProfilePage = () => {
     /* Build passbook rows with running balance — must be before early returns */
     const passbookRows = useMemo(() => {
         const rows = data?.history || [];
+        // Calculate running balance oldest → newest
         const sorted = [...rows].sort(
             (a, b) => new Date(a.created_at) - new Date(b.created_at)
         );
         let balance = 0;
-        return sorted.map((row) => {
+        const withBalance = sorted.map((row) => {
             const credit = isCredited(row);
             const settled = isSettled(row);
             if (settled) balance += credit ? +row.amount : -row.amount;
             return { ...row, credit, settled, runningBalance: balance };
         });
+        // Display newest first
+        return withBalance.reverse();
     }, [data]);
 
     if (loading) return (
@@ -270,13 +273,17 @@ const AdminManagerProfilePage = () => {
                                             </td>
 
                                             {/* Credit */}
-                                            <td className="px-4 py-3 font-bold text-emerald-600 text-right">
-                                                {row.credit && row.settled ? fmtAmt : ''}
+                                            <td className="px-4 py-3 text-right" style={{ borderLeft: '2px solid var(--border-color)' }}>
+                                                {row.credit && row.settled ? (
+                                                    <span className="font-bold text-emerald-600 border-b-2 border-emerald-400 pb-0.5">{fmtAmt}</span>
+                                                ) : <span className="text-gray-300">—</span>}
                                             </td>
 
                                             {/* Debit */}
-                                            <td className="px-4 py-3 font-bold text-red-500 text-right">
-                                                {!row.credit && row.settled ? fmtAmt : ''}
+                                            <td className="px-4 py-3 text-right" style={{ borderLeft: '2px solid var(--border-color)' }}>
+                                                {!row.credit && row.settled ? (
+                                                    <span className="font-bold text-red-500 border-b-2 border-red-400 pb-0.5">{fmtAmt}</span>
+                                                ) : <span className="text-gray-300">—</span>}
                                             </td>
 
                                             {/* Running Balance */}
