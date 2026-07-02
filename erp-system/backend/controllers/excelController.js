@@ -126,9 +126,9 @@ exports.processExcel = async (req, res) => {
             }
         }
 
-        /* Parse workbook — always use second tab if available */
+        /* Parse workbook — use first tab for total sale */
         const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
-        const sheetName = wb.SheetNames.length > 1 ? wb.SheetNames[1] : wb.SheetNames[0];
+        const sheetName = wb.SheetNames[0];
         if (!sheetName) return res.status(400).json({ error: 'Excel file has no sheets' });
 
         const ws = wb.Sheets[sheetName];
@@ -214,8 +214,20 @@ exports.processExcel = async (req, res) => {
             }
         }
 
-        /* Limit row_data to 500 rows to avoid huge JSONB */
-        const rowData = rows.slice(0, 500);
+        /* Parse second sheet if present (for inventory view) */
+        let sheet2Rows = [];
+        if (wb.SheetNames.length > 1) {
+            const ws2 = wb.Sheets[wb.SheetNames[1]];
+            sheet2Rows = XLSX.utils.sheet_to_json(ws2, { defval: null }).slice(0, 500);
+        }
+
+        /* Store both sheets: { tab1: [...], tab2: [...] } */
+        const rowData = {
+            tab1: rows.slice(0, 500),
+            tab2: sheet2Rows,
+            tab1_name: wb.SheetNames[0],
+            tab2_name: wb.SheetNames[1] || null,
+        };
 
         /* Save to DB — include raw file buffer for later download */
         const result = await db.query(

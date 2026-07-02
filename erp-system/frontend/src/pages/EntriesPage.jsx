@@ -141,6 +141,7 @@ const EntriesPage = () => {
     const [excelModal,   setExcelModal]   = useState(null);
     const [excelData,    setExcelData]    = useState(null);
     const [excelLoading, setExcelLoading] = useState(false);
+    const [excelTab,     setExcelTab]     = useState(1);
 
     const openExcel = async (entry) => {
         setExcelModal(entry);
@@ -774,14 +775,14 @@ const EntriesPage = () => {
                                     {excelModal.shop_name} — {new Date(excelModal.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                                 </p>
                             </div>
-                            <button onClick={() => { setExcelModal(null); setExcelData(null); }}
+                            <button onClick={() => { setExcelModal(null); setExcelData(null); setExcelTab(1); }}
                                 className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
                                 <X className="h-4 w-4" />
                             </button>
                         </div>
 
                         {/* Content */}
-                        <div className="overflow-auto flex-1 border border-gray-100 rounded-lg">
+                        <div className="flex flex-col flex-1 min-h-0">
                             {excelLoading && (
                                 <div className="flex items-center justify-center py-16 text-gray-400 gap-2">
                                     <Loader2 className="h-5 w-5 animate-spin" />
@@ -793,31 +794,59 @@ const EntriesPage = () => {
                                     No Excel sheet found for this entry.
                                 </div>
                             )}
-                            {!excelLoading && excelData?.row_data?.length > 0 && (() => {
-                                const cols = Object.keys(excelData.row_data[0]);
+                            {!excelLoading && excelData && (() => {
+                                const rd = excelData.row_data;
+                                // New format: { tab1: [...], tab2: [...], tab1_name, tab2_name }
+                                // Old format: array
+                                const isMultiTab = rd && !Array.isArray(rd) && rd.tab1;
+                                const tab1Rows = isMultiTab ? (rd.tab1 || []) : (Array.isArray(rd) ? rd : []);
+                                const tab2Rows = isMultiTab ? (rd.tab2 || []) : [];
+                                const tab1Name = isMultiTab ? (rd.tab1_name || 'Sheet 1') : 'Sheet 1';
+                                const tab2Name = isMultiTab ? (rd.tab2_name || 'Sheet 2') : 'Sheet 2';
+                                const activeRows = excelTab === 2 ? tab2Rows : tab1Rows;
+                                const cols = activeRows.length > 0 ? Object.keys(activeRows[0]) : [];
                                 return (
-                                    <table className="min-w-full text-xs border-collapse">
-                                        <thead className="bg-gray-50 sticky top-0">
-                                            <tr>
-                                                {cols.map(col => (
-                                                    <th key={col} className="px-3 py-2 text-left font-semibold text-gray-500 uppercase border-b border-gray-200 whitespace-nowrap">
-                                                        {col}
-                                                    </th>
+                                    <>
+                                        {/* Tab switcher */}
+                                        {isMultiTab && tab2Rows.length > 0 && (
+                                            <div className="flex gap-1 mb-2 flex-shrink-0">
+                                                {[{ n: 1, label: tab1Name }, { n: 2, label: tab2Name }].map(({ n, label }) => (
+                                                    <button key={n} onClick={() => setExcelTab(n)}
+                                                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${excelTab === n ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                                                        {label}
+                                                    </button>
                                                 ))}
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100">
-                                            {excelData.row_data.map((row, i) => (
-                                                <tr key={i} className="hover:bg-gray-50">
-                                                    {cols.map(col => (
-                                                        <td key={col} className="px-3 py-2 text-gray-700 whitespace-nowrap">
-                                                            {row[col] != null ? String(row[col]) : '—'}
-                                                        </td>
-                                                    ))}
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                            </div>
+                                        )}
+                                        <div className="overflow-auto flex-1 border border-gray-100 rounded-lg">
+                                            {cols.length === 0 ? (
+                                                <div className="text-center py-10 text-gray-400 text-sm">No data in this sheet.</div>
+                                            ) : (
+                                                <table className="min-w-full text-xs border-collapse">
+                                                    <thead className="bg-gray-50 sticky top-0">
+                                                        <tr>
+                                                            {cols.map(col => (
+                                                                <th key={col} className="px-3 py-2 text-left font-semibold text-gray-500 uppercase border-b border-gray-200 whitespace-nowrap">
+                                                                    {col}
+                                                                </th>
+                                                            ))}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-100">
+                                                        {activeRows.map((row, i) => (
+                                                            <tr key={i} className="hover:bg-gray-50">
+                                                                {cols.map(col => (
+                                                                    <td key={col} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                                                                        {row[col] != null ? String(row[col]) : '—'}
+                                                                    </td>
+                                                                ))}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            )}
+                                        </div>
+                                    </>
                                 );
                             })()}
                         </div>
@@ -825,8 +854,8 @@ const EntriesPage = () => {
                         {/* Footer */}
                         {!excelLoading && excelData && (
                             <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400 flex-shrink-0">
-                                <span>{excelData.row_data?.length || 0} rows — {excelData.filename}</span>
-                                <span>Total: ₹{Number(excelData.total_sale || 0).toLocaleString('en-IN')}</span>
+                                <span>{excelData.filename}</span>
+                                <span>Total Sale: ₹{Number(excelData.total_sale || 0).toLocaleString('en-IN')}</span>
                             </div>
                         )}
                     </div>

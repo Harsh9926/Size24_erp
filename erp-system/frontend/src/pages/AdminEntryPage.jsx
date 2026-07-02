@@ -32,9 +32,7 @@ function parseExcelForAdmin(file) {
         reader.onload = (e) => {
             try {
                 const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
-                // Always use second tab if available, else first
-                const sheetName = wb.SheetNames.length > 1 ? wb.SheetNames[1] : wb.SheetNames[0];
-                const ws = wb.Sheets[sheetName];
+                const ws = wb.Sheets[wb.SheetNames[0]];
                 const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
 
                 const headerIdx = rawRows.findIndex(

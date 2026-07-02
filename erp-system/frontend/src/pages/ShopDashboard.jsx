@@ -100,8 +100,7 @@ function parseExcelFile(file) {
         reader.onload = (e) => {
             try {
                 const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
-                const sheetName = wb.SheetNames.length > 1 ? wb.SheetNames[1] : wb.SheetNames[0];
-                const ws = wb.Sheets[sheetName];
+                const ws = wb.Sheets[wb.SheetNames[0]];
                 const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
 
                 // ── Step 1: find the header row that has "Received Amount" ──
