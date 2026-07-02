@@ -4,7 +4,7 @@ import {
     Upload, FileSpreadsheet, CheckCircle2, XCircle,
     TrendingUp, Calendar, RefreshCw, History, Eye,
     ChevronDown, ChevronUp, AlertCircle, Loader2,
-    UserCheck, Clock, ShieldAlert, Lock, Wallet,
+    UserCheck, Clock, ShieldAlert, Lock, Wallet, Download,
 } from 'lucide-react';
 import api from '../services/api';
 import Layout from '../components/Layout';
@@ -340,22 +340,47 @@ const PreviewTable = ({ rows }) => {
 };
 
 /* ── History row ─────────────────────────────────────────────────── */
-const HistoryRow = ({ item }) => (
-    <motion.tr initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-        style={{ borderTop: '1px solid var(--border-color)' }}
-        className="hover:opacity-80 transition-opacity">
-        <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-            <div className="flex items-center gap-2">
-                <FileSpreadsheet className="h-4 w-4 flex-shrink-0" style={{ color: '#FF6B00' }} />
-                <span className="max-w-[200px] truncate" title={item.filename}>{item.filename}</span>
-            </div>
-        </td>
-        <td className="px-4 py-3 text-sm font-bold" style={{ color: '#10b981' }}>{fmt(item.total_sale)}</td>
-        <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{fmtDate(item.upload_date)}</td>
-        <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.uploaded_by || '—'}</td>
-        <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>{fmtDate(item.created_at)}</td>
-    </motion.tr>
-);
+const HistoryRow = ({ item }) => {
+    const handleDownload = async () => {
+        try {
+            const res = await api.get(`/excel/${item.id}/download`, { responseType: 'blob' });
+            const ext = item.filename?.endsWith('.xls') ? '.xls' : '.xlsx';
+            const url = URL.createObjectURL(new Blob([res.data]));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = item.filename || `excel_${item.id}${ext}`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch {
+            alert('File not available for download (uploaded before file storage was enabled).');
+        }
+    };
+
+    return (
+        <motion.tr initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            style={{ borderTop: '1px solid var(--border-color)' }}
+            className="hover:opacity-80 transition-opacity">
+            <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <div className="flex items-center gap-2">
+                    <FileSpreadsheet className="h-4 w-4 flex-shrink-0" style={{ color: '#FF6B00' }} />
+                    <span className="max-w-[200px] truncate" title={item.filename}>{item.filename}</span>
+                </div>
+            </td>
+            <td className="px-4 py-3 text-sm font-bold" style={{ color: '#10b981' }}>{fmt(item.total_sale)}</td>
+            <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{fmtDate(item.upload_date)}</td>
+            <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.uploaded_by || '—'}</td>
+            <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>{fmtDate(item.created_at)}</td>
+            <td className="px-4 py-3">
+                <button onClick={handleDownload}
+                    className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors hover:bg-orange-50"
+                    style={{ color: '#FF6B00', border: '1px solid rgba(255,107,0,0.3)' }}
+                    title="Download Excel file">
+                    <Download className="h-3.5 w-3.5" /> Download
+                </button>
+            </td>
+        </motion.tr>
+    );
+};
 
 /* ══════════════════════════════════════════════════════════════════
    MAIN PAGE
@@ -609,7 +634,7 @@ const ExcelUploadPage = () => {
                             <table className="min-w-full text-sm">
                                 <thead>
                                     <tr style={{ background: 'var(--bg-primary)' }}>
-                                        {['File Name', 'Total Sale', 'Date', 'Uploaded By', 'Uploaded At'].map(h => (
+                                        {['File Name', 'Total Sale', 'Date', 'Uploaded By', 'Uploaded At', ''].map(h => (
                                             <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
                                                 style={{ color: 'var(--text-secondary)' }}>{h}</th>
                                         ))}

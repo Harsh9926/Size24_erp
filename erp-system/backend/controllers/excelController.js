@@ -214,12 +214,12 @@ exports.processExcel = async (req, res) => {
         /* Limit row_data to 500 rows to avoid huge JSONB */
         const rowData = rows.slice(0, 500);
 
-        /* Save to DB */
+        /* Save to DB — include raw file buffer for later download */
         const result = await db.query(
-            `INSERT INTO excel_uploads (user_id, shop_id, filename, upload_date, total_sale, row_data)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO excel_uploads (user_id, shop_id, filename, upload_date, total_sale, row_data, file_data)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              RETURNING id, upload_date, total_sale, filename, created_at`,
-            [req.user.id, shopId, req.file.originalname, uploadDate, totalSale, JSON.stringify(rowData)]
+            [req.user.id, shopId, req.file.originalname, uploadDate, totalSale, JSON.stringify(rowData), req.file.buffer]
         );
 
         const saved = result.rows[0];
@@ -279,6 +279,31 @@ exports.getByEntry = async (req, res) => {
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'No Excel upload found for this entry' });
         res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+/* ── GET /api/excel/:id/download ───────────────────────────────── */
+exports.downloadExcel = async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT filename, file_data FROM excel_uploads WHERE id = $1`,
+            [req.params.id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+
+        const { filename, file_data } = result.rows[0];
+
+        if (!file_data) return res.status(404).json({ error: 'File not stored — was uploaded before file storage was enabled.' });
+
+        const ext = path.extname(filename).toLowerCase() || '.xlsx';
+        const mime = ext === '.xls' ? 'application/vnd.ms-excel'
+                                    : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+        res.setHeader('Content-Type', mime);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+        res.send(file_data);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

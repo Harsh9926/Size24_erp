@@ -5,7 +5,7 @@ import Layout from '../components/Layout';
 import {
     Wallet, TrendingUp, ArrowUpRight, Building2,
     ArrowLeft, RefreshCw, CheckCircle2, ArrowDownCircle, ArrowUpCircle,
-    BookOpen, Table2,
+    BookOpen, Table2, Download,
 } from 'lucide-react';
 
 /* ── Flow type badge ─────────────────────────────────────────────── */
@@ -150,6 +150,55 @@ const AdminManagerProfilePage = () => {
         },
     ];
 
+    const downloadCSV = () => {
+        const rows = view === 'passbook' ? passbookRows : history;
+        let csvRows;
+
+        if (view === 'passbook') {
+            csvRows = [
+                ['Date', 'Time', 'Type', 'From → To', 'Note', 'Status', 'Credit (+)', 'Debit (−)', 'Balance'],
+                ...rows.map(row => {
+                    const amt = parseFloat(row.amount);
+                    const bal = row.runningBalance;
+                    const date = new Date(row.created_at);
+                    return [
+                        date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+                        date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+                        row.flow_type,
+                        row.from_name && row.to_name ? `${row.from_name} → ${row.to_name}` : row.from_name || row.to_name || '',
+                        row.note || '',
+                        row.status,
+                        row.credit && row.settled ? amt.toFixed(2) : '',
+                        !row.credit && row.settled ? amt.toFixed(2) : '',
+                        row.settled ? bal.toFixed(2) : '',
+                    ];
+                }),
+            ];
+        } else {
+            csvRows = [
+                ['Type', 'Amount', 'From', 'To', 'Status', 'Note', 'Date'],
+                ...rows.map(row => [
+                    row.flow_type,
+                    (isCredited(row) ? '+' : '-') + parseFloat(row.amount).toFixed(2),
+                    row.from_name || '',
+                    row.to_name || '',
+                    row.status,
+                    row.note || '',
+                    new Date(row.created_at).toLocaleDateString('en-IN'),
+                ]),
+            ];
+        }
+
+        const csv = csvRows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${manager.name}_transactions_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
     return (
         <Layout title={`Manager: ${manager.name}`}>
 
@@ -217,17 +266,25 @@ const AdminManagerProfilePage = () => {
                             Full cash trail: User → Manager → Admin / Bank
                         </p>
                     </div>
-                    <div className="flex items-center gap-1 rounded-lg p-1 border"
-                        style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
-                        <button onClick={() => setView('passbook')}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${view === 'passbook' ? 'text-white shadow' : ''}`}
-                            style={view === 'passbook' ? { background: '#FF6B00' } : { color: 'var(--text-secondary)' }}>
-                            <BookOpen className="h-3.5 w-3.5" />Passbook
-                        </button>
-                        <button onClick={() => setView('table')}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${view === 'table' ? 'text-white shadow' : ''}`}
-                            style={view === 'table' ? { background: '#FF6B00' } : { color: 'var(--text-secondary)' }}>
-                            <Table2 className="h-3.5 w-3.5" />Table
+                    <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 rounded-lg p-1 border"
+                            style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                            <button onClick={() => setView('passbook')}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${view === 'passbook' ? 'text-white shadow' : ''}`}
+                                style={view === 'passbook' ? { background: '#FF6B00' } : { color: 'var(--text-secondary)' }}>
+                                <BookOpen className="h-3.5 w-3.5" />Passbook
+                            </button>
+                            <button onClick={() => setView('table')}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${view === 'table' ? 'text-white shadow' : ''}`}
+                                style={view === 'table' ? { background: '#FF6B00' } : { color: 'var(--text-secondary)' }}>
+                                <Table2 className="h-3.5 w-3.5" />Table
+                            </button>
+                        </div>
+                        <button onClick={downloadCSV}
+                            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors hover:bg-orange-50"
+                            style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                            title="Download CSV">
+                            <Download className="h-3.5 w-3.5" />CSV
                         </button>
                     </div>
                 </div>
