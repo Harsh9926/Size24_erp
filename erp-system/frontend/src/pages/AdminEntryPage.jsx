@@ -201,21 +201,6 @@ const AdminEntryPage = () => {
             excel_total_sale: String(totalSale.toFixed(2)),
             cash: '', online: '', razorpay: '',
         }));
-        // Save Excel to DB so it appears in entries view
-        if (pendingXlFile) {
-            const shopId = form.shop_id;
-            const entryDate = date || form.date;
-            if (shopId) {
-                const fd = new FormData();
-                fd.append('excel', pendingXlFile);
-                fd.append('shop_id', shopId);
-                fd.append('skip_date_check', 'true');
-                fd.append('upload_date_override', entryDate);
-                api.post('/excel/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
-                    .catch(() => {});
-            }
-            setPendingXlFile(null);
-        }
     };
 
     /* ── Submit ─────────────────────────────────────────────────── */
@@ -244,6 +229,19 @@ const AdminEntryPage = () => {
                 photo_url:           photoUrl,
             };
             await api.post('/entries', payload);
+
+            // Save Excel to DB so it appears in entries view
+            if (pendingXlFile) {
+                const fd = new FormData();
+                fd.append('excel', pendingXlFile);
+                fd.append('shop_id', String(payload.shop_id));
+                fd.append('skip_date_check', 'true');
+                fd.append('upload_date_override', payload.date);
+                api.post('/excel/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+                    .catch(() => {});
+                setPendingXlFile(null);
+            }
+
             const shopName = shops.find(s => String(s.id) === String(form.shop_id))?.shop_name || 'Shop';
             setSuccess(
                 `Entry for "${shopName}" on ${form.date} created & auto-approved. ` +
