@@ -102,7 +102,7 @@ const getTodayISO = () => {
 
 const fmtAmt = (v) => `₹${parseFloat(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
-const EMPTY = { shop_id: '', date: getTodayISO(), excel_total_sale: '', cash: '', online: '', razorpay: '' };
+const EMPTY = { shop_id: '', date: getTodayISO(), excel_total_sale: '', cash: '', online: '', razorpay: '', payment_in: '', payment_in_admin_id: '' };
 
 /* ══════════════════════════════════════════════════════════════════
    ADMIN ENTRY PAGE
@@ -119,10 +119,14 @@ const AdminEntryPage = () => {
 
     // Excel
     const xlRef = useRef(null);
-    const [xlLoading,   setXlLoading]   = useState(false);
-    const [xlError,     setXlError]     = useState('');
-    const [showPreview, setShowPreview] = useState(false);
-    const [previewData, setPreviewData] = useState({ date: null, totalSale: 0, previewRows: [] });
+    const [xlLoading,    setXlLoading]   = useState(false);
+    const [xlError,      setXlError]     = useState('');
+    const [showPreview,  setShowPreview] = useState(false);
+    const [previewData,  setPreviewData] = useState({ date: null, totalSale: 0, previewRows: [] });
+    const [pendingXlFile, setPendingXlFile] = useState(null);
+
+    // Payment In
+    const [piAdmins, setPiAdmins] = useState([]);
 
     // Photo
     const fileRef    = useRef(null);
@@ -145,7 +149,7 @@ const AdminEntryPage = () => {
     };
 
     const total      = parseFloat(form.excel_total_sale || 0);
-    const breakdown  = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0);
+    const breakdown  = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + parseFloat(form.payment_in || 0);
     const diff       = breakdown - total;
     const mismatch   = form.excel_total_sale !== '' && Math.abs(diff) > 0.01;
     const canSubmit  = form.shop_id && form.date && form.excel_total_sale !== '' && !submitting && (!mismatch || allowMismatch);
@@ -163,12 +167,21 @@ const AdminEntryPage = () => {
     };
 
     /* ── Excel ──────────────────────────────────────────────────── */
+    const fetchPiAdmins = async () => {
+        if (piAdmins.length > 0) return;
+        try {
+            const res = await api.get('/payment-in/admins');
+            setPiAdmins(Array.isArray(res.data) ? res.data : []);
+        } catch {}
+    };
+
     const handleExcelFile = async (file) => {
         if (!file) return;
         setXlLoading(true); setXlError('');
         try {
             const result = await parseExcelForAdmin(file);
             setPreviewData(result);
+            setPendingXlFile(file);
             setShowPreview(true);
         } catch (err) {
             setXlError(err.message);
@@ -188,6 +201,21 @@ const AdminEntryPage = () => {
             excel_total_sale: String(totalSale.toFixed(2)),
             cash: '', online: '', razorpay: '',
         }));
+        // Save Excel to DB so it appears in entries view
+        if (pendingXlFile) {
+            const shopId = form.shop_id;
+            const entryDate = date || form.date;
+            if (shopId) {
+                const fd = new FormData();
+                fd.append('excel', pendingXlFile);
+                fd.append('shop_id', shopId);
+                fd.append('skip_date_check', 'true');
+                fd.append('upload_date_override', entryDate);
+                api.post('/excel/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+                    .catch(() => {});
+            }
+            setPendingXlFile(null);
+        }
     };
 
     /* ── Submit ─────────────────────────────────────────────────── */
@@ -198,14 +226,22 @@ const AdminEntryPage = () => {
         try {
             let photoUrl = null;
             if (photoFile) photoUrl = await uploadPhoto();
+            const piAmt = parseFloat(form.payment_in || 0);
+            if (piAmt > 0 && !form.payment_in_admin_id) {
+                setError('Select an Admin Bank Account for Payment In.');
+                setSubmitting(false);
+                return;
+            }
             const payload = {
-                shop_id:          parseInt(form.shop_id),
-                date:             form.date,
-                excel_total_sale: parseFloat(form.excel_total_sale),
-                cash:             parseFloat(form.cash     || 0),
-                online:           parseFloat(form.online   || 0),
-                razorpay:         parseFloat(form.razorpay || 0),
-                photo_url:        photoUrl,
+                shop_id:             parseInt(form.shop_id),
+                date:                form.date,
+                excel_total_sale:    parseFloat(form.excel_total_sale),
+                cash:                parseFloat(form.cash     || 0),
+                online:              parseFloat(form.online   || 0),
+                razorpay:            parseFloat(form.razorpay || 0),
+                payment_in:          piAmt,
+                payment_in_admin_id: form.payment_in_admin_id || null,
+                photo_url:           photoUrl,
             };
             await api.post('/entries', payload);
             const shopName = shops.find(s => String(s.id) === String(form.shop_id))?.shop_name || 'Shop';
@@ -344,6 +380,36 @@ const AdminEntryPage = () => {
                             ))}
                         </div>
 
+                        {/* Payment In */}
+                        <div>
+                            <label className={lCls}>
+                                Payment In (₹)
+                                <span className="ml-2 text-[10px] normal-case font-normal text-indigo-400">(optional · not counted as sale)</span>
+                            </label>
+                            <input type="number" min="0" step="0.01"
+                                className={iCls}
+                                placeholder="0.00"
+                                value={form.payment_in}
+                                onChange={e => {
+                                    set('payment_in')(e);
+                                    fetchPiAdmins();
+                                }} />
+                            {parseFloat(form.payment_in) > 0 && (
+                                <div className="mt-2">
+                                    <label className={lCls}>Admin Bank Account <span className="text-red-500">*</span></label>
+                                    <select className={iCls}
+                                        value={form.payment_in_admin_id}
+                                        onChange={set('payment_in_admin_id')}
+                                        required>
+                                        <option value="">— Select admin —</option>
+                                        {piAdmins.map(a => (
+                                            <option key={a.id} value={a.id}>{a.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                        </div>
+
                         {/* Live Difference Calculator */}
                         {form.excel_total_sale !== '' && (
                             <div className={`rounded-xl border overflow-hidden transition-all ${
@@ -358,7 +424,7 @@ const AdminEntryPage = () => {
                                     !mismatch ? 'bg-green-50' : allowMismatch ? 'bg-amber-50' : 'bg-red-50'
                                 }`}>
                                     <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-600 font-medium">Breakdown (Cash + Razorpay + QR)</span>
+                                        <span className="text-gray-600 font-medium">Breakdown (Cash + Razorpay + QR + Payment In)</span>
                                         <span className="font-bold text-gray-800">{fmtAmt(breakdown)}</span>
                                     </div>
                                     <div className="flex justify-between items-center text-sm">
