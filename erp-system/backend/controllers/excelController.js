@@ -173,42 +173,43 @@ exports.processExcel = async (req, res) => {
            Pre-header row scanning is intentionally absent — a report-generation
            timestamp or title row could contain today's date and falsely pass
            validation even when the transaction rows carry an old date.           The "Date" column is MANDATORY. Missing column or empty values → 422. */
-        const dateKey = headers.find(h => h.trim().toLowerCase() === 'date');
-
-        if (!dateKey) {
-            return res.status(422).json({
-                success: false,
-                message: "Upload failed: 'Date' column is missing from the Excel file.",
-            });
-        }
-
+        // If skip_date_check + upload_date_override provided, use override directly
         let uploadDate = null;
-        for (const row of rows) {
-            const parsed = parseExcelDate(row[dateKey]);
-            if (parsed) { uploadDate = parsed; break; }
-        }
-
-        if (!uploadDate) {
-            return res.status(422).json({
-                success: false,
-                message: "Upload failed: 'Date' column found but contains no valid date value. " +
-                         "Ensure dates are in DD/MM/YYYY or YYYY-MM-DD format.",
-            });
-        }
-
-        const todayIST = getTodayIST();
-        if (!skipDateCheck && uploadDate !== todayIST) {
-            return res.status(422).json({
-                success: false,
-                message: "Upload failed: Excel date must match today's date.",
-            });
-        }
-
-        // When caller provides an override date (e.g. ShopDashboard background upload),
-        // store that date so the admin can find this upload by the entry's date.
         if (skipDateCheck && req.body.upload_date_override) {
             const override = String(req.body.upload_date_override).split('T')[0];
             if (/^\d{4}-\d{2}-\d{2}$/.test(override)) uploadDate = override;
+        }
+
+        if (!uploadDate) {
+            const dateKey = headers.find(h => h.trim().toLowerCase() === 'date');
+
+            if (!dateKey) {
+                return res.status(422).json({
+                    success: false,
+                    message: "Upload failed: 'Date' column is missing from the Excel file.",
+                });
+            }
+
+            for (const row of rows) {
+                const parsed = parseExcelDate(row[dateKey]);
+                if (parsed) { uploadDate = parsed; break; }
+            }
+
+            if (!uploadDate) {
+                return res.status(422).json({
+                    success: false,
+                    message: "Upload failed: 'Date' column found but contains no valid date value. " +
+                             "Ensure dates are in DD/MM/YYYY or YYYY-MM-DD format.",
+                });
+            }
+
+            const todayIST = getTodayIST();
+            if (!skipDateCheck && uploadDate !== todayIST) {
+                return res.status(422).json({
+                    success: false,
+                    message: "Upload failed: Excel date must match today's date.",
+                });
+            }
         }
 
         /* Limit row_data to 500 rows to avoid huge JSONB */
