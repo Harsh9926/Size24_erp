@@ -100,7 +100,8 @@ function parseExcelFile(file) {
         reader.onload = (e) => {
             try {
                 const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
-                const ws = wb.Sheets[wb.SheetNames[0]];
+                const sheetName = wb.SheetNames.length > 1 ? wb.SheetNames[1] : wb.SheetNames[0];
+                const ws = wb.Sheets[sheetName];
                 const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
 
                 // ── Step 1: find the header row that has "Received Amount" ──
@@ -137,22 +138,21 @@ function parseExcelFile(file) {
                     return;
                 }
 
-                // ── Step 4: iterate rows, skip summary/empty rows ────────
+                // ── Step 4: iterate rows, skip summary/empty/OFFICE EXP rows ──
+                const expCatKey = Object.keys(rows[0] ?? {}).find(
+                    (k) => normalKey(k) === 'expense category'
+                );
                 let totalSale  = 0;
                 const previewRows = [];
 
                 for (const row of rows) {
-                    // Skip Total/Grand Total summary rows
                     if (isSummaryRow(row)) continue;
+                    if (expCatKey && String(row[expCatKey] ?? '').trim().toUpperCase() === 'OFFICE EXP') continue;
 
                     const rawVal = row[raKey];
-
-                    // Skip rows where "Received Amount" cell is empty
                     if (rawVal == null || rawVal === '') continue;
 
                     const amt = parseCurrency(rawVal);
-
-                    // Skip rows where value couldn't be parsed as a number
                     if (amt === null) continue;
 
                     totalSale += amt;

@@ -32,7 +32,9 @@ function parseExcelForAdmin(file) {
         reader.onload = (e) => {
             try {
                 const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
-                const ws = wb.Sheets[wb.SheetNames[0]];
+                // Always use second tab if available, else first
+                const sheetName = wb.SheetNames.length > 1 ? wb.SheetNames[1] : wb.SheetNames[0];
+                const ws = wb.Sheets[sheetName];
                 const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
 
                 const headerIdx = rawRows.findIndex(
@@ -48,11 +50,11 @@ function parseExcelForAdmin(file) {
                 const raKey = Object.keys(rows[0] ?? {}).find((k) => normalKey(k) === 'received amount');
                 if (!raKey) { reject(new Error("'Received Amount' key could not be resolved.")); return; }
 
-                const dateKey = Object.keys(rows[0] ?? {}).find((k) => normalKey(k) === 'date');
+                const dateKey    = Object.keys(rows[0] ?? {}).find((k) => normalKey(k) === 'date');
+                const expCatKey  = Object.keys(rows[0] ?? {}).find((k) => normalKey(k) === 'expense category');
                 const parseDate = (v) => {
                     if (!v) return null;
                     if (v instanceof Date) return v.toISOString().split('T')[0];
-                    // Excel serial number (e.g. 45123)
                     if (typeof v === 'number' && v > 40000) {
                         const d = new Date((v - 25569) * 86400 * 1000);
                         return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
@@ -70,6 +72,8 @@ function parseExcelForAdmin(file) {
 
                 for (const row of rows) {
                     if (isSummaryRow(row)) continue;
+                    // Skip OFFICE EXP rows
+                    if (expCatKey && String(row[expCatKey] ?? '').trim().toUpperCase() === 'OFFICE EXP') continue;
                     const rawVal = row[raKey];
                     if (rawVal == null || rawVal === '') continue;
                     const amt = parseCurrency(rawVal);

@@ -126,9 +126,9 @@ exports.processExcel = async (req, res) => {
             }
         }
 
-        /* Parse workbook */
+        /* Parse workbook — always use second tab if available */
         const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
-        const sheetName = wb.SheetNames[0];
+        const sheetName = wb.SheetNames.length > 1 ? wb.SheetNames[1] : wb.SheetNames[0];
         if (!sheetName) return res.status(400).json({ error: 'Excel file has no sheets' });
 
         const ws = wb.Sheets[sheetName];
@@ -160,11 +160,13 @@ exports.processExcel = async (req, res) => {
         }
 
         const headers = Object.keys(rows[0]);
-        const amtKey = headers.find(h => h.trim().toLowerCase() === 'received amount');
+        const amtKey    = headers.find(h => h.trim().toLowerCase() === 'received amount');
+        const expCatKey = headers.find(h => h.trim().toLowerCase() === 'expense category');
 
-        /* Calculate total sale */
+        /* Calculate total sale — skip OFFICE EXP rows */
         let totalSale = 0;
         for (const row of rows) {
+            if (expCatKey && String(row[expCatKey] ?? '').trim().toUpperCase() === 'OFFICE EXP') continue;
             const val = parseFloat(String(row[amtKey] ?? '').replace(/[₹,\s]/g, ''));
             if (!isNaN(val)) totalSale += val;
         }
