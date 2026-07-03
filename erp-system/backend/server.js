@@ -179,10 +179,23 @@ app.use('/api/inv/sales',    require('./routes/invSales'));
 app.use('/api/inv/parties',  require('./routes/parties'));
 app.use('/api/inv/schools',  require('./routes/invSchools'));
 
+// ── Billing & POS module ──────────────────────────────────────────────
+app.use('/api/pos',          require('./routes/pos'));
+app.use('/api/pos2',         require('./routes/posPhase2'));
+
 // ── Manufacturing: Product Master, Raw Materials, BOM ────────────────
 app.use('/api/mfg/product-master', require('./routes/productMaster'));
 app.use('/api/mfg/raw-materials',  require('./routes/rawMaterials'));
 app.use('/api/mfg/bom',            require('./routes/bom'));
+
+// ── Phase 3 Modules ─────────────────────────────────────────────────
+app.use('/api/accounting',         require('./routes/accounting'));
+app.use('/api/hr',                 require('./routes/hr'));
+app.use('/api/crm',                require('./routes/crm'));
+app.use('/api/franchise',          require('./routes/franchise'));
+app.use('/api/service',            require('./routes/service'));
+app.use('/api/mrp',                require('./routes/mrp'));
+app.use('/api/sys',                require('./routes/settings'));
 
 // ── 404 handler — catches any unknown /api/* path ────────────────
 app.use('/api/*path', (req, res) => {
@@ -363,6 +376,28 @@ httpServer.listen(PORT, async () => {
         console.error('[migrate] Inventory schema failed:', err.message);
     }
 
+    // Auto-migrate: Billing & POS schema (loyalty, delivery challans)
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const posSql = fs.readFileSync(path.join(__dirname, 'db', 'pos_schema.sql'), 'utf8');
+        await db.query(posSql);
+        console.log('[migrate] POS/Billing schema ready');
+    } catch (err) {
+        console.error('[migrate] POS schema failed:', err.message);
+    }
+
+    // Auto-migrate: POS Phase 2 (exchange, advances, offers, warehouses, batches, cash counter)
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const pos2Sql = fs.readFileSync(path.join(__dirname, 'db', 'pos_schema_v2.sql'), 'utf8');
+        await db.query(pos2Sql);
+        console.log('[migrate] POS Phase 2 schema ready');
+    } catch (err) {
+        console.error('[migrate] POS Phase 2 schema failed:', err.message);
+    }
+
     // Auto-migrate: Manufacturing module tables (Product Master, Raw Materials, BOM)
     try {
         const fs   = require('fs');
@@ -372,6 +407,39 @@ httpServer.listen(PORT, async () => {
         console.log('[migrate] Manufacturing schema ready');
     } catch (err) {
         console.error('[migrate] Manufacturing schema failed:', err.message);
+    }
+
+    // Auto-migrate: Phase 3 — Accounting
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql = fs.readFileSync(path.join(__dirname, 'db', 'phase3_accounting.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] Phase 3 Accounting schema ready');
+    } catch (err) {
+        console.error('[migrate] Phase 3 Accounting schema failed:', err.message);
+    }
+
+    // Auto-migrate: Phase 3 — HR, CRM
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql = fs.readFileSync(path.join(__dirname, 'db', 'phase3_hr_crm.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] Phase 3 HR & CRM schema ready');
+    } catch (err) {
+        console.error('[migrate] Phase 3 HR & CRM schema failed:', err.message);
+    }
+
+    // Auto-migrate: Phase 3 — Franchise, Service, MRP, Settings
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql = fs.readFileSync(path.join(__dirname, 'db', 'phase3_franchise_service.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] Phase 3 Franchise, Service & MRP schema ready');
+    } catch (err) {
+        console.error('[migrate] Phase 3 Franchise/Service/MRP schema failed:', err.message);
     }
 
     // Auto-migrate: RBAC tables (module_permissions + permission_logs)
