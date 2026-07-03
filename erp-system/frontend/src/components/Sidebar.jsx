@@ -229,7 +229,7 @@ const phase3Modules = [
 
 const Sidebar = ({ isOpen, onClose }) => {
     const { logout, user }      = useContext(AuthContext);
-    const { hasAccess }         = usePermissions();
+    const { hasAccess, loading: permLoading } = usePermissions();
     const navigate              = useNavigate();
     const [dark, setDark]               = useState(() => localStorage.getItem('erp_theme') === 'dark');
     const [pendingCount, setPendingCount] = useState(0);
@@ -267,14 +267,18 @@ const Sidebar = ({ isOpen, onClose }) => {
     const handleLogout = () => { logout(); navigate('/login'); };
 
     // Build visible link list based on role + RBAC permissions
+    // While permissions are loading, show all links (avoids flash of missing items)
     let baseLinks;
     if (user?.role === 'shop_user') {
         baseLinks = shopLinks;
     } else if (user?.role === 'manager') {
-        baseLinks = managerLinks.filter(l => !l.module || hasAccess(l.module));
+        baseLinks = permLoading
+            ? managerLinks
+            : managerLinks.filter(l => !l.module || hasAccess(l.module));
     } else {
-        // Admin: also filtered by RBAC permissions (Harsh controls what each admin sees)
-        baseLinks = adminLinks.filter(l => !l.module || hasAccess(l.module));
+        baseLinks = permLoading
+            ? adminLinks
+            : adminLinks.filter(l => !l.module || hasAccess(l.module));
     }
 
     // Access Control link — visible for admin role + has access_control permission
