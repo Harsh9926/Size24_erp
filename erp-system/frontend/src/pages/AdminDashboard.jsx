@@ -285,6 +285,12 @@ const AdminDashboard = () => {
         return () => document.removeEventListener('visibilitychange', onVisible);
     }, []);
 
+    // Auto-sync every 2 minutes
+    useEffect(() => {
+        const iv = setInterval(() => { fetchDataRef.current?.(); }, 2 * 60 * 1000);
+        return () => clearInterval(iv);
+    }, []);
+
     /* ── Socket.io live connection ─────────────────────────────── */
     useEffect(() => {
         socket.connect();
@@ -942,10 +948,6 @@ const AdminDashboard = () => {
                                                         <Lock className="h-3 w-3" /> Unlock
                                                     </button>
                                                 )}
-                                                <button onClick={() => setDeleteTarget(entry)}
-                                                    className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-medium border border-red-200 px-2 py-1 rounded-md hover:bg-red-50 transition-colors">
-                                                    <Trash2 className="h-3 w-3" /> Delete
-                                                </button>
                                             </div>
                                         </td>
                                     </tr>
