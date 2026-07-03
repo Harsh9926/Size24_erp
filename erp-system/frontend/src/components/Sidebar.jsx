@@ -9,7 +9,8 @@ import {
     KeyRound, Eye, EyeOff, X, CheckCircle2, AlertCircle,
     Wallet, Receipt, TriangleAlert, Lock,
     Package, ShoppingCart, TrendingUp, Truck, BookOpen, ChevronDown,
-    Scissors, Layers, List, Wrench, Building2,
+    Scissors, Layers, List, Wrench, Building2, Zap, Tag, DollarSign, BookOpenCheck,
+    Scale, Target, Factory, Settings, Brain,
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -29,11 +30,12 @@ const adminLinks = [
 ];
 
 const managerLinks = [
-    { to: '/manager',               label: 'Dashboard',     icon: LayoutDashboard, module: 'dashboard'  },
-    { to: '/admin/approvals',       label: 'Approvals',     icon: ShieldCheck,     module: 'approvals'  },
-    { to: '/admin/entries',         label: 'Entries',       icon: ClipboardList,   module: 'entries'    },
-    { to: '/admin/expenses',        label: 'Expenses',      icon: Receipt,         module: 'expenses'   },
+    { to: '/manager',               label: 'Dashboard',     icon: LayoutDashboard, module: 'dashboard'     },
+    { to: '/admin/approvals',       label: 'Approvals',     icon: ShieldCheck,     module: 'approvals'     },
+    { to: '/admin/entries',         label: 'Entries',       icon: ClipboardList,   module: 'entries'       },
+    { to: '/admin/expenses',        label: 'Expenses',      icon: Receipt,         module: 'expenses'      },
     { to: '/manager/cash-transfer', label: 'Cash Transfer', icon: Banknote,        module: 'manager_funds' },
+    { to: '/admin/new-entry',       label: 'New Entry',     icon: PlusCircle,      module: 'new_entry'     },
 ];
 
 const shopLinks = [
@@ -182,6 +184,16 @@ const inventoryLinks = [
     { to: '/inventory/schools',   label: 'Schools',     icon: BookOpen        },
 ];
 
+const billingLinks = [
+    { to: '/billing/dashboard',    label: 'Sales Dashboard',  icon: BarChart3      },
+    { to: '/billing/pos',          label: 'POS Terminal',     icon: Zap            },
+    { to: '/billing/cash-counter', label: 'Cash Counter',     icon: DollarSign     },
+    { to: '/billing/labels',       label: 'Barcode Labels',   icon: Tag            },
+    { to: '/billing/ledger',       label: 'Customer Ledger',  icon: BookOpenCheck  },
+    { to: '/inventory/sales',      label: 'All Invoices',     icon: TrendingUp     },
+    { to: '/inventory/customers',  label: 'Customers',        icon: Users          },
+];
+
 const manufacturingLinks = [
     { to: '/manufacturing',                label: 'Overview',       icon: LayoutDashboard },
     { to: '/manufacturing/product-master', label: 'Product Master', icon: Package         },
@@ -189,6 +201,30 @@ const manufacturingLinks = [
     { to: '/manufacturing/fabric-lots',    label: 'Fabric Lots',    icon: Scissors        },
     { to: '/manufacturing/bom',            label: 'BOM',            icon: List            },
     { to: '/manufacturing/size-matrix',    label: 'Size Matrix',    icon: Wrench          },
+];
+
+const accountingLinks = [
+    { to: '/accounting',                label: 'Overview',       icon: LayoutDashboard },
+    { to: '/accounting/chart',          label: 'Chart of Accounts', icon: BookOpen     },
+    { to: '/accounting/journal',        label: 'Journal Entries',icon: ClipboardList   },
+    { to: '/accounting/vouchers',       label: 'Vouchers',       icon: Receipt         },
+    { to: '/accounting/ledger',         label: 'Ledger',         icon: Building2       },
+    { to: '/accounting/cashbook',       label: 'Cash Book',      icon: DollarSign      },
+    { to: '/accounting/bankbook',       label: 'Bank Book',      icon: Banknote        },
+    { to: '/accounting/trial-balance',  label: 'Trial Balance',  icon: Scale           },
+    { to: '/accounting/profit-loss',    label: 'P&L Statement',  icon: TrendingUp      },
+    { to: '/accounting/balance-sheet',  label: 'Balance Sheet',  icon: BarChart3       },
+    { to: '/accounting/gst-ledger',     label: 'GST Ledger',     icon: BookOpenCheck   },
+];
+
+const phase3Modules = [
+    { to: '/hr',        label: 'HR & Payroll',    icon: Users    },
+    { to: '/crm',       label: 'CRM',             icon: Target   },
+    { to: '/franchise', label: 'Franchise',       icon: Store    },
+    { to: '/service',   label: 'Service Orders',  icon: Scissors },
+    { to: '/mrp',       label: 'Purchase Planning', icon: Factory },
+    { to: '/ai',        label: 'AI Insights',     icon: Brain    },
+    { to: '/settings',  label: 'Settings',        icon: Settings },
 ];
 
 const Sidebar = ({ isOpen, onClose }) => {
@@ -200,6 +236,9 @@ const Sidebar = ({ isOpen, onClose }) => {
     const [showChangePw, setShowChangePw] = useState(false);
     const [invOpen, setInvOpen]           = useState(false);
     const [mfgOpen, setMfgOpen]           = useState(false);
+    const [billingOpen, setBillingOpen]   = useState(false);
+    const [accOpen, setAccOpen]           = useState(false);
+    const [p3Open, setP3Open]             = useState(false);
 
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
@@ -292,6 +331,40 @@ const Sidebar = ({ isOpen, onClose }) => {
                         </NavLink>
                     ))}
 
+                    {/* Billing & POS Section — admin + manager */}
+                    {(user?.role === 'admin' || user?.role === 'manager') && (
+                        <>
+                            <div className="my-2 border-t border-white/10" />
+                            <button
+                                onClick={() => setBillingOpen(o => !o)}
+                                className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:bg-white/10 hover:text-white transition-all duration-150"
+                            >
+                                <Zap className="h-5 w-5 flex-shrink-0" style={{ color: billingOpen ? '#FF6B00' : undefined }} />
+                                <span className="flex-1 text-left">Billing & POS</span>
+                                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${billingOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {billingOpen && (
+                                <div className="ml-4 pl-3 border-l border-white/10 space-y-0.5 mt-0.5">
+                                    {billingLinks.map(({ to, label, icon: Icon }) => (
+                                        <NavLink key={to} to={to} end
+                                            onClick={() => { if (onClose) onClose(); }}
+                                            className={({ isActive }) =>
+                                                `flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 group ${isActive
+                                                    ? 'text-white shadow-lg'
+                                                    : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                                                }`
+                                            }
+                                            style={({ isActive }) => isActive ? { backgroundColor: '#c2410c' } : {}}
+                                        >
+                                            <Icon className="h-4 w-4 flex-shrink-0" />
+                                            <span className="flex-1">{label}</span>
+                                        </NavLink>
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    )}
+
                     {/* Inventory Section — admin + manager */}
                     {(user?.role === 'admin' || user?.role === 'manager') && (
                         <>
@@ -342,6 +415,76 @@ const Sidebar = ({ isOpen, onClose }) => {
                                 <div className="ml-4 pl-3 border-l border-white/10 space-y-0.5 mt-0.5">
                                     {manufacturingLinks.map(({ to, label, icon: Icon }) => (
                                         <NavLink key={to} to={to} end={to === '/manufacturing'}
+                                            onClick={() => { if (onClose) onClose(); }}
+                                            className={({ isActive }) =>
+                                                `flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 group ${isActive
+                                                    ? 'text-white shadow-lg'
+                                                    : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                                                }`
+                                            }
+                                            style={({ isActive }) => isActive ? { backgroundColor: '#c2410c' } : {}}
+                                        >
+                                            <Icon className="h-4 w-4 flex-shrink-0" />
+                                            <span className="flex-1">{label}</span>
+                                        </NavLink>
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    )}
+
+                    {/* Accounting Section — admin + manager */}
+                    {(user?.role === 'admin' || user?.role === 'manager') && (
+                        <>
+                            <div className="my-2 border-t border-white/10" />
+                            <button
+                                onClick={() => setAccOpen(o => !o)}
+                                className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:bg-white/10 hover:text-white transition-all duration-150"
+                            >
+                                <Scale className="h-5 w-5 flex-shrink-0" style={{ color: accOpen ? '#FF6B00' : undefined }} />
+                                <span className="flex-1 text-left">Accounting</span>
+                                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${accOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {accOpen && (
+                                <div className="ml-4 pl-3 border-l border-white/10 space-y-0.5 mt-0.5">
+                                    {accountingLinks.map(({ to, label, icon: Icon }) => (
+                                        <NavLink key={to} to={to} end={to === '/accounting'}
+                                            onClick={() => { if (onClose) onClose(); }}
+                                            className={({ isActive }) =>
+                                                `flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 group ${isActive
+                                                    ? 'text-white shadow-lg'
+                                                    : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                                                }`
+                                            }
+                                            style={({ isActive }) => isActive ? { backgroundColor: '#c2410c' } : {}}
+                                        >
+                                            <Icon className="h-4 w-4 flex-shrink-0" />
+                                            <span className="flex-1">{label}</span>
+                                        </NavLink>
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    )}
+
+                    {/* Phase 3 Modules — admin + manager */}
+                    {(user?.role === 'admin' || user?.role === 'manager') && (
+                        <>
+                            <div className="my-2 border-t border-white/10" />
+                            <button
+                                onClick={() => setP3Open(o => !o)}
+                                className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:bg-white/10 hover:text-white transition-all duration-150"
+                            >
+                                <Brain className="h-5 w-5 flex-shrink-0" style={{ color: p3Open ? '#FF6B00' : undefined }} />
+                                <span className="flex-1 text-left">More Modules</span>
+                                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${p3Open ? 'rotate-180' : ''}`} />
+                            </button>
+                            {p3Open && (
+                                <div className="ml-4 pl-3 border-l border-white/10 space-y-0.5 mt-0.5">
+                                    {phase3Modules
+                                        .filter(m => m.to !== '/settings' || user?.role === 'admin')
+                                        .map(({ to, label, icon: Icon }) => (
+                                        <NavLink key={to} to={to} end
                                             onClick={() => { if (onClose) onClose(); }}
                                             className={({ isActive }) =>
                                                 `flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 group ${isActive

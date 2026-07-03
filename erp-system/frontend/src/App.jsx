@@ -45,6 +45,28 @@ import SuppliersPage       from './pages/inventory/SuppliersPage';
 import CustomersPage       from './pages/inventory/CustomersPage';
 import SchoolMappingPage   from './pages/inventory/SchoolMappingPage';
 
+// Billing & POS Pages
+import POSPage            from './pages/billing/POSPage';
+import POSDashboard       from './pages/billing/POSDashboard';
+import CashCounterPage    from './pages/billing/CashCounterPage';
+import BarcodeLabelsPage  from './pages/billing/BarcodeLabelsPage';
+import CustomerLedgerPage from './pages/billing/CustomerLedgerPage';
+
+// Phase 3 — Accounting Pages
+import AccountingDashboard from './pages/accounting/AccountingDashboard';
+import ChartOfAccounts     from './pages/accounting/ChartOfAccounts';
+import JournalEntries      from './pages/accounting/JournalEntries';
+import { TrialBalance, ProfitLoss, BalanceSheet, CashBook, BankBook, GSTLedger, AccountLedger, VouchersPage } from './pages/accounting/FinancialReports';
+
+// Phase 3 — HR, CRM, Franchise, Service, MRP, Settings, AI
+import HRPage        from './pages/hr/HRPage';
+import CRMPage       from './pages/crm/CRMPage';
+import FranchisePage from './pages/franchise/FranchisePage';
+import ServicePage   from './pages/service/ServicePage';
+import MRPPage       from './pages/mrp/MRPPage';
+import SettingsPage  from './pages/settings/SettingsPage';
+import AIDashboard   from './pages/ai/AIDashboard';
+
 // Manufacturing Pages
 import ManufacturingDashboard from './pages/manufacturing/ManufacturingDashboard';
 import RawMaterialsPage       from './pages/manufacturing/RawMaterialsPage';
@@ -86,7 +108,7 @@ function AppInner() {
         <Route path="/admin/reports"    element={<PrivateRoute allowedRoles={['admin', 'manager']}         module="reports"      ><ReportsPage /></PrivateRoute>} />
         <Route path="/admin/audit"      element={<PrivateRoute allowedRoles={['admin']}                                         ><AuditLogsPage /></PrivateRoute>} />
         <Route path="/admin/excel"      element={<PrivateRoute allowedRoles={['shop_user']}                                     ><ExcelUploadPage /></PrivateRoute>} />
-        <Route path="/admin/new-entry"  element={<PrivateRoute allowedRoles={['admin']}                    module="new_entry"    ><AdminEntryPage /></PrivateRoute>} />
+        <Route path="/admin/new-entry"  element={<PrivateRoute allowedRoles={['admin', 'manager']}         module="new_entry"    ><AdminEntryPage /></PrivateRoute>} />
         <Route path="/admin/manager-funds" element={<PrivateRoute allowedRoles={['admin']}                 module="manager_funds"><AdminManagerFundsPage /></PrivateRoute>} />
         <Route path="/admin/manager/:id"   element={<PrivateRoute allowedRoles={['admin']}                 module="manager_funds"><AdminManagerProfilePage /></PrivateRoute>} />
         <Route path="/admin/expenses"   element={<PrivateRoute allowedRoles={['admin', 'manager']}         module="expenses"     ><ExpensesPage /></PrivateRoute>} />
@@ -115,6 +137,13 @@ function AppInner() {
         <Route path="/inventory/customers" element={<PrivateRoute allowedRoles={['admin','manager']}><CustomersPage /></PrivateRoute>} />
         <Route path="/inventory/schools"  element={<PrivateRoute allowedRoles={['admin','manager']}><SchoolMappingPage /></PrivateRoute>} />
 
+        {/* Billing & POS Routes — admin + manager */}
+        <Route path="/billing/pos"          element={<PrivateRoute allowedRoles={['admin','manager']}><POSPage /></PrivateRoute>} />
+        <Route path="/billing/dashboard"    element={<PrivateRoute allowedRoles={['admin','manager']}><POSDashboard /></PrivateRoute>} />
+        <Route path="/billing/cash-counter" element={<PrivateRoute allowedRoles={['admin','manager']}><CashCounterPage /></PrivateRoute>} />
+        <Route path="/billing/labels"       element={<PrivateRoute allowedRoles={['admin','manager']}><BarcodeLabelsPage /></PrivateRoute>} />
+        <Route path="/billing/ledger"       element={<PrivateRoute allowedRoles={['admin','manager']}><CustomerLedgerPage /></PrivateRoute>} />
+
         {/* Manufacturing Routes — admin + manager */}
         <Route path="/manufacturing"              element={<PrivateRoute allowedRoles={['admin','manager']}><ManufacturingDashboard /></PrivateRoute>} />
         <Route path="/manufacturing/raw-materials" element={<PrivateRoute allowedRoles={['admin','manager']}><RawMaterialsPage /></PrivateRoute>} />
@@ -122,6 +151,28 @@ function AppInner() {
         <Route path="/manufacturing/bom"           element={<PrivateRoute allowedRoles={['admin','manager']}><BOMPage /></PrivateRoute>} />
         <Route path="/manufacturing/size-matrix"   element={<PrivateRoute allowedRoles={['admin','manager']}><SizeMatrixPage /></PrivateRoute>} />
         <Route path="/manufacturing/product-master" element={<PrivateRoute allowedRoles={['admin','manager']}><ProductMasterPage /></PrivateRoute>} />
+
+        {/* Phase 3 — Accounting Routes */}
+        <Route path="/accounting"              element={<PrivateRoute allowedRoles={['admin','manager']}><AccountingDashboard /></PrivateRoute>} />
+        <Route path="/accounting/chart"        element={<PrivateRoute allowedRoles={['admin','manager']}><ChartOfAccounts /></PrivateRoute>} />
+        <Route path="/accounting/journal"      element={<PrivateRoute allowedRoles={['admin','manager']}><JournalEntries /></PrivateRoute>} />
+        <Route path="/accounting/trial-balance" element={<PrivateRoute allowedRoles={['admin','manager']}><TrialBalance /></PrivateRoute>} />
+        <Route path="/accounting/profit-loss"  element={<PrivateRoute allowedRoles={['admin','manager']}><ProfitLoss /></PrivateRoute>} />
+        <Route path="/accounting/balance-sheet" element={<PrivateRoute allowedRoles={['admin','manager']}><BalanceSheet /></PrivateRoute>} />
+        <Route path="/accounting/cashbook"     element={<PrivateRoute allowedRoles={['admin','manager']}><CashBook /></PrivateRoute>} />
+        <Route path="/accounting/bankbook"     element={<PrivateRoute allowedRoles={['admin','manager']}><BankBook /></PrivateRoute>} />
+        <Route path="/accounting/gst-ledger"   element={<PrivateRoute allowedRoles={['admin','manager']}><GSTLedger /></PrivateRoute>} />
+        <Route path="/accounting/ledger"       element={<PrivateRoute allowedRoles={['admin','manager']}><AccountLedger /></PrivateRoute>} />
+        <Route path="/accounting/vouchers"     element={<PrivateRoute allowedRoles={['admin','manager']}><VouchersPage /></PrivateRoute>} />
+
+        {/* Phase 3 — Other Module Routes */}
+        <Route path="/hr"        element={<PrivateRoute allowedRoles={['admin','manager']}><HRPage /></PrivateRoute>} />
+        <Route path="/crm"       element={<PrivateRoute allowedRoles={['admin','manager']}><CRMPage /></PrivateRoute>} />
+        <Route path="/franchise" element={<PrivateRoute allowedRoles={['admin','manager']}><FranchisePage /></PrivateRoute>} />
+        <Route path="/service"   element={<PrivateRoute allowedRoles={['admin','manager']}><ServicePage /></PrivateRoute>} />
+        <Route path="/mrp"       element={<PrivateRoute allowedRoles={['admin','manager']}><MRPPage /></PrivateRoute>} />
+        <Route path="/settings"  element={<PrivateRoute allowedRoles={['admin']}><SettingsPage /></PrivateRoute>} />
+        <Route path="/ai"        element={<PrivateRoute allowedRoles={['admin','manager']}><AIDashboard /></PrivateRoute>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />
