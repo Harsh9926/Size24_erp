@@ -19,4 +19,8 @@ router.post('/',              authenticateToken, requireRole('shop_user'), ctrl.
 router.put('/:id/accept',     authenticateToken, requireRole('manager'),   ctrl.acceptTransfer);
 router.put('/:id/reject',     authenticateToken, requireRole('manager'),   ctrl.rejectTransfer);
 
+// Admin delete
+router.delete('/:id',         authenticateToken, requireRole('admin'),     ctrl.deleteTransfer);
+
 module.exports = router;
+

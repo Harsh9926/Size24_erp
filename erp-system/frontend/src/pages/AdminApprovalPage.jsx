@@ -6,7 +6,7 @@ import {
     X, RefreshCw, Store, Calendar, ChevronRight,
     User, AlertCircle, Loader2, Search,
     ThumbsUp, ThumbsDown, Info, WifiOff,
-    FileSpreadsheet, ChevronDown, ChevronUp,
+    FileSpreadsheet, ChevronDown, ChevronUp, Trash2, TriangleAlert,
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -100,27 +100,33 @@ const DetailRow = ({ label, value, highlight }) => (
 /* ═══════════════════════════════════════════════════════════════════
    ENTRY DRAWER  — slide-in side panel
 ═══════════════════════════════════════════════════════════════════ */
-const EntryDrawer = ({ entry, onClose, onApprove, onReject, actionLoading }) => {
+const EntryDrawer = ({ entry, onClose, onApprove, onReject, onDelete, actionLoading }) => {
     const [rejectNote,    setRejectNote]    = useState('');
     const [showRejectBox, setShowRejectBox] = useState(false);
+    const [showDeleteBox, setShowDeleteBox] = useState(false);
     const [excelData,     setExcelData]     = useState(null);
     const [excelLoading,  setExcelLoading]  = useState(false);
     const [showExcel,     setShowExcel]     = useState(false);
 
     // Always reset when entry changes
     useEffect(() => {
+        let isMounted = true;
         setRejectNote('');
         setShowRejectBox(false);
+        setShowDeleteBox(false);
         setExcelData(null);
         setShowExcel(false);
+
         if (!entry?.shop_id || !entry?.date) return;
         setExcelLoading(true);
         const dateStr = String(entry.date).split('T')[0];
         api.get(`/excel/by-entry?shop_id=${entry.shop_id}&date=${dateStr}`)
-            .then(r => setExcelData(r.data))
-            .catch(() => setExcelData(null))
-            .finally(() => setExcelLoading(false));
-    }, [entry?.id]);
+            .then(r => { if (isMounted) setExcelData(r.data); })
+            .catch(() => { if (isMounted) setExcelData(null); })
+            .finally(() => { if (isMounted) setExcelLoading(false); });
+
+        return () => { isMounted = false; };
+    }, [entry?.id, entry?.shop_id, entry?.date]);
 
     // ── Null-guard: MUST be first conditional after hooks ──────────
     if (!entry) return null;
@@ -380,44 +386,56 @@ const EntryDrawer = ({ entry, onClose, onApprove, onReject, actionLoading }) => 
                 </div>
 
                 {/* ── Footer ─────────────────────────────────────── */}
-                {status === 'PENDING' ? (
-                    <div className="px-6 py-5 border-t flex gap-3 flex-shrink-0"
-                        style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
-
-                        {/* REJECT */}
-                        <button
-                            id="btn-reject-entry"
-                            onClick={handleRejectClick}
-                            disabled={actionLoading}
-                            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold border-2 transition-all ${
-                                showRejectBox
-                                    ? 'bg-red-600 border-red-600 text-white hover:bg-red-700'
-                                    : 'bg-transparent border-red-300 text-red-600 hover:bg-red-50'
-                            }`}>
-                            {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsDown className="h-4 w-4" />}
-                            {showRejectBox ? 'Confirm Reject' : 'Reject'}
-                        </button>
-
-                        {/* APPROVE */}
-                        <button
-                            id="btn-approve-entry"
-                            onClick={() => onApprove(entry.id)}
-                            disabled={actionLoading}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white transition-all shadow-md"
-                            style={{ background: actionLoading ? '#9ca3af' : 'linear-gradient(135deg,#059669,#10b981)' }}>
-                            {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}
-                            Approve
-                        </button>
-                    </div>
-                ) : (
-                    <div className="px-6 py-4 border-t text-center flex-shrink-0"
-                        style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
-                        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                            This entry has been <strong>{status.charAt(0) + status.slice(1).toLowerCase()}</strong>
-                            {entry.approved_at ? ` on ${fmtDate(entry.approved_at)}` : ''}.
-                        </p>
-                    </div>
-                )}
+                <div className="px-6 py-4 border-t flex flex-col gap-2 flex-shrink-0"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                    {showDeleteBox ? (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-2">
+                            <div className="flex items-center gap-1.5 text-red-700">
+                                <TriangleAlert className="h-4 w-4 shrink-0" />
+                                <p className="text-xs font-bold">Are you sure you want to delete this entry?</p>
+                            </div>
+                            <p className="text-[11px] text-red-600">This action will permanently delete the entry, uploaded sheet, and ledger records.</p>
+                            <div className="flex gap-2 justify-end pt-1">
+                                <button onClick={() => setShowDeleteBox(false)} disabled={actionLoading}
+                                    className="px-3 py-1 text-xs border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 font-medium">Cancel</button>
+                                <button onClick={() => onDelete(entry.id)} disabled={actionLoading}
+                                    className="px-3 py-1 text-xs bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 flex items-center gap-1 shadow-sm">
+                                    {actionLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Confirm Delete
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-between gap-2">
+                            {status === 'PENDING' ? (
+                                <div className="flex gap-2 flex-1">
+                                    <button id="btn-reject-entry" onClick={handleRejectClick} disabled={actionLoading}
+                                        className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold border-2 transition-all ${
+                                            showRejectBox ? 'bg-red-600 border-red-600 text-white hover:bg-red-700' : 'bg-transparent border-red-300 text-red-600 hover:bg-red-50'
+                                        }`}>
+                                        {actionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsDown className="h-3.5 w-3.5" />}
+                                        {showRejectBox ? 'Confirm Reject' : 'Reject'}
+                                    </button>
+                                    <button id="btn-approve-entry" onClick={() => onApprove(entry.id)} disabled={actionLoading}
+                                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold text-white transition-all shadow-md"
+                                        style={{ background: actionLoading ? '#9ca3af' : 'linear-gradient(135deg,#059669,#10b981)' }}>
+                                        {actionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5" />}
+                                        Approve
+                                    </button>
+                                </div>
+                            ) : (
+                                <p className="text-xs text-gray-500 flex-1">
+                                    Status: <strong>{status.charAt(0) + status.slice(1).toLowerCase()}</strong>
+                                    {entry.approved_at ? ` (${fmtDate(entry.approved_at)})` : ''}
+                                </p>
+                            )}
+                            <button onClick={() => setShowDeleteBox(true)} disabled={actionLoading}
+                                className="px-3 py-2 text-xs font-bold text-red-600 border border-red-200 rounded-xl hover:bg-red-50 flex items-center gap-1 transition-colors"
+                                title="Permanently Delete Entry">
+                                <Trash2 className="h-3.5 w-3.5" /> Delete
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
         </>
     );
@@ -511,11 +529,21 @@ const AdminApprovalPage = () => {
         }
     };
 
-    /* ── Bulk actions ───────────────────────────────────────────── */
-    const pendingFiltered = useMemo(() =>
-        entries.filter(e => normalizeStatus(e.approval_status) === 'PENDING'),
-    [entries]);
+    const handleDelete = async (id) => {
+        setActionLoading(true);
+        try {
+            await api.delete(`/entries/${id}`);
+            setToast({ msg: '🗑️ Entry and related records deleted.', type: 'success' });
+            setSelectedEntry(null);
+            fetchEntries();
+        } catch (e) {
+            setToast({ msg: e?.response?.data?.error ?? 'Delete failed.', type: 'error' });
+        } finally {
+            setActionLoading(false);
+        }
+    };
 
+    /* ── Bulk actions ───────────────────────────────────────────── */
     const toggleSelect = (id, e) => {
         e.stopPropagation();
         setSelectedIds(prev => {
@@ -873,6 +901,7 @@ const AdminApprovalPage = () => {
                     onClose={() => setSelectedEntry(null)}
                     onApprove={handleApprove}
                     onReject={handleReject}
+                    onDelete={handleDelete}
                     actionLoading={actionLoading}
                 />
             )}

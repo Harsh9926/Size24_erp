@@ -20,5 +20,7 @@ router.get('/summary/:managerId',  authenticateToken, requireRole('admin'),     
 router.post('/admin-to-manager',   authenticateToken, requireRole('admin'),          ctrl.adminSendToManager);
 router.put('/:id/approve',         authenticateToken, requireRole('admin'),          ctrl.approveTransfer);
 router.put('/:id/reject',          authenticateToken, requireRole('admin'),          ctrl.rejectTransfer);
+router.delete('/:id',              authenticateToken, requireRole('admin'),          ctrl.deleteTransfer);
 
 module.exports = router;
+

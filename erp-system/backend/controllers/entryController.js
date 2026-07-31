@@ -846,3 +846,88 @@ exports.getTodayStatus = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
+// ─────────────────────────────────────────────────────────────────
+// DELETE ENTRY (Admin only)
+// Permanently deletes daily entry + related records (excel, bank ledger, audit logs)
+// Reverses credited cash from shop wallet if entry was approved
+// ─────────────────────────────────────────────────────────────────
+exports.deleteEntry = async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only Admin users can delete daily entries.' });
+    }
+
+    const { id } = req.params;
+    const client = await db.pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // Lock entry row
+        const entryRes = await client.query(
+            'SELECT * FROM daily_entries WHERE id = $1 FOR UPDATE',
+            [id]
+        );
+
+        if (entryRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.json({ message: 'Entry already deleted or not found.', id: parseInt(id) });
+        }
+
+        const entry = entryRes.rows[0];
+
+        // 1. Reverse shop wallet credit if entry was APPROVED and wallet was credited
+        const cashAmt = parseFloat(entry.cash || 0);
+        if (entry.approval_status === 'APPROVED' && (entry.wallet_credited || cashAmt > 0)) {
+            await client.query(
+                'UPDATE shops SET wallet_balance = COALESCE(wallet_balance, 0) - $1 WHERE id = $2',
+                [cashAmt, entry.shop_id]
+            );
+            console.log(`[deleteEntry] Reversed ₹${cashAmt} cash credit from shop #${entry.shop_id} wallet.`);
+        }
+
+        // 2. Delete linked excel upload for this shop & date if exists
+        const dateStr = entry.date ? (entry.date instanceof Date ? entry.date.toISOString().split('T')[0] : String(entry.date).split('T')[0]) : null;
+        if (dateStr) {
+            await client.query(
+                'DELETE FROM excel_uploads WHERE shop_id = $1 AND upload_date = $2',
+                [entry.shop_id, dateStr]
+            );
+        }
+
+        // 3. Delete linked admin bank ledger payment_in entries
+        await client.query(
+            "DELETE FROM admin_bank_ledger WHERE transaction_type = 'PAYMENT_IN' AND ref_id = $1",
+            [parseInt(id)]
+        );
+
+        // 4. Delete linked audit logs for this daily_entries record
+        await client.query(
+            "DELETE FROM audit_logs WHERE table_name = 'daily_entries' AND record_id = $1",
+            [parseInt(id)]
+        );
+
+        // 5. Delete entry itself
+        await client.query('DELETE FROM daily_entries WHERE id = $1', [id]);
+
+        // 6. Record system audit log for entry deletion
+        await client.query(
+            `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
+             VALUES ('daily_entries', $1, $2::jsonb, '{"action":"DELETED"}'::jsonb, $3)`,
+            [parseInt(id), JSON.stringify(entry), req.user.id]
+        );
+
+        await client.query('COMMIT');
+
+        emitDashboard(req, { type: 'entry_deleted', id: parseInt(id) });
+
+        return res.json({ message: 'Daily entry and all related records deleted successfully' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[deleteEntry error]', err);
+        return res.status(500).json({ error: err.message || 'Failed to delete daily entry' });
+    } finally {
+        client.release();
+    }
+};
+

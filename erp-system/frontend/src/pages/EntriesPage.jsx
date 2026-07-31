@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useContext } from 'react';
 import api from '../services/api';
 import Layout from '../components/Layout';
+import { AuthContext } from '../context/AuthContext';
 import {
     Lock, Unlock, ChevronLeft, ChevronRight,
     Search, Filter, RefreshCw, Calendar, ArrowRightLeft, Pencil, X,
-    FileSpreadsheet, ChevronDown, ChevronUp, Loader2, TriangleAlert,
+    FileSpreadsheet, ChevronDown, ChevronUp, Loader2, TriangleAlert, Trash2,
 } from 'lucide-react';
 
 const fmt = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
@@ -26,12 +27,25 @@ const inputCls =
     'focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 bg-white text-gray-700';
 
 const EntriesPage = () => {
+    const { user } = useContext(AuthContext);
+    const isAdmin = user?.role === 'admin';
+
     const [entries,       setEntries]       = useState([]);
     const [shops,         setShops]         = useState([]);
     const [loading,       setLoading]       = useState(true);
     const [total,         setTotal]         = useState(0);
     const [pages,         setPages]         = useState(1);
     const [anomalyMap,    setAnomalyMap]    = useState({}); // entry_id → flags[]
+
+    // Delete modal state
+    const [deleteModalEntry, setDeleteModalEntry] = useState(null);
+    const [deleteLoading,    setDeleteLoading]    = useState(false);
+    const [deleteError,      setDeleteError]      = useState('');
+
+    // Delete Cash Transfer modal state
+    const [deleteTxModal,   setDeleteTxModal]   = useState(null);
+    const [deleteTxLoading, setDeleteTxLoading] = useState(false);
+    const [deleteTxError,   setDeleteTxError]   = useState('');
 
     // Cash transfers
     const [transfers,     setTransfers]     = useState([]);
@@ -174,7 +188,9 @@ const EntriesPage = () => {
             try {
                 const res = await api.get('/payment-in/admins');
                 setPiAdmins(res.data || []);
-            } catch {}
+            } catch (err) {
+                console.error('Failed to fetch payment-in admins:', err);
+            }
         }
     };
 
@@ -215,6 +231,46 @@ const EntriesPage = () => {
             setEditError(e.response?.data?.error || 'Update failed.');
         } finally {
             setEditLoading(false);
+        }
+    };
+
+    const handleDeleteConfirm = async () => {
+        if (!deleteModalEntry) return;
+        setDeleteLoading(true);
+        setDeleteError('');
+        try {
+            await api.delete(`/entries/${deleteModalEntry.id}`);
+            setDeleteModalEntry(null);
+            loadEntries(page);
+        } catch (e) {
+            if (e.response?.status === 404) {
+                setDeleteModalEntry(null);
+                loadEntries(page);
+            } else {
+                setDeleteError(e.response?.data?.error || 'Failed to delete entry.');
+            }
+        } finally {
+            setDeleteLoading(false);
+        }
+    };
+
+    const handleDeleteTxConfirm = async () => {
+        if (!deleteTxModal) return;
+        setDeleteTxLoading(true);
+        setDeleteTxError('');
+        try {
+            await api.delete(`/transfers/${deleteTxModal.id}`);
+            setDeleteTxModal(null);
+            fetchTransfers(txStatusFilter);
+        } catch (e) {
+            if (e.response?.status === 404) {
+                setDeleteTxModal(null);
+                fetchTransfers(txStatusFilter);
+            } else {
+                setDeleteTxError(e.response?.data?.error || 'Failed to delete transfer.');
+            }
+        } finally {
+            setDeleteTxLoading(false);
         }
     };
 
@@ -502,6 +558,13 @@ const EntriesPage = () => {
                                                 className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 font-medium border border-emerald-200 px-2 py-1 rounded-md hover:bg-emerald-50 transition-colors">
                                                 <FileSpreadsheet className="h-3 w-3" /> Sheet
                                             </button>
+                                            {isAdmin && (
+                                                <button onClick={() => { setDeleteModalEntry(e); setDeleteError(''); }}
+                                                    className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-medium border border-red-200 px-2 py-1 rounded-md hover:bg-red-50 transition-colors"
+                                                    title="Permanently Delete Entry">
+                                                    <Trash2 className="h-3 w-3" /> Delete
+                                                </button>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>
@@ -590,7 +653,7 @@ const EntriesPage = () => {
                     <table className="min-w-full divide-y divide-gray-100 text-sm">
                         <thead className="bg-gray-50">
                             <tr>
-                                {['From (Shop User)', 'To (Manager)', 'Amount', 'Note', 'Status', 'Date'].map(h => (
+                                {['From (Shop User)', 'To (Manager)', 'Amount', 'Note', 'Status', 'Date', ...(isAdmin ? ['Action'] : [])].map(h => (
                                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                                         {h}
                                     </th>
@@ -600,14 +663,14 @@ const EntriesPage = () => {
                         <tbody className="divide-y divide-gray-100">
                             {txLoading && (
                                 <tr>
-                                    <td colSpan="6" className="text-center py-10 text-gray-400 text-sm animate-pulse">
+                                    <td colSpan={isAdmin ? 7 : 6} className="text-center py-10 text-gray-400 text-sm animate-pulse">
                                         Loading transfers…
                                     </td>
                                 </tr>
                             )}
                             {!txLoading && transfers.length === 0 && (
                                 <tr>
-                                    <td colSpan="6" className="text-center py-10 text-gray-400 text-sm">
+                                    <td colSpan={isAdmin ? 7 : 6} className="text-center py-10 text-gray-400 text-sm">
                                         No transfers found.
                                     </td>
                                 </tr>
@@ -642,6 +705,15 @@ const EntriesPage = () => {
                                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
                                             {fmtDate(t.created_at)}
                                         </td>
+                                        {isAdmin && (
+                                            <td className="px-4 py-3">
+                                                <button onClick={() => { setDeleteTxModal(t); setDeleteTxError(''); }}
+                                                    className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-medium border border-red-200 px-2 py-1 rounded-md hover:bg-red-50 transition-colors"
+                                                    title="Permanently Delete Transfer">
+                                                    <Trash2 className="h-3 w-3" /> Delete
+                                                </button>
+                                            </td>
+                                        )}
                                     </tr>
                                 );
                             })}
@@ -862,6 +934,95 @@ const EntriesPage = () => {
                 </div>
             )}
 
+            {/* ── Delete Confirmation Modal ───────────────────────── */}
+            {deleteModalEntry && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-red-50/50">
+                            <div className="flex items-center gap-2 text-red-600">
+                                <TriangleAlert className="h-5 w-5" />
+                                <h3 className="text-base font-bold text-gray-900">Delete Daily Entry</h3>
+                            </div>
+                            <button onClick={() => setDeleteModalEntry(null)} disabled={deleteLoading}
+                                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+                        <div className="px-6 py-5 space-y-4">
+                            <p className="text-sm text-gray-700 font-medium">
+                                Are you sure you want to delete this entry?
+                            </p>
+                            <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-100 text-xs space-y-1.5 text-gray-600">
+                                <div className="flex justify-between"><span className="font-semibold text-gray-500">Shop:</span> <span className="font-bold text-gray-800">{deleteModalEntry.shop_name}</span></div>
+                                <div className="flex justify-between"><span className="font-semibold text-gray-500">Date:</span> <span className="font-medium text-gray-800">{fmtDate(deleteModalEntry.date)}</span></div>
+                                <div className="flex justify-between"><span className="font-semibold text-gray-500">Total Sale:</span> <span className="font-bold text-indigo-600">{fmt(deleteModalEntry.total_sale)}</span></div>
+                                <div className="flex justify-between"><span className="font-semibold text-gray-500">Status:</span> <span className="font-semibold text-gray-700">{deleteModalEntry.approval_status}</span></div>
+                            </div>
+                            <p className="text-xs text-red-600 font-medium bg-red-50 p-2.5 rounded-lg border border-red-100">
+                                Warning: This action will permanently remove this daily entry and all related records (uploaded sheet, approvals, ledgers).
+                            </p>
+                            {deleteError && (
+                                <p className="text-xs text-red-600 font-semibold">{deleteError}</p>
+                            )}
+                        </div>
+                        <div className="px-6 py-3.5 bg-gray-50 border-t border-gray-100 flex items-center justify-end gap-2">
+                            <button onClick={() => setDeleteModalEntry(null)} disabled={deleteLoading}
+                                className="px-4 py-2 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
+                                Cancel
+                            </button>
+                            <button onClick={handleDeleteConfirm} disabled={deleteLoading}
+                                className="px-4 py-2 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-1.5 shadow-sm transition-colors disabled:opacity-50">
+                                {deleteLoading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Deleting…</> : <><Trash2 className="h-3.5 w-3.5" /> Delete Entry</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Cash Transfer Delete Confirmation Modal ────────── */}
+            {deleteTxModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-red-50/50">
+                            <div className="flex items-center gap-2 text-red-600">
+                                <TriangleAlert className="h-5 w-5" />
+                                <h3 className="text-base font-bold text-gray-900">Delete Cash Transfer</h3>
+                            </div>
+                            <button onClick={() => setDeleteTxModal(null)} disabled={deleteTxLoading}
+                                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+                        <div className="px-6 py-5 space-y-4">
+                            <p className="text-sm text-gray-700 font-medium">
+                                Are you sure you want to delete this cash transfer?
+                            </p>
+                            <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-100 text-xs space-y-1.5 text-gray-600">
+                                <div className="flex justify-between"><span className="font-semibold text-gray-500">From:</span> <span className="font-bold text-gray-800">{deleteTxModal.from_name} ({deleteTxModal.from_mobile})</span></div>
+                                <div className="flex justify-between"><span className="font-semibold text-gray-500">To:</span> <span className="font-bold text-indigo-600">{deleteTxModal.to_name} ({deleteTxModal.to_mobile})</span></div>
+                                <div className="flex justify-between"><span className="font-semibold text-gray-500">Amount:</span> <span className="font-bold text-emerald-600">{fmt(deleteTxModal.amount)}</span></div>
+                                <div className="flex justify-between"><span className="font-semibold text-gray-500">Status:</span> <span className="font-semibold text-gray-700">{deleteTxModal.status}</span></div>
+                            </div>
+                            <p className="text-xs text-red-600 font-medium bg-red-50 p-2.5 rounded-lg border border-red-100">
+                                Warning: This will permanently remove the transfer record. If accepted, wallet balances will be automatically restored.
+                            </p>
+                            {deleteTxError && (
+                                <p className="text-xs text-red-600 font-semibold">{deleteTxError}</p>
+                            )}
+                        </div>
+                        <div className="px-6 py-3.5 bg-gray-50 border-t border-gray-100 flex items-center justify-end gap-2">
+                            <button onClick={() => setDeleteTxModal(null)} disabled={deleteTxLoading}
+                                className="px-4 py-2 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
+                                Cancel
+                            </button>
+                            <button onClick={handleDeleteTxConfirm} disabled={deleteTxLoading}
+                                className="px-4 py-2 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-1.5 shadow-sm transition-colors disabled:opacity-50">
+                                {deleteTxLoading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Deleting…</> : <><Trash2 className="h-3.5 w-3.5" /> Delete Transfer</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </Layout>
     );
 };

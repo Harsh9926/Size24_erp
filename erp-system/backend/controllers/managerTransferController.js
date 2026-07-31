@@ -718,3 +718,60 @@ exports.syncManagerWallets = async (req, res) => {
         client.release();
     }
 };
+
+/* ─────────────────────────────────────────────────────────────────
+   DELETE /api/manager-transfers/:id (Admin only)
+   Permanently deletes a manager transfer record.
+───────────────────────────────────────────────────────────────── */
+exports.deleteTransfer = async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only Admin users can delete manager transfers.' });
+    }
+
+    const { id } = req.params;
+    const client = await db.pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        const tQ = await client.query(
+            'SELECT * FROM manager_transfers WHERE id = $1 FOR UPDATE',
+            [id]
+        );
+
+        if (tQ.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.json({ message: 'Transfer already deleted or not found.', id: parseInt(id) });
+        }
+
+        const transfer = tQ.rows[0];
+
+        // Delete any related admin_bank_ledger rows
+        await client.query(
+            "DELETE FROM admin_bank_ledger WHERE ref_id = $1 AND transaction_type IN ('MANAGER_TRANSFER', 'ADMIN_TRANSFER', 'PAYMENT_IN')",
+            [parseInt(id)]
+        );
+
+        // Delete from manager_transfers
+        await client.query('DELETE FROM manager_transfers WHERE id = $1', [id]);
+
+        // Record audit log
+        await client.query(
+            `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
+             VALUES ('manager_transfers', $1, $2::jsonb, '{"action":"DELETED"}'::jsonb, $3)`,
+            [parseInt(id), JSON.stringify(transfer), req.user.id]
+        );
+
+        await client.query('COMMIT');
+        console.log(`[deleteManagerTransfer] Deleted manager_transfers #${id} by Admin #${req.user.id}`);
+
+        res.json({ message: 'Manager transfer deleted successfully.' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[deleteManagerTransfer error]', err);
+        res.status(500).json({ error: err.message || 'Failed to delete manager transfer.' });
+    } finally {
+        client.release();
+    }
+};
+

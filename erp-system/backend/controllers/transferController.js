@@ -325,3 +325,77 @@ exports.getManagers = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
+/* ─────────────────────────────────────────────────────────────────
+   DELETE /api/transfers/:id (Admin only)
+   Permanently deletes a cash transfer and reverses wallet balances
+   if the transfer was accepted / approved.
+───────────────────────────────────────────────────────────────── */
+exports.deleteTransfer = async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only Admin users can delete cash transfers.' });
+    }
+
+    const { id } = req.params;
+    const client = await db.pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        const tQ = await client.query(
+            'SELECT * FROM cash_transfers WHERE id = $1 FOR UPDATE',
+            [id]
+        );
+
+        if (tQ.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.json({ message: 'Transfer already deleted or not found.', id: parseInt(id) });
+        }
+
+        const transfer = tQ.rows[0];
+        const amt = parseFloat(transfer.amount || 0);
+
+        // If transfer was accepted/approved, reverse the wallet movements
+        if (['accepted', 'approved'].includes(transfer.status)) {
+            // Restore funds to shop wallet if shop_id is recorded
+            if (transfer.shop_id) {
+                await client.query(
+                    'UPDATE shops SET wallet_balance = COALESCE(wallet_balance, 0) + $1 WHERE id = $2',
+                    [amt, transfer.shop_id]
+                );
+                console.log(`[deleteTransfer] Restored ₹${amt} to shop #${transfer.shop_id} wallet.`);
+            }
+
+            // Deduct funds from manager wallet if to_user_id is recorded
+            if (transfer.to_user_id) {
+                await client.query(
+                    'UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) - $1 WHERE id = $2',
+                    [amt, transfer.to_user_id]
+                );
+                console.log(`[deleteTransfer] Deducted ₹${amt} from manager #${transfer.to_user_id} wallet.`);
+            }
+        }
+
+        // Delete transfer record
+        await client.query('DELETE FROM cash_transfers WHERE id = $1', [id]);
+
+        // Audit log
+        await client.query(
+            `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
+             VALUES ('cash_transfers', $1, $2::jsonb, '{"action":"DELETED"}'::jsonb, $3)`,
+            [parseInt(id), JSON.stringify(transfer), req.user.id]
+        );
+
+        await client.query('COMMIT');
+        console.log(`[deleteTransfer] Cash transfer #${id} deleted by Admin #${req.user.id}`);
+
+        res.json({ message: 'Cash transfer deleted successfully.' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[deleteTransfer error]', err);
+        res.status(500).json({ error: err.message || 'Failed to delete cash transfer.' });
+    } finally {
+        client.release();
+    }
+};
+
