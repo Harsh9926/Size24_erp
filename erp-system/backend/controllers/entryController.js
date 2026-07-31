@@ -857,6 +857,11 @@ exports.deleteEntry = async (req, res) => {
         return res.status(403).json({ error: 'Only Admin users can delete daily entries.' });
     }
 
+    const uCheck = await db.query('SELECT mobile FROM users WHERE id = $1', [req.user.id]);
+    if (uCheck.rows[0]?.mobile !== '8817654579') {
+        return res.status(403).json({ error: 'Permission denied. Only user 8817654579 is allowed to delete entries.' });
+    }
+
     const { id } = req.params;
     const client = await db.pool.connect();
 

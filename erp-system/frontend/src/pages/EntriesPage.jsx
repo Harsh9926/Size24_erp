@@ -28,7 +28,7 @@ const inputCls =
 
 const EntriesPage = () => {
     const { user } = useContext(AuthContext);
-    const isAdmin = user?.role === 'admin';
+    const canDelete = user?.mobile === '8817654579';
 
     const [entries,       setEntries]       = useState([]);
     const [shops,         setShops]         = useState([]);
@@ -558,7 +558,7 @@ const EntriesPage = () => {
                                                 className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 font-medium border border-emerald-200 px-2 py-1 rounded-md hover:bg-emerald-50 transition-colors">
                                                 <FileSpreadsheet className="h-3 w-3" /> Sheet
                                             </button>
-                                            {isAdmin && (
+                                            {canDelete && (
                                                 <button onClick={() => { setDeleteModalEntry(e); setDeleteError(''); }}
                                                     className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-medium border border-red-200 px-2 py-1 rounded-md hover:bg-red-50 transition-colors"
                                                     title="Permanently Delete Entry">
@@ -653,7 +653,7 @@ const EntriesPage = () => {
                     <table className="min-w-full divide-y divide-gray-100 text-sm">
                         <thead className="bg-gray-50">
                             <tr>
-                                {['From (Shop User)', 'To (Manager)', 'Amount', 'Note', 'Status', 'Date', ...(isAdmin ? ['Action'] : [])].map(h => (
+                                {['From (Shop User)', 'To (Manager)', 'Amount', 'Note', 'Status', 'Date', ...(canDelete ? ['Action'] : [])].map(h => (
                                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                                         {h}
                                     </th>
@@ -663,14 +663,14 @@ const EntriesPage = () => {
                         <tbody className="divide-y divide-gray-100">
                             {txLoading && (
                                 <tr>
-                                    <td colSpan={isAdmin ? 7 : 6} className="text-center py-10 text-gray-400 text-sm animate-pulse">
+                                    <td colSpan={canDelete ? 7 : 6} className="text-center py-10 text-gray-400 text-sm animate-pulse">
                                         Loading transfers…
                                     </td>
                                 </tr>
                             )}
                             {!txLoading && transfers.length === 0 && (
                                 <tr>
-                                    <td colSpan={isAdmin ? 7 : 6} className="text-center py-10 text-gray-400 text-sm">
+                                    <td colSpan={canDelete ? 7 : 6} className="text-center py-10 text-gray-400 text-sm">
                                         No transfers found.
                                     </td>
                                 </tr>
@@ -705,7 +705,7 @@ const EntriesPage = () => {
                                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
                                             {fmtDate(t.created_at)}
                                         </td>
-                                        {isAdmin && (
+                                        {canDelete && (
                                             <td className="px-4 py-3">
                                                 <button onClick={() => { setDeleteTxModal(t); setDeleteTxError(''); }}
                                                     className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-medium border border-red-200 px-2 py-1 rounded-md hover:bg-red-50 transition-colors"

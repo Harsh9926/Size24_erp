@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useContext } from 'react';
 import api from '../services/api';
 import Layout from '../components/Layout';
+import { AuthContext } from '../context/AuthContext';
 import {
     CheckCircle2, XCircle, Clock, ShieldCheck, ShieldX,
     X, RefreshCw, Store, Calendar, ChevronRight,
@@ -101,6 +102,9 @@ const DetailRow = ({ label, value, highlight }) => (
    ENTRY DRAWER  — slide-in side panel
 ═══════════════════════════════════════════════════════════════════ */
 const EntryDrawer = ({ entry, onClose, onApprove, onReject, onDelete, actionLoading }) => {
+    const { user } = useContext(AuthContext);
+    const canDelete = user?.mobile === '8817654579';
+
     const [rejectNote,    setRejectNote]    = useState('');
     const [showRejectBox, setShowRejectBox] = useState(false);
     const [showDeleteBox, setShowDeleteBox] = useState(false);
@@ -428,11 +432,13 @@ const EntryDrawer = ({ entry, onClose, onApprove, onReject, onDelete, actionLoad
                                     {entry.approved_at ? ` (${fmtDate(entry.approved_at)})` : ''}
                                 </p>
                             )}
-                            <button onClick={() => setShowDeleteBox(true)} disabled={actionLoading}
-                                className="px-3 py-2 text-xs font-bold text-red-600 border border-red-200 rounded-xl hover:bg-red-50 flex items-center gap-1 transition-colors"
-                                title="Permanently Delete Entry">
-                                <Trash2 className="h-3.5 w-3.5" /> Delete
-                            </button>
+                            {canDelete && (
+                                <button onClick={() => setShowDeleteBox(true)} disabled={actionLoading}
+                                    className="px-3 py-2 text-xs font-bold text-red-600 border border-red-200 rounded-xl hover:bg-red-50 flex items-center gap-1 transition-colors"
+                                    title="Permanently Delete Entry">
+                                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>
