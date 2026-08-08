@@ -73,8 +73,14 @@ const clientIp = (req) =>
     req.socket?.remoteAddress || req.ip || '';
 
 async function getSettings() {
-    const { rows } = await db.query('SELECT * FROM attendance_settings WHERE id = 1');
-    return rows[0];
+    let { rows } = await db.query('SELECT * FROM attendance_settings WHERE id = 1');
+    if (!rows.length) {
+        // Self-heal: create the single settings row from schema defaults
+        // (office_radius_m defaults to 50m — the required geofence).
+        await db.query('INSERT INTO attendance_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING');
+        ({ rows } = await db.query('SELECT * FROM attendance_settings WHERE id = 1'));
+    }
+    return rows[0] || null;
 }
 
 async function logAction(userId, attendanceId, action, detail, req) {
@@ -418,7 +424,7 @@ exports.getSettingsPublic = async (_req, res) => {
 
 exports.updateSettings = async (req, res) => {
     try {
-        const f = req.body;
+        const f = req.body || {};
         const { rows } = await db.query(
             `UPDATE attendance_settings SET
                shift_start=COALESCE($1,shift_start),
@@ -466,7 +472,15 @@ exports.getPendingRegistrations = async (_req, res) => {
 exports.approveRegistration = async (req, res) => {
     try {
         const settings = await getSettings();
-        const radius = req.body.allowed_radius_m || settings.office_radius_m;
+        if (!settings) {
+            return res.status(500).json({
+                error: 'Attendance settings are not configured. Open Attendance → Settings and save once, then retry.',
+            });
+        }
+        // Approve requests carry no JSON body → req.body may be undefined.
+        const body = req.body || {};
+        // Keep the configured 50m geofence: fall back to settings.office_radius_m (default 50).
+        const radius = body.allowed_radius_m || settings.office_radius_m;
         const reg = (await db.query('SELECT * FROM attendance_registration WHERE id=$1', [req.params.id])).rows[0];
         if (!reg) return res.status(404).json({ error: 'Registration not found' });
 
@@ -478,7 +492,7 @@ exports.approveRegistration = async (req, res) => {
                allowed_radius_m=$3, reviewed_by=$4, reviewed_at=CURRENT_TIMESTAMP,
                reject_reason=NULL
              WHERE id=$5 RETURNING *`,
-            [req.body.latitude, req.body.longitude, radius, req.user.id, req.params.id]
+            [body.latitude, body.longitude, radius, req.user.id, req.params.id]
         );
         // Activate the user account
         await db.query(`UPDATE users SET status='active', is_approved=true WHERE id=$1`, [reg.user_id]);
@@ -497,7 +511,7 @@ exports.rejectRegistration = async (req, res) => {
             `UPDATE attendance_registration SET status='rejected',
                reject_reason=$1, reviewed_by=$2, reviewed_at=CURRENT_TIMESTAMP
              WHERE id=$3 RETURNING *`,
-            [req.body.reason || 'Rejected by admin', req.user.id, req.params.id]
+            [(req.body || {}).reason || 'Rejected by admin', req.user.id, req.params.id]
         );
         if (!rows.length) return res.status(404).json({ error: 'Registration not found' });
         await logAction(req.user.id, null, 'REJECT_REG', { id: req.params.id }, req);
@@ -561,7 +575,7 @@ exports.rejectLocationChange = async (req, res) => {
             `UPDATE location_change_requests SET status='rejected',
                reject_reason=$1, reviewed_by=$2, reviewed_at=CURRENT_TIMESTAMP
              WHERE id=$3 RETURNING *`,
-            [req.body.reason || 'Rejected by admin', req.user.id, req.params.id]
+            [(req.body || {}).reason || 'Rejected by admin', req.user.id, req.params.id]
         );
         if (!rows.length) return res.status(404).json({ error: 'Request not found' });
         res.json(rows[0]);
