@@ -14,8 +14,57 @@ export default function AIChat() {
     const bottomRef             = useRef(null);
     const inputRef              = useRef(null);
 
+    // ── Draggable floating bubble ──────────────────────────────────
+    const BUBBLE = 52;
+    const [pos, setPos] = useState(null);           // {left, top}; null → default bottom-right
+    const dragRef = useRef({ dragging: false, moved: false, startX: 0, startY: 0, offX: 0, offY: 0 });
+
+    useEffect(() => {
+        const saved = localStorage.getItem('aichat_pos');
+        if (saved) { try { setPos(JSON.parse(saved)); return; } catch { /* ignore */ } }
+        setPos({ left: window.innerWidth - BUBBLE - 24, top: window.innerHeight - BUBBLE - 24 });
+    }, []);
+
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+    const onPointerDown = (e) => {
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* older browsers */ }
+        const p = pos || { left: window.innerWidth - BUBBLE - 24, top: window.innerHeight - BUBBLE - 24 };
+        dragRef.current = { dragging: true, moved: false, startX: e.clientX, startY: e.clientY,
+                            offX: e.clientX - p.left, offY: e.clientY - p.top };
+    };
+    const onPointerMove = (e) => {
+        const d = dragRef.current;
+        if (!d.dragging) return;
+        if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 5) d.moved = true;
+        setPos({
+            left: clamp(e.clientX - d.offX, 8, window.innerWidth  - BUBBLE - 8),
+            top:  clamp(e.clientY - d.offY, 8, window.innerHeight - BUBBLE - 8),
+        });
+    };
+    const onPointerUp = (e) => {
+        const d = dragRef.current;
+        if (!d.dragging) return;
+        d.dragging = false;
+        try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+        if (!d.moved) setOpen(o => !o);                                   // treat as click
+        else if (pos) localStorage.setItem('aichat_pos', JSON.stringify(pos)); // remember new spot
+    };
+
     // Only show when logged in
     if (!user) return null;
+
+    // Bubble anchored to dragged position (falls back to bottom-right until measured)
+    const bubbleStyle = pos ? { left: pos.left, top: pos.top } : { right: 24, bottom: 24 };
+    // Panel anchored near the bubble; flips below if there's no room above
+    let panelStyle = { right: 24, bottom: 86 };
+    if (pos) {
+        const pw = 340, ph = 480;
+        const left = clamp(pos.left + BUBBLE - pw, 8, Math.max(8, window.innerWidth - pw - 8));
+        let top = pos.top - ph - 10;
+        if (top < 8) top = clamp(pos.top + BUBBLE + 10, 8, Math.max(8, window.innerHeight - 120));
+        panelStyle = { left, top };
+    }
 
     const scrollBottom = () => bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
 
@@ -50,20 +99,20 @@ export default function AIChat() {
 
     return (
         <>
-            {/* Floating bubble */}
+            {/* Floating bubble — draggable */}
             <button
-                onClick={() => setOpen(o => !o)}
-                title="AI Assistant"
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                title="AI Assistant (drag to move)"
                 style={{
-                    position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
-                    width: 52, height: 52, borderRadius: '50%',
+                    position: 'fixed', ...bubbleStyle, zIndex: 9999,
+                    width: BUBBLE, height: BUBBLE, borderRadius: '50%',
                     background: 'linear-gradient(135deg, #FF6B00, #ff9a00)',
-                    border: 'none', cursor: 'pointer', boxShadow: '0 4px 20px rgba(255,107,0,0.45)',
+                    border: 'none', cursor: 'grab', boxShadow: '0 4px 20px rgba(255,107,0,0.45)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 22, transition: 'transform 0.2s',
+                    fontSize: 22, touchAction: 'none', userSelect: 'none',
                 }}
-                onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
-                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
             >
                 {open ? '✕' : '🤖'}
             </button>
@@ -72,7 +121,7 @@ export default function AIChat() {
             {open && (
                 <div
                     style={{
-                        position: 'fixed', bottom: 86, right: 24, zIndex: 9998,
+                        position: 'fixed', ...panelStyle, zIndex: 9998,
                         width: 340, maxWidth: 'calc(100vw - 48px)',
                         height: 480, maxHeight: 'calc(100vh - 120px)',
                         background: 'var(--bg-surface)',
