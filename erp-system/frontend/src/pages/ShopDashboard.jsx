@@ -10,6 +10,7 @@ import {
     ChevronDown, History, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import EmployeeAttendanceCard from '../components/attendance/EmployeeAttendanceCard';
 
 const BACKEND_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || '';
 
@@ -206,6 +207,14 @@ const ShopDashboard = () => {
     const [photoFile,    setPhotoFile]    = useState(null);
     const [photoPreview, setPhotoPreview] = useState('');
 
+    // ── Mandatory Photo Proof (private S3) ─────────────────────────
+    const proofRef = useRef(null);
+    const [proofFile,      setProofFile]      = useState(null);
+    const [proofPreview,   setProofPreview]   = useState('');
+    const [proofKey,       setProofKey]       = useState('');   // S3 object key
+    const [proofUploading,  setProofUploading] = useState(false);
+    const [proofError,     setProofError]     = useState('');
+
     const [countdown, setCountdown] = useState('');
 
     const [xlLoading,   setXlLoading]   = useState(false);
@@ -398,6 +407,28 @@ const ShopDashboard = () => {
         return res.data.url;
     };
 
+    /* ── Photo Proof (mandatory) — uploads to private S3 on selection ── */
+    const handleProofChange = async (e) => {
+        const f = e.target.files?.[0];
+        if (!f) return;
+        setProofFile(f);
+        setProofPreview(URL.createObjectURL(f));
+        setProofKey('');           // reset until this file finishes uploading
+        setProofError('');
+        setProofUploading(true);
+        try {
+            const fd = new FormData(); fd.append('photo', f);
+            const res = await api.post('/upload/photo-proof', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+            if (!res.data?.key) throw new Error('No key returned');
+            setProofKey(res.data.key);
+        } catch (err) {
+            setProofKey('');
+            setProofError(err.response?.data?.error || 'Photo upload failed. Please retry.');
+        } finally {
+            setProofUploading(false);
+        }
+    };
+
     /* ── Form helpers ─────────────────────────────────────────────── */
     const isFormLocked = editId !== null ? editLocked : false;
 
@@ -406,6 +437,10 @@ const ShopDashboard = () => {
         setEditId(entry.id);
         setEditLocked((entry.locked || entry.approval_status === 'APPROVED') && !unlockActive);
         setExcelLoaded(true);
+        // Existing entries already carry a photo proof — preserve it so re-submit is allowed
+        setProofKey(entry.photo_proof_key || '');
+        setProofPreview(entry.photo_proof_url || '');
+        setProofFile(null); setProofError('');
         setForm({
             date:                normDate(entry.date) || getTodayISO(),
             excel_total_sale:    String(entry.excel_total_sale ?? entry.total_sale ?? ''),
@@ -420,6 +455,7 @@ const ShopDashboard = () => {
     const resetForm = useCallback(() => {
         setEditId(null); setEditLocked(false); setExcelLoaded(false);
         setPhotoFile(null); setPhotoPreview(''); setActiveRowIdx(null);
+        setProofFile(null); setProofPreview(''); setProofKey(''); setProofError('');
         setNoSalesToday(false);
         setForm(EMPTY_FORM());
     }, []);
@@ -441,6 +477,8 @@ const ShopDashboard = () => {
         e.preventDefault();
         if (!isMatch) return alert('Breakdown must match Total Sale before submitting.');
         if (!noSalesToday && excelTotal <= 0) return alert('Please upload an Excel file first to set Total Sale.');
+        if (proofUploading) return alert('Please wait — Photo Proof is still uploading.');
+        if (!proofKey) { setProofError('Photo Proof is required to submit this entry.'); return alert('Photo Proof is required to submit this entry.'); }
         if (parseFloat(form.payment_in) > 0 && !form.payment_in_admin_id)
             return alert('Please select an Admin Bank Account for the Payment In amount.');
         if (data.shop?.latitude && gpsStatus !== 'ok' && gpsStatus !== 'no_coords')
@@ -460,6 +498,7 @@ const ShopDashboard = () => {
                 payment_in:          form.payment_in          || '0',
                 payment_in_admin_id: form.payment_in_admin_id || null,
                 photo_url:           photoUrl,
+                photo_proof_key:     proofKey,
                 entry_type:          noSalesToday ? 'no_sale' : 'normal',
             };
 
@@ -746,6 +785,9 @@ const ShopDashboard = () => {
                     </div>
                 )}
 
+                {/* ── Today's Attendance (Punch In/Out) + Monthly Summary ── */}
+                <EmployeeAttendanceCard />
+
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
                     {/* ── ENTRY FORM ─────────────────────────────────── */}
@@ -951,6 +993,44 @@ const ShopDashboard = () => {
                                 </div>
                             )}
 
+                            {/* ── Photo Proof (MANDATORY · private S3) ─────────── */}
+                            {!isFormLocked && (
+                                <div>
+                                    <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                                        Photo Proof <span className="text-red-600 font-bold">* (Required)</span>
+                                    </label>
+                                    <div className="flex flex-col gap-2">
+                                        <button type="button" onClick={() => proofRef.current?.click()} disabled={proofUploading}
+                                            className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg border transition-colors w-fit ${
+                                                proofKey ? 'bg-green-50 border-green-300 text-green-700'
+                                                : 'text-gray-600 bg-gray-50 border-gray-200 hover:bg-gray-100'}`}>
+                                            {proofUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                                            {proofUploading ? 'Uploading…' : proofKey ? 'Change Photo' : 'Upload Photo'}
+                                        </button>
+                                        {proofPreview && (
+                                            <img src={proofPreview} alt="photo proof preview"
+                                                className="w-full max-w-xs rounded-xl border object-contain" style={{ maxHeight: '180px' }} />
+                                        )}
+                                        {proofKey && !proofUploading && (
+                                            <p className="text-[11px] text-green-700 flex items-center gap-1 font-semibold">
+                                                <CheckCircle2 className="h-3.5 w-3.5" /> Photo uploaded successfully
+                                            </p>
+                                        )}
+                                        {proofError && (
+                                            <p className="text-[11px] text-red-600 flex items-center gap-1 font-semibold">
+                                                <AlertCircle className="h-3.5 w-3.5" /> {proofError}
+                                            </p>
+                                        )}
+                                        {!proofKey && !proofUploading && !proofError && (
+                                            <p className="text-[11px] text-amber-700 flex items-center gap-1">
+                                                <Info className="h-3 w-3" /> Photo Proof is required to submit this entry.
+                                            </p>
+                                        )}
+                                    </div>
+                                    <input ref={proofRef} type="file" accept="image/*" capture="environment" onChange={handleProofChange} className="hidden" />
+                                </div>
+                            )}
+
                             {/* Bank / Paytm Screenshot */}
                             {!isFormLocked && (
                                 <div>
@@ -981,10 +1061,12 @@ const ShopDashboard = () => {
                             <button id="btn-submit-entry" type="submit"
                                 disabled={submitting || isFormLocked || !excelLoaded || !isMatch ||
                                     (!noSalesToday && excelTotal <= 0) ||
+                                    !proofKey || proofUploading ||
                                     (data.shop?.latitude && gpsStatus !== 'ok' && gpsStatus !== 'no_coords')}
                                 className={`w-full py-2.5 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2 transition-all ${
                                     submitting || isFormLocked || !excelLoaded || !isMatch ||
                                     (!noSalesToday && excelTotal <= 0) ||
+                                    !proofKey || proofUploading ||
                                     (data.shop?.latitude && gpsStatus !== 'ok' && gpsStatus !== 'no_coords')
                                         ? 'bg-gray-300 cursor-not-allowed'
                                         : 'bg-teal-700 hover:bg-teal-800 shadow-sm'

@@ -130,10 +130,13 @@ const AdminEntryPage = () => {
     // Payment In
     const [piAdmins, setPiAdmins] = useState([]);
 
-    // Photo
+    // Photo Proof (mandatory · private S3)
     const fileRef    = useRef(null);
     const [photoFile,    setPhotoFile]    = useState(null);
     const [photoPreview, setPhotoPreview] = useState('');
+    const [proofKey,       setProofKey]       = useState('');
+    const [proofUploading, setProofUploading] = useState(false);
+    const [proofError,     setProofError]     = useState('');
 
     useEffect(() => {
         api.get('/shops').then(r => setShops(r.data)).catch(() => {});
@@ -154,18 +157,25 @@ const AdminEntryPage = () => {
     const breakdown  = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + parseFloat(form.payment_in || 0);
     const diff       = breakdown - total;
     const mismatch   = form.excel_total_sale !== '' && Math.abs(diff) > 0.01;
-    const canSubmit  = form.shop_id && form.date && form.excel_total_sale !== '' && !submitting && (!mismatch || allowMismatch);
+    const canSubmit  = form.shop_id && form.date && form.excel_total_sale !== '' && !submitting && (!mismatch || allowMismatch) && !!proofKey && !proofUploading;
 
     /* ── Photo ──────────────────────────────────────────────────── */
-    const handlePhotoChange = (e) => {
+    // Mandatory Photo Proof — uploads to private S3 on selection, stores object key
+    const handlePhotoChange = async (e) => {
         const f = e.target.files[0]; if (!f) return;
         setPhotoFile(f); setPhotoPreview(URL.createObjectURL(f));
-    };
-    const uploadPhoto = async () => {
-        if (!photoFile) return null;
-        const fd = new FormData(); fd.append('photo', photoFile);
-        const res = await api.post('/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-        return res.data.url;
+        setProofKey(''); setProofError(''); setProofUploading(true);
+        try {
+            const fd = new FormData(); fd.append('photo', f);
+            const res = await api.post('/upload/photo-proof', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+            if (!res.data?.key) throw new Error('No key returned');
+            setProofKey(res.data.key);
+        } catch (err) {
+            setProofKey('');
+            setProofError(err.response?.data?.error || 'Photo upload failed. Please retry.');
+        } finally {
+            setProofUploading(false);
+        }
     };
 
     /* ── Excel ──────────────────────────────────────────────────── */
@@ -209,10 +219,9 @@ const AdminEntryPage = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!canSubmit) return;
+        if (!proofKey) { setProofError('Photo Proof is required to submit this entry.'); return; }
         setSubmitting(true); setError(null); setSuccess(null);
         try {
-            let photoUrl = null;
-            if (photoFile) photoUrl = await uploadPhoto();
             const piAmt = parseFloat(form.payment_in || 0);
             if (piAmt > 0 && !form.payment_in_admin_id) {
                 setError('Select an Admin Bank Account for Payment In.');
@@ -228,7 +237,8 @@ const AdminEntryPage = () => {
                 razorpay:            parseFloat(form.razorpay || 0),
                 payment_in:          piAmt,
                 payment_in_admin_id: form.payment_in_admin_id || null,
-                photo_url:           photoUrl,
+                photo_url:           null,
+                photo_proof_key:     proofKey,
             };
             await api.post('/entries', payload);
 
@@ -478,26 +488,41 @@ const AdminEntryPage = () => {
                             </div>
                         )}
 
-                        {/* Photo Proof */}
+                        {/* Photo Proof (MANDATORY · private S3) */}
                         <div>
-                            <label className={lCls}>Photo Proof (optional)</label>
+                            <label className={lCls}>Photo Proof <span className="text-red-600 font-bold">* (Required)</span></label>
                             <div className="flex items-center gap-3">
-                                <button type="button" onClick={() => fileRef.current?.click()}
-                                    className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
+                                <button type="button" onClick={() => fileRef.current?.click()} disabled={proofUploading}
+                                    className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg border transition-colors ${
+                                        proofKey ? 'bg-green-50 border-green-300 text-green-700'
+                                        : 'text-gray-600 bg-gray-50 border-gray-200 hover:bg-gray-100'}`}>
                                     <Camera className="h-3.5 w-3.5" />
-                                    {photoFile ? 'Change Photo' : 'Upload Photo'}
+                                    {proofUploading ? 'Uploading…' : proofKey ? 'Change Photo' : 'Upload Photo'}
                                 </button>
                                 {photoPreview && (
                                     <div className="relative">
                                         <img src={photoPreview} alt="proof" className="h-12 w-12 object-cover rounded-lg border border-gray-200" />
                                         <button type="button"
-                                            onClick={() => { setPhotoFile(null); setPhotoPreview(''); }}
+                                            onClick={() => { setPhotoFile(null); setPhotoPreview(''); setProofKey(''); setProofError(''); }}
                                             className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5">
                                             <X className="h-2.5 w-2.5" />
                                         </button>
                                     </div>
                                 )}
                             </div>
+                            {proofKey && !proofUploading && (
+                                <p className="text-[11px] text-green-700 flex items-center gap-1 font-semibold mt-1">
+                                    <CheckCircle2 className="h-3.5 w-3.5" /> Photo uploaded successfully
+                                </p>
+                            )}
+                            {proofError && (
+                                <p className="text-[11px] text-red-600 flex items-center gap-1 font-semibold mt-1">
+                                    <AlertCircle className="h-3.5 w-3.5" /> {proofError}
+                                </p>
+                            )}
+                            {!proofKey && !proofUploading && !proofError && (
+                                <p className="text-[11px] text-amber-700 mt-1">Photo Proof is required to submit this entry.</p>
+                            )}
                             <input ref={fileRef} type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
                         </div>
 

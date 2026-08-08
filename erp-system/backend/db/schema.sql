@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS daily_entries (
     locked           BOOLEAN DEFAULT false,
     edit_enabled_till TIMESTAMP,
     photo_url        TEXT,
+    -- Mandatory Photo Proof — stores ONLY the private-S3 object key (never binary)
+    photo_proof_key  TEXT,
     submitted_lat    DECIMAL(10,7),
     submitted_lng    DECIMAL(10,7),
     created_by       INT REFERENCES users(id) ON DELETE SET NULL,

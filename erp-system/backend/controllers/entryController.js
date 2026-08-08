@@ -2,6 +2,17 @@ const db      = require('../config/db');
 const msg     = require('../services/msg91Service');
 const wa      = require('../services/aiSensyService');
 const anomaly = require('../services/anomalyService');
+const { getViewUrl } = require('../services/storageService');
+
+const PHOTO_PROOF_REQUIRED_MSG = 'Photo Proof is required to submit this entry.';
+
+// Attach a presigned view URL for each row's photo_proof_key (private-S3 safe).
+async function attachProofUrls(rows) {
+    await Promise.all(rows.map(async (r) => {
+        if (r && r.photo_proof_key) r.photo_proof_url = await getViewUrl(r.photo_proof_key);
+    }));
+    return rows;
+}
 
 const emitDashboard = (req, payload) => {
     try { req.app.get('io')?.emit('dashboard_update', payload); } catch (_) {}
@@ -29,12 +40,16 @@ const getTodayUTC = () => new Date().toISOString().split('T')[0];
 // ─────────────────────────────────────────────────────────────────
 exports.createEntry = async (req, res) => {
     const { shop_id, date, excel_total_sale, cash, online, razorpay, entry_type,
-            payment_in, payment_in_admin_id } = req.body;
+            payment_in, payment_in_admin_id, photo_proof_key } = req.body;
     const isAdmin   = req.user.role === 'admin';
     const entryType = entry_type === 'no_sale' ? 'no_sale' : 'normal';
 
     const entryDate = date ? String(date).split('T')[0] : null;
     if (!entryDate) return res.status(400).json({ error: 'Date is required.' });
+
+    // ── Mandatory Photo Proof (all roles) — cannot be bypassed via API ──
+    const proofKey = typeof photo_proof_key === 'string' ? photo_proof_key.trim() : '';
+    if (!proofKey) return res.status(400).json({ error: PHOTO_PROOF_REQUIRED_MSG });
 
     // Shop users can only submit today's entry
     if (!isAdmin) {
@@ -68,12 +83,12 @@ exports.createEntry = async (req, res) => {
             const result = await client.query(
                 `INSERT INTO daily_entries
                     (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay,
-                     payment_in, payment_in_admin_id,
+                     payment_in, payment_in_admin_id, photo_proof_key,
                      approval_status, locked, approved_by, approved_at, wallet_credited, entry_type, created_by)
-                 VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, 'APPROVED', true, $9, NOW(), true, $10, $9)
+                 VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, $11, 'APPROVED', true, $9, NOW(), true, $10, $9)
                  RETURNING *`,
                 [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0,
-                 piAmt, piAdmin, req.user.id, entryType],
+                 piAmt, piAdmin, req.user.id, entryType, proofKey],
             );
 
             // Credit cash portion to shop wallet
@@ -126,12 +141,12 @@ exports.createEntry = async (req, res) => {
         const result = await client.query(
             `INSERT INTO daily_entries
                 (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay,
-                 payment_in, payment_in_admin_id,
+                 payment_in, payment_in_admin_id, photo_proof_key,
                  approval_status, wallet_credited, entry_type, created_by)
-             VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, 'PENDING', true, $9, $10)
+             VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, $11, 'PENDING', true, $9, $10)
              RETURNING *`,
             [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0,
-             piAmt, piAdmin, entryType, req.user.id],
+             piAmt, piAdmin, entryType, req.user.id, proofKey],
         );
 
         // Credit ONLY the cash portion to the shop wallet immediately on submission
@@ -190,7 +205,7 @@ exports.updateEntry = async (req, res) => {
     const { id } = req.params;
     const isAdmin = req.user.role === 'admin';
     const { cash, online, razorpay, total_sale, excel_total_sale, date,
-            payment_in, payment_in_admin_id } = req.body;
+            payment_in, payment_in_admin_id, photo_proof_key } = req.body;
 
     const client = await db.pool.connect();
     try {
@@ -247,9 +262,19 @@ exports.updateEntry = async (req, res) => {
             ? (payment_in_admin_id ? parseInt(payment_in_admin_id) : null)
             : entry.payment_in_admin_id;
 
+        // ── Mandatory Photo Proof — keep existing unless a new one is provided; never allow blank ──
+        const providedProof = typeof photo_proof_key === 'string' ? photo_proof_key.trim() : '';
+        const effectiveProof = providedProof || entry.photo_proof_key;
+        if (!effectiveProof) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: PHOTO_PROOF_REQUIRED_MSG });
+        }
+
         const setCols  = ['cash = $1', 'online = $2', 'razorpay = $3', 'payment_in = $4', 'payment_in_admin_id = $5'];
         const setVals  = [newCash, newOnline, newRazorpay, newPiAmtVal, newPiAdmin];
         let   pIdx     = 6;
+
+        setCols.push(`photo_proof_key = $${pIdx++}`); setVals.push(effectiveProof);
 
         if (isAdmin) {
             setCols.push(`total_sale = $${pIdx++}`);       setVals.push(newTotal);
@@ -362,7 +387,7 @@ exports.getEntries = async (req, res) => {
         // Without ?page — return flat array (backward compat for AdminApprovalPage)
         if (!page) {
             const result = await db.query(baseSelect + where + order, params);
-            return res.json(result.rows);
+            return res.json(await attachProofUrls(result.rows));
         }
 
         // With ?page — return paginated wrapper
@@ -383,7 +408,7 @@ exports.getEntries = async (req, res) => {
         );
 
         res.json({
-            entries: result.rows,
+            entries: await attachProofUrls(result.rows),
             total,
             page:  pageNum,
             pages: Math.ceil(total / limitNum) || 1,
@@ -391,6 +416,28 @@ exports.getEntries = async (req, res) => {
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────
+// GET PHOTO PROOF  (fresh presigned S3 URL, generated on demand)
+// Keeps the bucket private and credentials backend-only.
+// ─────────────────────────────────────────────────────────────────
+exports.getEntryPhotoProof = async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            'SELECT photo_proof_key FROM daily_entries WHERE id = $1', [req.params.id]
+        );
+        if (!rows.length) return res.status(404).json({ error: 'Entry not found' });
+        const key = rows[0].photo_proof_key;
+        if (!key) return res.status(404).json({ error: 'No Photo Proof' });
+
+        const url = await getViewUrl(key);
+        if (!url) return res.status(502).json({ error: 'Could not generate photo link. Please retry.' });
+        res.json({ url });
+    } catch (err) {
+        console.error('[getEntryPhotoProof]', err.message);
+        res.status(500).json({ error: 'Failed to load photo proof' });
     }
 };
 
@@ -410,7 +457,7 @@ exports.getPendingEntries = async (req, res) => {
              WHERE e.approval_status = 'PENDING'
              ORDER BY e.created_at ASC`,
         );
-        res.json(result.rows);
+        res.json(await attachProofUrls(result.rows));
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

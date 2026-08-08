@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { getViewUrl } = require('../services/storageService');
 
 // ── Admin Dashboard ──────────────────────────────────────────────
 exports.getAdminDashboard = async (req, res) => {
@@ -161,6 +162,11 @@ exports.getShopDashboard = async (req, res) => {
         );
 
         const summary = summaryQ.rows[0];
+
+        // Attach presigned view URLs for each entry's private-S3 photo proof
+        await Promise.all(entriesQ.rows.map(async (r) => {
+            if (r.photo_proof_key) r.photo_proof_url = await getViewUrl(r.photo_proof_key);
+        }));
 
         res.json({
             totalSales:  parseFloat(summary.total_sales),

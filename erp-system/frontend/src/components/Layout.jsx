@@ -5,7 +5,7 @@ import AIChat from './AIChat';
 import { AuthContext } from '../context/AuthContext';
 import { Menu } from 'lucide-react';
 
-const Layout = ({ children, title }) => {
+const Layout = ({ children, title, subtitle }) => {
     const { user } = useContext(AuthContext);
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -46,7 +46,10 @@ const Layout = ({ children, title }) => {
                         </button>
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#c2410c' }}>SIZE24 ERP</p>
-                            <h1 className="text-base sm:text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{title}</h1>
+                            <h1 className="text-base sm:text-xl font-bold leading-tight" style={{ color: 'var(--text-primary)' }}>{title}</h1>
+                            {subtitle && (
+                                <p className="text-xs mt-0.5 hidden sm:block" style={{ color: 'var(--text-secondary)' }}>{subtitle}</p>
+                            )}
                         </div>
                     </div>
                     <div className="flex items-center gap-2 sm:gap-3">

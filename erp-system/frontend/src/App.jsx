@@ -79,6 +79,13 @@ import ProductMasterPage      from './pages/manufacturing/ProductMasterPage';
 import ShopDashboard   from './pages/ShopDashboard';
 import ShopSelectPage  from './pages/ShopSelectPage';
 
+// Attendance Module
+import MyAttendancePage         from './pages/attendance/MyAttendancePage';
+import AdminAttendanceDashboard from './pages/attendance/AdminAttendanceDashboard';
+import AttendanceApprovalsPage  from './pages/attendance/AttendanceApprovalsPage';
+import AttendanceSettingsPage   from './pages/attendance/AttendanceSettingsPage';
+import AttendanceReportsPage    from './pages/attendance/AttendanceReportsPage';
+
 function AppInner() {
   const { user, setUser } = useContext(AuthContext);
 
@@ -173,6 +180,16 @@ function AppInner() {
         <Route path="/mrp"       element={<PrivateRoute allowedRoles={['admin','manager']}><MRPPage /></PrivateRoute>} />
         <Route path="/settings"  element={<PrivateRoute allowedRoles={['admin']}><SettingsPage /></PrivateRoute>} />
         <Route path="/ai"        element={<PrivateRoute allowedRoles={['admin','manager']}><AIDashboard /></PrivateRoute>} />
+
+        {/* ── Attendance Module ─────────────────────────────────── */}
+        {/* Self-service punch (manager + admin; employees use Shop Dashboard) */}
+        <Route path="/attendance/me"          element={<PrivateRoute allowedRoles={['admin','manager']}><MyAttendancePage /></PrivateRoute>} />
+        {/* Dashboard + table — admin (all shops) & manager (own shops) */}
+        <Route path="/attendance"             element={<PrivateRoute allowedRoles={['admin','manager']}><AdminAttendanceDashboard /></PrivateRoute>} />
+        <Route path="/attendance/reports"     element={<PrivateRoute allowedRoles={['admin','manager']}><AttendanceReportsPage /></PrivateRoute>} />
+        {/* Admin-only approvals & config */}
+        <Route path="/attendance/approvals"   element={<PrivateRoute allowedRoles={['admin']}><AttendanceApprovalsPage /></PrivateRoute>} />
+        <Route path="/attendance/settings"    element={<PrivateRoute allowedRoles={['admin']}><AttendanceSettingsPage /></PrivateRoute>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />

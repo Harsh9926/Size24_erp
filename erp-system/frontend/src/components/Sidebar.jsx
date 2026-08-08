@@ -10,7 +10,7 @@ import {
     Wallet, Receipt, TriangleAlert, Lock,
     Package, ShoppingCart, TrendingUp, Truck, BookOpen, ChevronDown,
     Scissors, Layers, List, Wrench, Building2, Zap, Tag, DollarSign, BookOpenCheck,
-    Scale, Target, Factory, Settings, Brain,
+    Scale, Target, Factory, Settings, Brain, Fingerprint, CalendarCheck,
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -217,6 +217,19 @@ const accountingLinks = [
     { to: '/accounting/gst-ledger',     label: 'GST Ledger',     icon: BookOpenCheck   },
 ];
 
+const attendanceAdminLinks = [
+    { to: '/attendance',           label: 'Dashboard',      icon: LayoutDashboard },
+    { to: '/attendance/approvals', label: 'Approvals',      icon: ShieldCheck     },
+    { to: '/attendance/reports',   label: 'Reports',        icon: BarChart3       },
+    { to: '/attendance/settings',  label: 'Settings',       icon: Settings        },
+    { to: '/attendance/me',        label: 'My Attendance',  icon: Fingerprint     },
+];
+const attendanceManagerLinks = [
+    { to: '/attendance/me',      label: 'My Attendance',   icon: Fingerprint     },
+    { to: '/attendance',         label: 'Shop Attendance', icon: LayoutDashboard },
+    { to: '/attendance/reports', label: 'Reports',         icon: BarChart3       },
+];
+
 const phase3Modules = [
     { to: '/hr',        label: 'HR & Payroll',    icon: Users    },
     { to: '/crm',       label: 'CRM',             icon: Target   },
@@ -239,6 +252,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     const [billingOpen, setBillingOpen]   = useState(false);
     const [accOpen, setAccOpen]           = useState(false);
     const [p3Open, setP3Open]             = useState(false);
+    const [attOpen, setAttOpen]           = useState(false);
 
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
@@ -453,6 +467,40 @@ const Sidebar = ({ isOpen, onClose }) => {
                                 <div className="ml-4 pl-3 border-l border-white/10 space-y-0.5 mt-0.5">
                                     {accountingLinks.map(({ to, label, icon: Icon }) => (
                                         <NavLink key={to} to={to} end={to === '/accounting'}
+                                            onClick={() => { if (onClose) onClose(); }}
+                                            className={({ isActive }) =>
+                                                `flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 group ${isActive
+                                                    ? 'text-white shadow-lg'
+                                                    : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                                                }`
+                                            }
+                                            style={({ isActive }) => isActive ? { backgroundColor: '#c2410c' } : {}}
+                                        >
+                                            <Icon className="h-4 w-4 flex-shrink-0" />
+                                            <span className="flex-1">{label}</span>
+                                        </NavLink>
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    )}
+
+                    {/* Attendance Section — admin + manager */}
+                    {(user?.role === 'admin' || user?.role === 'manager') && (
+                        <>
+                            <div className="my-2 border-t border-white/10" />
+                            <button
+                                onClick={() => setAttOpen(o => !o)}
+                                className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:bg-white/10 hover:text-white transition-all duration-150"
+                            >
+                                <CalendarCheck className="h-5 w-5 flex-shrink-0" style={{ color: attOpen ? '#FF6B00' : undefined }} />
+                                <span className="flex-1 text-left">Attendance</span>
+                                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${attOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {attOpen && (
+                                <div className="ml-4 pl-3 border-l border-white/10 space-y-0.5 mt-0.5">
+                                    {(user?.role === 'admin' ? attendanceAdminLinks : attendanceManagerLinks).map(({ to, label, icon: Icon }) => (
+                                        <NavLink key={to} to={to} end={to === '/attendance'}
                                             onClick={() => { if (onClose) onClose(); }}
                                             className={({ isActive }) =>
                                                 `flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 group ${isActive

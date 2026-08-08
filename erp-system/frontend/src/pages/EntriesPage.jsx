@@ -6,6 +6,7 @@ import {
     Lock, Unlock, ChevronLeft, ChevronRight,
     Search, Filter, RefreshCw, Calendar, ArrowRightLeft, Pencil, X,
     FileSpreadsheet, ChevronDown, ChevronUp, Loader2, TriangleAlert, Trash2,
+    Image as ImageIcon, AlertCircle, ListChecks, Eye,
 } from 'lucide-react';
 
 const fmt = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
@@ -23,8 +24,8 @@ const statusBadge = {
 };
 
 const inputCls =
-    'px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none ' +
-    'focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 bg-white text-gray-700';
+    'h-10 px-3 text-sm border border-gray-200 rounded-lg outline-none ' +
+    'focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-700 transition-shadow';
 
 const EntriesPage = () => {
     const { user } = useContext(AuthContext);
@@ -150,6 +151,32 @@ const EntriesPage = () => {
     const [editLoading, setEditLoading] = useState(false);
     const [editError,   setEditError]   = useState('');
     const [piAdmins,    setPiAdmins]    = useState([]);
+
+    // ── Cash Transfers collapse ───────────────────────────────────
+    const [txOpen, setTxOpen] = useState(true);
+
+    // ── Photo Proof lightbox state ────────────────────────────────
+    const [photoModal,   setPhotoModal]   = useState(null); // entry being viewed
+    const [photoUrl,     setPhotoUrl]     = useState('');
+    const [photoLoading, setPhotoLoading] = useState(false);
+    const [photoError,   setPhotoError]   = useState('');
+
+    const openPhoto = async (entry) => {
+        setPhotoModal(entry);
+        setPhotoUrl(''); setPhotoError(''); setPhotoLoading(true);
+        try {
+            // Backend generates a fresh presigned S3 GET URL on demand
+            const res = await api.get(`/entries/${entry.id}/photo-proof`);
+            if (!res.data?.url) throw new Error('No Photo Proof');
+            setPhotoUrl(res.data.url);
+        } catch (err) {
+            setPhotoError(err.response?.status === 404
+                ? 'No Photo Proof'
+                : (err.response?.data?.error || 'Could not load photo. Please retry.'));
+        } finally {
+            setPhotoLoading(false);
+        }
+    };
 
     // ── Excel sheet modal state ───────────────────────────────────
     const [excelModal,   setExcelModal]   = useState(null);
@@ -277,10 +304,16 @@ const EntriesPage = () => {
     const hasFilters = dateFrom || dateTo || shopFilter || statusFilter;
 
     return (
-        <Layout title="Daily Entries">
+        <Layout title="Daily Entries" subtitle="Manage, review and monitor daily shop entries.">
 
-            {/* ── Filter bar ───────────────────────────────────── */}
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 sm:px-5 py-4 mb-5">
+          <div className="max-w-[1600px] mx-auto space-y-4">
+
+            {/* ── Filter toolbar ───────────────────────────────── */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 sm:px-5 py-4">
+                <div className="flex items-center gap-2 mb-3">
+                    <Filter className="h-4 w-4 text-indigo-500" />
+                    <h2 className="text-sm font-semibold text-gray-700">Filters</h2>
+                </div>
                 <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3">
 
                     {/* Date row — side by side on mobile */}
@@ -351,45 +384,45 @@ const EntriesPage = () => {
                     <div className="flex gap-2 sm:ml-auto items-center">
                         {hasFilters && (
                             <button onClick={clearFilters}
-                                className="flex-1 sm:flex-none px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors">
+                                className="flex-1 sm:flex-none h-10 px-3.5 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">
                                 Clear
                             </button>
                         )}
                         <button onClick={() => applyFilters()}
-                            className="flex-1 sm:flex-none px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors">
-                            <Search className="h-3.5 w-3.5" /> Search
+                            className="flex-1 sm:flex-none h-10 px-5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg flex items-center justify-center gap-1.5 shadow-sm transition-colors">
+                            <Search className="h-4 w-4" /> Search
                         </button>
-                        <button onClick={() => loadEntries(page)} title="Refresh"
-                            className="px-3 py-2 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors">
-                            <RefreshCw className="h-4 w-4" />
+                        <button onClick={() => loadEntries(page)} title="Refresh entries" aria-label="Refresh entries"
+                            className="h-10 w-10 flex items-center justify-center border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 hover:text-indigo-600 transition-colors">
+                            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                         </button>
                     </div>
                 </div>
-            </div>
 
-            {/* ── Missing Shops Toggle + Panel ─────────────────── */}
-            <div className="mb-4 flex items-center gap-3">
-                <button
-                    onClick={toggleMissingShops}
-                    className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border transition-all ${
-                        showMissing
-                            ? 'bg-red-50 border-red-300 text-red-700'
-                            : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}>
-                    {todayLoading
-                        ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Loading…</>
-                        : <><Filter className="h-3.5 w-3.5" /> {showMissing ? 'Hide Missing Shops' : 'Show Missing Shops Today'}</>
-                    }
-                </button>
-                {todayStatus && showMissing && (
-                    <span className="text-xs text-gray-500">
-                        {todayStatus.submittedCount}/{todayStatus.totalShops} submitted
-                    </span>
-                )}
+                {/* Missing shops — secondary outlined action within the toolbar */}
+                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-3">
+                    <button
+                        onClick={toggleMissingShops}
+                        className={`inline-flex items-center gap-2 h-9 px-3.5 text-sm font-medium rounded-lg border transition-all ${
+                            showMissing
+                                ? 'bg-red-50 border-red-200 text-red-700'
+                                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}>
+                        {todayLoading
+                            ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Loading…</>
+                            : <><ListChecks className="h-3.5 w-3.5" /> {showMissing ? 'Hide Missing Shops' : 'Show Missing Shops Today'}</>
+                        }
+                    </button>
+                    {todayStatus && showMissing && (
+                        <span className="text-xs text-gray-500 font-medium">
+                            {todayStatus.submittedCount}/{todayStatus.totalShops} submitted
+                        </span>
+                    )}
+                </div>
             </div>
 
             {showMissing && todayStatus && (
-                <div className="mb-4 rounded-xl border overflow-hidden shadow-sm">
+                <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm">
                     <div className="px-4 py-3 text-xs font-bold uppercase tracking-wide bg-gray-50 border-b border-gray-100 text-gray-500">
                         Today's Submission Status — {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                     </div>
@@ -424,30 +457,29 @@ const EntriesPage = () => {
             )}
 
             {/* ── Table ────────────────────────────────────────── */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
 
                 {/* Header row */}
-                <div className="px-4 sm:px-6 py-3.5 border-b border-gray-100 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-gray-700">
-                        {loading ? 'Loading…' : (
-                            <>
-                                {total.toLocaleString('en-IN')} entr{total === 1 ? 'y' : 'ies'}
-                                {hasFilters && <span className="ml-1.5 text-xs text-indigo-500 font-medium">(filtered)</span>}
-                            </>
-                        )}
-                    </p>
-                    <p className="text-xs text-gray-400">
+                <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                    <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2">
+                        Daily Entries
+                        <span className="text-xs font-medium text-gray-400">
+                            {loading ? '· loading…' : `· ${total.toLocaleString('en-IN')} total`}
+                            {hasFilters && <span className="ml-1 text-indigo-500">(filtered)</span>}
+                        </span>
+                    </h3>
+                    <p className="text-xs text-gray-400 font-medium">
                         Page {page} of {pages}
                     </p>
                 </div>
 
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-100">
-                        <thead className="bg-gray-50">
+                        <thead className="bg-gray-50/80">
                             <tr>
-                                {['Date', 'Shop', 'Total Sale', 'Cash', 'QR/Card/Bank', 'RazorPay', 'Approval', 'Lock', 'Action'].map(h => (
+                                {['Date', 'Shop', 'Total Sale', 'Cash', 'QR/Card/Bank', 'RazorPay', 'Approval', 'Lock', 'Actions'].map(h => (
                                     <th key={h}
-                                        className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">
+                                        className="px-4 py-3.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                                         {h}
                                     </th>
                                 ))}
@@ -456,14 +488,14 @@ const EntriesPage = () => {
                         <tbody className="divide-y divide-gray-100">
                             {loading && (
                                 <tr>
-                                    <td colSpan="9" className="text-center py-14 text-gray-400 text-sm animate-pulse">
-                                        Loading entries…
+                                    <td colSpan="9" className="text-center py-12 text-gray-400 text-sm">
+                                        <Loader2 className="h-5 w-5 animate-spin inline mr-2 align-[-3px]" /> Loading entries…
                                     </td>
                                 </tr>
                             )}
                             {!loading && entries.length === 0 && (
                                 <tr>
-                                    <td colSpan="9" className="text-center py-14 text-gray-400 text-sm">
+                                    <td colSpan="9" className="text-center py-12 text-gray-400 text-sm">
                                         No entries found{hasFilters ? ' for the selected filters' : ''}
                                     </td>
                                 </tr>
@@ -472,18 +504,18 @@ const EntriesPage = () => {
                                 const eFlags = anomalyMap[e.id] || [];
                                 const hasHigh = eFlags.some(f => f.severity === 'high');
                                 return (
-                                <tr key={e.id} className="hover:bg-gray-50 transition-colors"
+                                <tr key={e.id} className="hover:bg-indigo-50/40 transition-colors"
                                     style={eFlags.length > 0 ? { background: hasHigh ? 'rgba(239,68,68,0.04)' : 'rgba(245,158,11,0.04)' } : {}}>
 
-                                    {/* Date */}
-                                    <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                                    {/* Date — readable but secondary */}
+                                    <td className="px-4 py-4 text-[13px] text-gray-500 whitespace-nowrap">
                                         {new Date(e.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                                     </td>
 
-                                    {/* Shop */}
-                                    <td className="px-4 py-3 text-sm font-medium text-indigo-600 whitespace-nowrap">
+                                    {/* Shop — visually prominent */}
+                                    <td className="px-4 py-4 whitespace-nowrap">
                                         <div className="flex items-center gap-1.5">
-                                            {e.shop_name}
+                                            <span className="text-sm font-semibold text-gray-900">{e.shop_name}</span>
                                             {eFlags.length > 0 && (
                                                 <span title={eFlags.map(f => f.label + ': ' + f.detail).join('\n')}
                                                     className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${hasHigh ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
@@ -494,30 +526,31 @@ const EntriesPage = () => {
                                         </div>
                                     </td>
 
-                                    {/* Total Sale */}
-                                    <td className="px-4 py-3 text-sm font-bold text-gray-900 whitespace-nowrap">
+                                    {/* Total Sale — strongest monetary value */}
+                                    <td className="px-4 py-4 text-[15px] font-bold text-gray-900 tabular-nums whitespace-nowrap">
                                         ₹{Number(e.total_sale || 0).toLocaleString('en-IN')}
                                     </td>
 
                                     {/* Cash */}
-                                    <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                                    <td className="px-4 py-4 text-sm text-gray-600 tabular-nums whitespace-nowrap">
                                         ₹{Number(e.cash || 0).toLocaleString('en-IN')}
                                     </td>
 
                                     {/* Online */}
-                                    <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                                    <td className="px-4 py-4 text-sm text-gray-600 tabular-nums whitespace-nowrap">
                                         ₹{Number(e.online ?? e.paytm ?? 0).toLocaleString('en-IN')}
                                     </td>
 
                                     {/* RazorPay */}
-                                    <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                                    <td className="px-4 py-4 text-sm text-gray-600 tabular-nums whitespace-nowrap">
                                         ₹{Number(e.razorpay || 0).toLocaleString('en-IN')}
                                     </td>
 
                                     {/* Approval status + entry type */}
-                                    <td className="px-4 py-3">
+                                    <td className="px-4 py-4">
                                         <div className="flex flex-col gap-1">
-                                            <span className={`px-2 py-0.5 text-xs font-semibold rounded-full border w-fit ${statusBadge[e.approval_status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-full border w-fit ${statusBadge[e.approval_status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                                                <span className={`h-1.5 w-1.5 rounded-full ${e.approval_status === 'APPROVED' ? 'bg-green-500' : e.approval_status === 'REJECTED' ? 'bg-red-500' : 'bg-amber-500'}`} />
                                                 {(e.approval_status || 'PENDING').charAt(0) + (e.approval_status || 'PENDING').slice(1).toLowerCase()}
                                             </span>
                                             {e.entry_type === 'no_sale' && (
@@ -529,40 +562,55 @@ const EntriesPage = () => {
                                     </td>
 
                                     {/* Lock status */}
-                                    <td className="px-4 py-3">
+                                    <td className="px-4 py-4">
                                         {isEditable(e) ? (
-                                            <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700 border border-amber-200">
-                                                Unlocked
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+                                                <Unlock className="h-3 w-3" /> Unlocked
                                             </span>
                                         ) : (
-                                            <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${e.locked ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-full border ${e.locked ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
+                                                {e.locked ? <Lock className="h-3 w-3" /> : <span className="h-1.5 w-1.5 rounded-full bg-green-500" />}
                                                 {e.locked ? 'Locked' : 'Open'}
                                             </span>
                                         )}
                                     </td>
 
-                                    {/* Action */}
-                                    <td className="px-4 py-3">
+                                    {/* Actions */}
+                                    <td className="px-4 py-4">
                                         <div className="flex items-center gap-1.5">
+                                            {/* Unlock — compact, only when locked */}
                                             {e.locked && !isEditable(e) && (
-                                                <button onClick={() => handleUnlock(e.id)}
-                                                    className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium border border-indigo-200 px-2 py-1 rounded-md hover:bg-indigo-50 transition-colors">
-                                                    <Unlock className="h-3 w-3" /> Unlock
+                                                <button onClick={() => handleUnlock(e.id)} title="Unlock for editing"
+                                                    className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-colors">
+                                                    <Unlock className="h-4 w-4" />
                                                 </button>
                                             )}
-                                            <button onClick={() => openEdit(e)}
-                                                className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 font-medium border border-amber-200 px-2 py-1 rounded-md hover:bg-amber-50 transition-colors">
-                                                <Pencil className="h-3 w-3" /> Edit
+
+                                            {/* Edit — secondary icon */}
+                                            <button onClick={() => openEdit(e)} title="Edit entry"
+                                                className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:text-amber-600 hover:border-amber-200 hover:bg-amber-50 transition-colors">
+                                                <Pencil className="h-4 w-4" />
                                             </button>
-                                            <button onClick={() => openExcel(e)}
-                                                className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 font-medium border border-emerald-200 px-2 py-1 rounded-md hover:bg-emerald-50 transition-colors">
-                                                <FileSpreadsheet className="h-3 w-3" /> Sheet
+
+                                            {/* View Photo — primary/important, distinct */}
+                                            <button onClick={() => openPhoto(e)}
+                                                title={e.photo_proof_key || e.photo_proof_url ? 'View Photo Proof' : 'No Photo Proof'}
+                                                className="h-8 inline-flex items-center gap-1.5 px-2.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 shadow-sm transition-colors">
+                                                <Eye className="h-3.5 w-3.5" /> View Photo
                                             </button>
+
+                                            {/* Sheet — secondary icon */}
+                                            <button onClick={() => openExcel(e)} title="View Excel sheet"
+                                                className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 transition-colors">
+                                                <FileSpreadsheet className="h-4 w-4" />
+                                            </button>
+
+                                            {/* Delete — subtle danger icon */}
                                             {canDelete && (
                                                 <button onClick={() => { setDeleteModalEntry(e); setDeleteError(''); }}
-                                                    className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-medium border border-red-200 px-2 py-1 rounded-md hover:bg-red-50 transition-colors"
-                                                    title="Permanently Delete Entry">
-                                                    <Trash2 className="h-3 w-3" /> Delete
+                                                    title="Permanently delete entry"
+                                                    className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-transparent text-gray-400 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors">
+                                                    <Trash2 className="h-4 w-4" />
                                                 </button>
                                             )}
                                         </div>
@@ -621,35 +669,40 @@ const EntriesPage = () => {
                     </div>
                 )}
             </div>
-            {/* ── Cash Transfers ───────────────────────────────── */}
-            <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            {/* ── Cash Transfers (secondary, collapsible) ──────── */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
 
-                {/* Header */}
-                <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
-                    <div className="flex items-center gap-2">
+                {/* Header — click to collapse */}
+                <div className="px-4 sm:px-6 py-4 flex items-center justify-between flex-wrap gap-3">
+                    <button onClick={() => setTxOpen(o => !o)} className="flex items-center gap-2 group">
+                        <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${txOpen ? '' : '-rotate-90'}`} />
                         <ArrowRightLeft className="h-4 w-4 text-indigo-500" />
-                        <h3 className="text-base font-semibold text-gray-800">Cash Transfers</h3>
-                        <span className="text-xs text-gray-400">({transfers.length})</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <select value={txStatusFilter}
-                            onChange={e => { setTxStatusFilter(e.target.value); fetchTransfers(e.target.value); }}
-                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-gray-700">
-                            <option value="">All Statuses</option>
-                            <option value="pending">Pending</option>
-                            <option value="accepted">Accepted</option>
-                            <option value="rejected">Rejected</option>
-                        </select>
-                        <button onClick={() => fetchTransfers(txStatusFilter)}
-                            className="flex items-center gap-1.5 text-xs text-indigo-600 hover:underline font-medium">
-                            <RefreshCw className={`h-3.5 w-3.5 ${txLoading ? 'animate-spin' : ''}`} />
-                            Refresh
-                        </button>
-                    </div>
+                        <h3 className="text-base font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors">Cash Transfers</h3>
+                        <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-gray-100 text-gray-600 text-xs font-bold">
+                            {transfers.length}
+                        </span>
+                    </button>
+                    {txOpen && (
+                        <div className="flex items-center gap-2">
+                            <select value={txStatusFilter}
+                                onChange={e => { setTxStatusFilter(e.target.value); fetchTransfers(e.target.value); }}
+                                className="h-9 text-xs border border-gray-200 rounded-lg px-2 outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700">
+                                <option value="">All Statuses</option>
+                                <option value="pending">Pending</option>
+                                <option value="accepted">Accepted</option>
+                                <option value="rejected">Rejected</option>
+                            </select>
+                            <button onClick={() => fetchTransfers(txStatusFilter)} title="Refresh transfers"
+                                className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:text-indigo-600 hover:bg-gray-50 transition-colors">
+                                <RefreshCw className={`h-3.5 w-3.5 ${txLoading ? 'animate-spin' : ''}`} />
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Table */}
-                <div className="overflow-x-auto">
+                {txOpen && (
+                <div className="overflow-x-auto border-t border-gray-100">
                     <table className="min-w-full divide-y divide-gray-100 text-sm">
                         <thead className="bg-gray-50">
                             <tr>
@@ -720,7 +773,10 @@ const EntriesPage = () => {
                         </tbody>
                     </table>
                 </div>
+                )}
             </div>
+
+          </div>{/* /max-w page container */}
 
             {/* ── Edit Entry Modal ─────────────────────────────── */}
             {editEntry && (
@@ -826,6 +882,82 @@ const EntriesPage = () => {
                                 className="flex-1 px-4 py-2 text-sm bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-50">
                                 {editLoading ? 'Saving…' : 'Save Changes'}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Photo Proof Lightbox ─────────────────────────── */}
+            {photoModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                    style={{ background: 'rgba(0,0,0,0.75)' }}
+                    onClick={() => setPhotoModal(null)}>
+                    <div className="w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden"
+                        style={{ background: 'var(--bg-surface)' }}
+                        onClick={(ev) => ev.stopPropagation()}>
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-5 py-3.5 border-b"
+                            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                            <div className="flex items-center gap-2.5">
+                                <div className="h-9 w-9 rounded-lg bg-indigo-50 flex items-center justify-center">
+                                    <ImageIcon className="h-5 w-5 text-indigo-600" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold leading-tight" style={{ color: 'var(--text-primary)' }}>Photo Proof</h3>
+                                    <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{photoModal.shop_name || 'Entry'}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setPhotoModal(null)}
+                                className="p-1.5 rounded-lg hover:bg-gray-100" style={{ color: 'var(--text-secondary)' }} aria-label="Close">
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        {/* Image */}
+                        <div className="p-5 flex items-center justify-center min-h-[240px]"
+                            style={{ background: 'var(--bg-primary)' }}>
+                            {photoLoading ? (
+                                <div className="flex flex-col items-center gap-2 text-gray-500">
+                                    <Loader2 className="h-6 w-6 animate-spin" />
+                                    <span className="text-xs font-medium">Loading photo…</span>
+                                </div>
+                            ) : photoError ? (
+                                <div className="flex flex-col items-center gap-2 text-center">
+                                    <AlertCircle className={`h-8 w-8 ${photoError === 'No Photo Proof' ? 'text-gray-400' : 'text-red-500'}`} />
+                                    <span className={`text-sm font-semibold ${photoError === 'No Photo Proof' ? 'text-gray-500' : 'text-red-600'}`}>
+                                        {photoError}
+                                    </span>
+                                    {photoError !== 'No Photo Proof' && (
+                                        <button onClick={() => openPhoto(photoModal)}
+                                            className="mt-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+                                            <RefreshCw className="h-3 w-3" /> Retry
+                                        </button>
+                                    )}
+                                </div>
+                            ) : photoUrl ? (
+                                <img src={photoUrl} alt="Photo Proof"
+                                    className="max-w-full max-h-[65vh] rounded-lg object-contain shadow-sm"
+                                    onError={() => setPhotoError('Could not load photo. Please retry.')} />
+                            ) : null}
+                        </div>
+
+                        {/* Meta footer */}
+                        <div className="px-5 py-3 border-t grid grid-cols-3 gap-3"
+                            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                            <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Date</p>
+                                <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{fmtDate(photoModal.date)}</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Shop</p>
+                                <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{photoModal.shop_name || '—'}</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Uploaded by</p>
+                                <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                                    {photoModal.submitted_by_name || photoModal.submitted_by_mobile || '—'}
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>

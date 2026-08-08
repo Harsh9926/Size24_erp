@@ -13,6 +13,7 @@ router.post( '/bulk-action',  authenticateToken, requireRole('admin', 'manager')
 
 // ── Shop user / general ───────────────────────────────────────────
 router.get( '/',              authenticateToken, ctrl.getEntries);
+router.get( '/:id/photo-proof', authenticateToken, requireRole('admin', 'manager'), ctrl.getEntryPhotoProof);
 router.post('/',              authenticateToken, ctrl.createEntry);
 router.put( '/:id',          authenticateToken, ctrl.updateEntry);
 

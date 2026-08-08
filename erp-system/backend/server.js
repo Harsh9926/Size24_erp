@@ -97,7 +97,7 @@ const RBAC_SKIP_PATHS = [
     '/auth', '/health', '/locations', '/upload', '/notifications',
     '/permissions', '/excel', '/ai', '/mcp', '/activity', '/cashflow',
     '/audit', '/transfers/balance', '/transfers/managers',
-    '/payment-in/admins',
+    '/payment-in/admins', '/attendance',
 ];
 
 // Maps req.path (after /api) patterns to {module, alwaysWrite}
@@ -172,6 +172,7 @@ app.use('/api/expenses',           require('./routes/expenses'));
 app.use('/api/anomalies',          require('./routes/anomalies'));
 app.use('/api/activity',           require('./routes/activity'));
 app.use('/api/payment-in',         require('./routes/paymentIn'));
+app.use('/api/attendance',         require('./routes/attendance'));
 
 // ── Inventory / Purchase / Sales modules ─────────────────────────────
 app.use('/api/inv',          require('./routes/inventory'));
@@ -441,6 +442,25 @@ httpServer.listen(PORT, async () => {
         console.log('[migrate] Phase 3 Franchise, Service & MRP schema ready');
     } catch (err) {
         console.error('[migrate] Phase 3 Franchise/Service/MRP schema failed:', err.message);
+    }
+
+    // Auto-migrate: mandatory Photo Proof key on daily entries
+    try {
+        await db.query('ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS photo_proof_key TEXT');
+        console.log('[migrate] daily_entries.photo_proof_key ready');
+    } catch (err) {
+        console.error('[migrate] photo_proof_key migration failed:', err.message);
+    }
+
+    // Auto-migrate: Employee Attendance Management module
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql  = fs.readFileSync(path.join(__dirname, 'db', 'attendance_schema.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] Attendance schema ready');
+    } catch (err) {
+        console.error('[migrate] Attendance schema failed:', err.message);
     }
 
     // Auto-migrate: RBAC tables (module_permissions + permission_logs)
