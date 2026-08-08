@@ -45,6 +45,19 @@ CREATE TABLE IF NOT EXISTS attendance_registration (
 );
 CREATE INDEX IF NOT EXISTS idx_att_reg_status ON attendance_registration(status);
 
+-- Self-healing: patch tables created by an earlier partial schema so the
+-- approval columns exist (CREATE TABLE IF NOT EXISTS never adds columns).
+-- All idempotent — no-ops when the column is already present.
+ALTER TABLE attendance_registration ADD COLUMN IF NOT EXISTS shop_id          INT REFERENCES shops(id) ON DELETE SET NULL;
+ALTER TABLE attendance_registration ADD COLUMN IF NOT EXISTS gps_accuracy_m   NUMERIC(8,2);
+ALTER TABLE attendance_registration ADD COLUMN IF NOT EXISTS selfie_url       TEXT;
+ALTER TABLE attendance_registration ADD COLUMN IF NOT EXISTS registered_lat   DECIMAL(10,7);
+ALTER TABLE attendance_registration ADD COLUMN IF NOT EXISTS registered_lng   DECIMAL(10,7);
+ALTER TABLE attendance_registration ADD COLUMN IF NOT EXISTS allowed_radius_m INT DEFAULT 50;
+ALTER TABLE attendance_registration ADD COLUMN IF NOT EXISTS reject_reason    TEXT;
+ALTER TABLE attendance_registration ADD COLUMN IF NOT EXISTS reviewed_by      INT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE attendance_registration ADD COLUMN IF NOT EXISTS reviewed_at      TIMESTAMP;
+
 -- ── 3. Daily attendance (one row per user per day) ─────────────────
 CREATE TABLE IF NOT EXISTS attendance (
     id                    SERIAL PRIMARY KEY,
@@ -130,3 +143,35 @@ CREATE TABLE IF NOT EXISTS location_change_requests (
     created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_loc_change_status ON location_change_requests(status);
+
+-- ── Self-healing for punch + location-change write columns (idempotent) ──
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_in_at          TIMESTAMP;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_in_lat         DECIMAL(10,7);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_in_lng         DECIMAL(10,7);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_in_distance_m  NUMERIC(8,2);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_in_accuracy_m  NUMERIC(8,2);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_in_selfie_url  TEXT;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_in_status      VARCHAR(20);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_in_ip          VARCHAR(64);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_in_browser     VARCHAR(120);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_in_device      VARCHAR(120);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_out_at         TIMESTAMP;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_out_lat        DECIMAL(10,7);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_out_lng        DECIMAL(10,7);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_out_distance_m NUMERIC(8,2);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_out_accuracy_m NUMERIC(8,2);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_out_selfie_url TEXT;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_out_status     VARCHAR(20);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_out_ip         VARCHAR(64);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_out_browser    VARCHAR(120);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_out_device     VARCHAR(120);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS working_hours        NUMERIC(5,2);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS attendance_status    VARCHAR(20) DEFAULT 'present';
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS verification_status  VARCHAR(20) DEFAULT 'ok';
+
+ALTER TABLE location_change_requests ADD COLUMN IF NOT EXISTS gps_accuracy_m NUMERIC(8,2);
+ALTER TABLE location_change_requests ADD COLUMN IF NOT EXISTS selfie_url     TEXT;
+ALTER TABLE location_change_requests ADD COLUMN IF NOT EXISTS reason         TEXT;
+ALTER TABLE location_change_requests ADD COLUMN IF NOT EXISTS reject_reason  TEXT;
+ALTER TABLE location_change_requests ADD COLUMN IF NOT EXISTS reviewed_by    INT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE location_change_requests ADD COLUMN IF NOT EXISTS reviewed_at    TIMESTAMP;
