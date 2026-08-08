@@ -64,11 +64,21 @@ This guide covers deploying the Multi-Store ERP system on AWS.
        listen 80;
        server_name yourdomain.com www.yourdomain.com;
 
+       # Allow Geolocation + Camera for THIS origin only (needed for the
+       # Attendance module: GPS geofence + selfie capture). Scoped to `self`
+       # — this does NOT disable security globally, it explicitly grants the
+       # two features to the app's own origin. `always` sends it on every response.
+       add_header Permissions-Policy "geolocation=(self), camera=(self), microphone=()" always;
+
        # Frontend (React)
        location / {
            root /var/www/erp-frontend;
            index index.html index.htm;
            try_files $uri $uri/ /index.html; # crucial for React Router
+
+           # add_header is not inherited once a location sets its own headers,
+           # so repeat it here to be safe on static asset responses.
+           add_header Permissions-Policy "geolocation=(self), camera=(self), microphone=()" always;
        }
 
        # Backend (Node.js API proxy)

@@ -53,6 +53,11 @@ async function run() {
         `);
         console.log(`[seed] shop_users seeded ${seeded.rowCount} row(s) from shops.user_id`);
 
+        // Mandatory Photo Proof — stores the private-S3 object key on each daily entry.
+        // Idempotent: safe to run repeatedly, no effect if the column already exists.
+        await client.query('ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS photo_proof_key TEXT');
+        console.log('[migrate] daily_entries.photo_proof_key column created/verified');
+
         await client.query('COMMIT');
         console.log('\n✓ Migration complete. Restart the backend: pm2 restart backend');
     } catch (err) {
