@@ -23,6 +23,17 @@ const SelfieCapture = ({ onCapture, facingMode = 'user', label = 'Take Selfie' }
 
     useEffect(() => () => stopStream(), [stopStream]);
 
+    // Bind the stream AFTER the <video> is mounted (active === true).
+    // Attaching before mount left srcObject on a null ref → black screen.
+    useEffect(() => {
+        if (!active || !streamRef.current) return;
+        const video = videoRef.current;
+        if (!video) return;
+        video.srcObject = streamRef.current;
+        const p = video.play();
+        if (p && typeof p.catch === 'function') p.catch(() => { /* autoplay retry on user gesture */ });
+    }, [active]);
+
     const start = async () => {
         setError(''); setStarting(true);
         try {
@@ -30,12 +41,9 @@ const SelfieCapture = ({ onCapture, facingMode = 'user', label = 'Take Selfie' }
                 video: { facingMode }, audio: false,
             });
             streamRef.current = stream;
-            if (videoRef.current) {
-                videoRef.current.srcObject = stream;
-                await videoRef.current.play();
-            }
-            setActive(true);
+            setActive(true);   // mount <video> first; the effect above binds the stream
         } catch (err) {
+            stopStream();
             setError('Camera access is required for attendance. Please allow camera permission and retry.');
         } finally {
             setStarting(false);
@@ -67,7 +75,7 @@ const SelfieCapture = ({ onCapture, facingMode = 'user', label = 'Take Selfie' }
                 {preview ? (
                     <img src={preview} alt="selfie preview" className="w-full h-full object-cover" />
                 ) : active ? (
-                    <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
+                    <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
                 ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 gap-2">
                         <Camera className="h-10 w-10" />
