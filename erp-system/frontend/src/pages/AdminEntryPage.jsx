@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import api from '../services/api';
 import Layout from '../components/Layout';
@@ -6,7 +6,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
     CheckCircle2, XCircle, IndianRupee, Store, Calendar,
     PlusCircle, AlertCircle, FileSpreadsheet, Camera, Loader2,
-    Info, Send, X, Calculator,
+    Info, Send, X, Calculator, Image as ImageIcon, RefreshCw,
 } from 'lucide-react';
 
 /* ── Excel parser (no date restriction for admin) ─────────────────── */
@@ -107,6 +107,153 @@ const fmtAmt = (v) => `₹${parseFloat(v || 0).toLocaleString('en-IN', { minimum
 const EMPTY = { shop_id: '', date: getTodayISO(), excel_total_sale: '', cash: '', online: '', razorpay: '', payment_in: '', payment_in_admin_id: '' };
 
 /* ══════════════════════════════════════════════════════════════════
+   CAMERA CAPTURE MODAL — live preview → capture → retake / use photo
+══════════════════════════════════════════════════════════════════ */
+const CameraProofModal = ({ onClose, onUse }) => {
+    const videoRef  = useRef(null);
+    const canvasRef = useRef(null);
+    const streamRef = useRef(null);
+
+    const [active, setActive]     = useState(false);
+    const [starting, setStarting] = useState(false);
+    const [error, setError]       = useState('');
+    const [preview, setPreview]   = useState('');   // object URL after capture
+    const [blob, setBlob]         = useState(null); // captured blob
+
+    const stopStream = useCallback(() => {
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+    }, []);
+
+    const start = useCallback(async () => {
+        setError(''); setStarting(true);
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: 'environment' } }, audio: false,
+            });
+            streamRef.current = stream;
+            setActive(true);
+        } catch {
+            stopStream();
+            setError('Camera access denied or unavailable. Please allow camera permission, or use "Upload Image" instead.');
+        } finally { setStarting(false); }
+    }, [stopStream]);
+
+    // Auto-start the camera when the modal opens.
+    useEffect(() => { start(); return () => stopStream(); }, [start, stopStream]);
+
+    // Bind the stream only AFTER <video> is mounted (avoids black screen).
+    useEffect(() => {
+        if (!active || !streamRef.current) return;
+        const video = videoRef.current;
+        if (!video) return;
+        video.srcObject = streamRef.current;
+        const p = video.play();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+    }, [active]);
+
+    const snap = () => {
+        const video = videoRef.current, canvas = canvasRef.current;
+        if (!video || !canvas) return;
+        canvas.width  = video.videoWidth  || 720;
+        canvas.height = video.videoHeight || 960;
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((b) => {
+            if (!b) return;
+            setBlob(b);
+            setPreview(URL.createObjectURL(b));
+            stopStream(); setActive(false);
+        }, 'image/jpeg', 0.9);
+    };
+
+    const retake = () => { setPreview(''); setBlob(null); start(); };
+
+    const use = () => {
+        if (!blob) return;
+        const file = new File([blob], `proof-${Date.now()}.jpg`, { type: 'image/jpeg' });
+        stopStream();
+        onUse(file);
+    };
+
+    const close = () => { stopStream(); onClose(); };
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}>
+            <div className="w-full max-w-md rounded-2xl overflow-hidden shadow-2xl" style={{ background: 'var(--bg-surface)' }}>
+                <div className="flex items-center justify-between px-5 py-3.5 border-b"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                    <div className="flex items-center gap-2">
+                        <Camera className="h-4 w-4 text-orange-500" />
+                        <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Capture Photo Proof</h3>
+                    </div>
+                    <button onClick={close} className="p-1.5 rounded-lg hover:bg-gray-200/50" aria-label="Close">
+                        <X className="h-5 w-5 text-gray-400" />
+                    </button>
+                </div>
+
+                <div className="p-5">
+                    <div className="relative rounded-xl overflow-hidden bg-black" style={{ aspectRatio: '3/4' }}>
+                        {preview ? (
+                            <img src={preview} alt="captured proof" className="w-full h-full object-cover" />
+                        ) : active ? (
+                            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                        ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center text-gray-500 gap-2">
+                                {starting ? <Loader2 className="h-8 w-8 animate-spin" /> : <Camera className="h-10 w-10" />}
+                                <span className="text-xs">{starting ? 'Starting camera…' : 'Camera preview'}</span>
+                            </div>
+                        )}
+                        {preview && (
+                            <span className="absolute top-2 right-2 bg-green-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <CheckCircle2 className="h-3 w-3" /> Captured
+                            </span>
+                        )}
+                    </div>
+                    <canvas ref={canvasRef} className="hidden" />
+
+                    {error && (
+                        <p className="mt-3 text-[11px] text-amber-700 flex items-center gap-1.5">
+                            <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" /> {error}
+                        </p>
+                    )}
+
+                    <div className="mt-4 flex items-center justify-center gap-2.5">
+                        {active && !preview && (
+                            <button type="button" onClick={snap}
+                                className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold text-white rounded-xl shadow-md transition-all"
+                                style={{ background: 'linear-gradient(90deg,#FF6B00,#ff8c33)' }}>
+                                <Camera className="h-4 w-4" /> Capture Photo
+                            </button>
+                        )}
+                        {!active && !preview && !starting && (
+                            <button type="button" onClick={start}
+                                className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white rounded-xl"
+                                style={{ background: '#FF6B00' }}>
+                                <RefreshCw className="h-4 w-4" /> Retry Camera
+                            </button>
+                        )}
+                        {preview && (
+                            <>
+                                <button type="button" onClick={retake}
+                                    className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-gray-700 bg-gray-100 border border-gray-200 rounded-xl hover:bg-gray-200 transition-colors">
+                                    <RefreshCw className="h-4 w-4" /> Retake
+                                </button>
+                                <button type="button" onClick={use}
+                                    className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold text-white rounded-xl shadow-md transition-all"
+                                    style={{ background: 'linear-gradient(90deg,#059669,#10b981)' }}>
+                                    <CheckCircle2 className="h-4 w-4" /> Use Photo
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* ══════════════════════════════════════════════════════════════════
    ADMIN ENTRY PAGE
 ══════════════════════════════════════════════════════════════════ */
 const AdminEntryPage = () => {
@@ -130,13 +277,15 @@ const AdminEntryPage = () => {
     // Payment In
     const [piAdmins, setPiAdmins] = useState([]);
 
-    // Photo Proof (mandatory · private S3)
+    // Photo Proof (mandatory · private S3) — camera capture OR device upload
     const fileRef    = useRef(null);
     const [photoFile,    setPhotoFile]    = useState(null);
     const [photoPreview, setPhotoPreview] = useState('');
     const [proofKey,       setProofKey]       = useState('');
     const [proofUploading, setProofUploading] = useState(false);
     const [proofError,     setProofError]     = useState('');
+    const [proofSource,    setProofSource]    = useState('');   // 'camera' | 'upload'
+    const [showCamera,     setShowCamera]     = useState(false);
 
     useEffect(() => {
         api.get('/shops').then(r => setShops(r.data)).catch(() => {});
@@ -159,11 +308,12 @@ const AdminEntryPage = () => {
     const mismatch   = form.excel_total_sale !== '' && Math.abs(diff) > 0.01;
     const canSubmit  = form.shop_id && form.date && form.excel_total_sale !== '' && !submitting && (!mismatch || allowMismatch) && !!proofKey && !proofUploading;
 
-    /* ── Photo ──────────────────────────────────────────────────── */
-    // Mandatory Photo Proof — uploads to private S3 on selection, stores object key
-    const handlePhotoChange = async (e) => {
-        const f = e.target.files[0]; if (!f) return;
-        setPhotoFile(f); setPhotoPreview(URL.createObjectURL(f));
+    /* ── Photo Proof ────────────────────────────────────────────── */
+    // Shared upload flow — used by BOTH camera capture and device upload.
+    // Uploads to private S3 and stores the returned object key (unchanged API).
+    const uploadProof = async (f, source) => {
+        if (!f) return;
+        setPhotoFile(f); setPhotoPreview(URL.createObjectURL(f)); setProofSource(source);
         setProofKey(''); setProofError(''); setProofUploading(true);
         try {
             const fd = new FormData(); fd.append('photo', f);
@@ -176,6 +326,23 @@ const AdminEntryPage = () => {
         } finally {
             setProofUploading(false);
         }
+    };
+
+    // 🖼 Upload Image — device gallery / file picker
+    const handlePhotoChange = (e) => {
+        const f = e.target.files[0];
+        if (f) uploadProof(f, 'upload');
+        if (fileRef.current) fileRef.current.value = '';
+    };
+
+    // 📷 Camera — receive the captured File, upload, close modal
+    const handleCameraUse = (file) => {
+        setShowCamera(false);
+        uploadProof(file, 'camera');
+    };
+
+    const clearProof = () => {
+        setPhotoFile(null); setPhotoPreview(''); setProofKey(''); setProofError(''); setProofSource('');
     };
 
     /* ── Excel ──────────────────────────────────────────────────── */
@@ -261,7 +428,7 @@ const AdminEntryPage = () => {
             );
             setForm(prev => ({ ...EMPTY, shop_id: prev.shop_id, date: prev.date }));
             setAllowMismatch(false);
-            setPhotoFile(null); setPhotoPreview('');
+            clearProof();
         } catch (err) {
             setError(err.response?.data?.error || 'Failed to create entry.');
         } finally {
@@ -488,40 +655,82 @@ const AdminEntryPage = () => {
                             </div>
                         )}
 
-                        {/* Photo Proof (MANDATORY · private S3) */}
+                        {/* Photo Proof (MANDATORY · private S3) — Camera or Upload */}
                         <div>
                             <label className={lCls}>Photo Proof <span className="text-red-600 font-bold">* (Required)</span></label>
-                            <div className="flex items-center gap-3">
-                                <button type="button" onClick={() => fileRef.current?.click()} disabled={proofUploading}
-                                    className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg border transition-colors ${
-                                        proofKey ? 'bg-green-50 border-green-300 text-green-700'
-                                        : 'text-gray-600 bg-gray-50 border-gray-200 hover:bg-gray-100'}`}>
-                                    <Camera className="h-3.5 w-3.5" />
-                                    {proofUploading ? 'Uploading…' : proofKey ? 'Change Photo' : 'Upload Photo'}
-                                </button>
-                                {photoPreview && (
-                                    <div className="relative">
-                                        <img src={photoPreview} alt="proof" className="h-12 w-12 object-cover rounded-lg border border-gray-200" />
-                                        <button type="button"
-                                            onClick={() => { setPhotoFile(null); setPhotoPreview(''); setProofKey(''); setProofError(''); }}
-                                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5">
-                                            <X className="h-2.5 w-2.5" />
+
+                            <div className="rounded-xl border p-4"
+                                style={{ borderColor: proofKey ? '#86efac' : 'var(--border-color)', background: proofKey ? 'rgba(16,185,129,0.04)' : 'var(--bg-primary)' }}>
+
+                                {!photoPreview ? (
+                                    /* ── Two options: Open Camera · Upload Image ── */
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button type="button" onClick={() => { setProofError(''); setShowCamera(true); }} disabled={proofUploading}
+                                            className="group flex flex-col items-center justify-center gap-2 py-5 rounded-xl border-2 border-dashed transition-all hover:border-orange-400 hover:bg-orange-50 disabled:opacity-50"
+                                            style={{ borderColor: 'var(--border-color)' }}>
+                                            <span className="h-11 w-11 rounded-full flex items-center justify-center bg-orange-100 group-hover:bg-orange-500 transition-colors">
+                                                <Camera className="h-5 w-5 text-orange-500 group-hover:text-white transition-colors" />
+                                            </span>
+                                            <span className="text-xs font-bold text-gray-700">📷 Open Camera</span>
+                                            <span className="text-[10px] text-gray-400">Live capture</span>
                                         </button>
+
+                                        <button type="button" onClick={() => { setProofError(''); fileRef.current?.click(); }} disabled={proofUploading}
+                                            className="group flex flex-col items-center justify-center gap-2 py-5 rounded-xl border-2 border-dashed transition-all hover:border-indigo-400 hover:bg-indigo-50 disabled:opacity-50"
+                                            style={{ borderColor: 'var(--border-color)' }}>
+                                            <span className="h-11 w-11 rounded-full flex items-center justify-center bg-indigo-100 group-hover:bg-indigo-500 transition-colors">
+                                                <ImageIcon className="h-5 w-5 text-indigo-500 group-hover:text-white transition-colors" />
+                                            </span>
+                                            <span className="text-xs font-bold text-gray-700">🖼 Upload Image</span>
+                                            <span className="text-[10px] text-gray-400">From device</span>
+                                        </button>
+                                    </div>
+                                ) : (
+                                    /* ── Captured / selected preview ── */
+                                    <div className="flex items-center gap-4">
+                                        <div className="relative flex-shrink-0">
+                                            <img src={photoPreview} alt="proof preview" className="h-24 w-24 object-cover rounded-xl border border-gray-200 shadow-sm" />
+                                            {proofUploading && (
+                                                <div className="absolute inset-0 rounded-xl bg-black/40 flex items-center justify-center">
+                                                    <Loader2 className="h-6 w-6 text-white animate-spin" />
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-xs font-bold flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
+                                                {proofSource === 'camera' ? <><Camera className="h-3.5 w-3.5 text-orange-500" /> Camera Photo</> : <><ImageIcon className="h-3.5 w-3.5 text-indigo-500" /> Uploaded Image</>}
+                                            </p>
+                                            {proofUploading ? (
+                                                <p className="text-[11px] text-gray-500 mt-1 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Uploading…</p>
+                                            ) : proofKey ? (
+                                                <p className="text-[11px] text-green-700 font-semibold mt-1 flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Photo uploaded successfully</p>
+                                            ) : null}
+                                            <div className="mt-2 flex items-center gap-2">
+                                                <button type="button" onClick={() => { setProofError(''); setShowCamera(true); }} disabled={proofUploading}
+                                                    className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 disabled:opacity-50">
+                                                    <Camera className="h-3 w-3" /> Retake
+                                                </button>
+                                                <button type="button" onClick={() => { setProofError(''); fileRef.current?.click(); }} disabled={proofUploading}
+                                                    className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 disabled:opacity-50">
+                                                    <ImageIcon className="h-3 w-3" /> Replace
+                                                </button>
+                                                <button type="button" onClick={clearProof} disabled={proofUploading}
+                                                    className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg text-gray-500 border border-gray-200 hover:bg-gray-100 disabled:opacity-50">
+                                                    <X className="h-3 w-3" /> Remove
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>
-                            {proofKey && !proofUploading && (
-                                <p className="text-[11px] text-green-700 flex items-center gap-1 font-semibold mt-1">
-                                    <CheckCircle2 className="h-3.5 w-3.5" /> Photo uploaded successfully
-                                </p>
-                            )}
+
                             {proofError && (
-                                <p className="text-[11px] text-red-600 flex items-center gap-1 font-semibold mt-1">
+                                <p className="text-[11px] text-red-600 flex items-center gap-1 font-semibold mt-1.5">
                                     <AlertCircle className="h-3.5 w-3.5" /> {proofError}
                                 </p>
                             )}
                             {!proofKey && !proofUploading && !proofError && (
-                                <p className="text-[11px] text-amber-700 mt-1">Photo Proof is required to submit this entry.</p>
+                                <p className="text-[11px] text-amber-700 mt-1.5">Photo Proof is required to submit this entry.</p>
                             )}
                             <input ref={fileRef} type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
                         </div>
@@ -561,6 +770,11 @@ const AdminEntryPage = () => {
                     </form>
                 </div>
             </div>
+
+            {/* ── CAMERA CAPTURE MODAL ────────────────────────────────── */}
+            {showCamera && (
+                <CameraProofModal onClose={() => setShowCamera(false)} onUse={handleCameraUse} />
+            )}
 
             {/* ── EXCEL PREVIEW MODAL ─────────────────────────────────── */}
             {showPreview && (
