@@ -515,6 +515,17 @@ httpServer.listen(PORT, async () => {
         console.error('[migrate] Admin bank ledger schema failed:', err.message);
     }
 
+    // Auto-migrate: Payment In fields on daily_entries
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql  = fs.readFileSync(path.join(__dirname, 'db', 'migrate_payment_in_entry.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] Payment In fields ready');
+    } catch (err) {
+        console.error('[migrate] Payment In fields migration failed:', err.message);
+    }
+
     // Auto-migrate: RBAC tables (module_permissions + permission_logs)
     try {
         await db.query(`
