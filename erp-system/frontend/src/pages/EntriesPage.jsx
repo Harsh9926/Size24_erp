@@ -100,11 +100,12 @@ const EntriesPage = () => {
         setTxLoading(true);
         try {
             const qs = status ? `?status=${status}` : '';
-            const res = await api.get(`/transfers/admin${qs}`);
+            const endpoint = user?.role === 'admin' ? '/transfers/admin' : '/transfers/manager';
+            const res = await api.get(`${endpoint}${qs}`);
             setTransfers(res.data);
         } catch { setTransfers([]); }
         finally { setTxLoading(false); }
-    }, [txStatusFilter]);
+    }, [txStatusFilter, user?.role]);
 
     // Load shops for filter dropdown (admin/manager)
     useEffect(() => {
@@ -477,7 +478,7 @@ const EntriesPage = () => {
                     <table className="min-w-full divide-y divide-gray-100">
                         <thead className="bg-gray-50/80">
                             <tr>
-                                {['Date', 'Shop', 'Total Sale', 'Cash', 'QR/Card/Bank', 'RazorPay', 'Approval', 'Lock', 'Actions'].map(h => (
+                                {['Date', 'Shop', 'Total Sale', 'Cash', 'QR/Card/Bank', 'RazorPay', 'Payment In', 'Approval', 'Lock', 'Actions'].map(h => (
                                     <th key={h}
                                         className="px-4 py-3.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                                         {h}
@@ -488,14 +489,14 @@ const EntriesPage = () => {
                         <tbody className="divide-y divide-gray-100">
                             {loading && (
                                 <tr>
-                                    <td colSpan="9" className="text-center py-12 text-gray-400 text-sm">
+                                    <td colSpan="10" className="text-center py-12 text-gray-400 text-sm">
                                         <Loader2 className="h-5 w-5 animate-spin inline mr-2 align-[-3px]" /> Loading entries…
                                     </td>
                                 </tr>
                             )}
                             {!loading && entries.length === 0 && (
                                 <tr>
-                                    <td colSpan="9" className="text-center py-12 text-gray-400 text-sm">
+                                    <td colSpan="10" className="text-center py-12 text-gray-400 text-sm">
                                         No entries found{hasFilters ? ' for the selected filters' : ''}
                                     </td>
                                 </tr>
@@ -544,6 +545,17 @@ const EntriesPage = () => {
                                     {/* RazorPay */}
                                     <td className="px-4 py-4 text-sm text-gray-600 tabular-nums whitespace-nowrap">
                                         ₹{Number(e.razorpay || 0).toLocaleString('en-IN')}
+                                    </td>
+
+                                    {/* Payment In */}
+                                    <td className="px-4 py-4 text-sm tabular-nums whitespace-nowrap">
+                                        {Number(e.payment_in || 0) > 0 ? (
+                                            <span className="font-semibold text-emerald-600">
+                                                ₹{Number(e.payment_in).toLocaleString('en-IN')}
+                                            </span>
+                                        ) : (
+                                            <span className="text-gray-300">—</span>
+                                        )}
                                     </td>
 
                                     {/* Approval status + entry type */}
