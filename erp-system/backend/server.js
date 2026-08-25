@@ -452,6 +452,25 @@ httpServer.listen(PORT, async () => {
         console.error('[migrate] photo_proof_key migration failed:', err.message);
     }
 
+    // Auto-migrate: Separate Attendance Shop Users junction table
+    try {
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS attendance_shop_users (
+                id          SERIAL PRIMARY KEY,
+                shop_id     INT NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+                user_id     INT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+                assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                assigned_by INT REFERENCES users(id) ON DELETE SET NULL,
+                UNIQUE(shop_id, user_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_att_shop_users_shop ON attendance_shop_users(shop_id);
+            CREATE INDEX IF NOT EXISTS idx_att_shop_users_user ON attendance_shop_users(user_id);
+        `);
+        console.log('[migrate] attendance_shop_users ready');
+    } catch (err) {
+        console.error('[migrate] attendance_shop_users migration failed:', err.message);
+    }
+
     // Auto-migrate: Employee Attendance Management module
     try {
         const fs   = require('fs');
@@ -461,6 +480,39 @@ httpServer.listen(PORT, async () => {
         console.log('[migrate] Attendance schema ready');
     } catch (err) {
         console.error('[migrate] Attendance schema failed:', err.message);
+    }
+
+    // Auto-migrate: Attendance Payroll upgrade (week-off, sessions, salary)
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql  = fs.readFileSync(path.join(__dirname, 'db', 'attendance_payroll_schema.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] Attendance payroll schema ready');
+    } catch (err) {
+        console.error('[migrate] Attendance payroll schema failed:', err.message);
+    }
+
+    // Auto-migrate: Per-employee attendance + payroll overrides
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql  = fs.readFileSync(path.join(__dirname, 'db', 'attendance_user_settings_schema.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] Attendance user-settings schema ready');
+    } catch (err) {
+        console.error('[migrate] Attendance user-settings schema failed:', err.message);
+    }
+
+    // Auto-migrate: Admin Bank Ledger (payment-in / manager bank deposit records)
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql  = fs.readFileSync(path.join(__dirname, 'db', 'migrate_admin_bank_ledger.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] Admin bank ledger schema ready');
+    } catch (err) {
+        console.error('[migrate] Admin bank ledger schema failed:', err.message);
     }
 
     // Auto-migrate: RBAC tables (module_permissions + permission_logs)
