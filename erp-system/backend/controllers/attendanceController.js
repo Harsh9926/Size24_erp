@@ -6,6 +6,29 @@ const db = require('../config/db');
 const { uploadImage, signSelfieFields } = require('../services/storageService');
 const { Parser: Json2csvParser } = require('json2csv');
 const XLSX = require('xlsx');
+const wa = require('../services/aiSensyService');
+
+/* "HH:MM AM/PM" in IST, for WhatsApp admin punch alerts */
+const fmtTimeIST = (d) =>
+    new Date(d).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+
+/* Fire-and-forget: notify all active admins on WhatsApp. Never throws —
+ * attendance must stay saved even if AiSensy is down or misconfigured. */
+async function notifyAdminsPunch(templateFn, uid, ...args) {
+    if (!wa.ENABLED) return;
+    try {
+        const { rows: admins } = await db.query(
+            `SELECT mobile FROM users WHERE role = 'admin' AND mobile IS NOT NULL AND is_active = true`
+        );
+        const { rows: nameRows } = await db.query('SELECT name FROM users WHERE id = $1', [uid]);
+        const employeeName = nameRows[0]?.name || 'Employee';
+        for (const a of admins) {
+            await templateFn(a.mobile, employeeName, ...args);
+        }
+    } catch (err) {
+        console.error('[attendance] Admin WhatsApp punch notify failed:', err.message);
+    }
+}
 
 /* ── Geo: haversine distance in metres ──────────────────────────── */
 const toRad = (v) => (v * Math.PI) / 180;
@@ -83,6 +106,73 @@ async function getSettings() {
     return rows[0] || null;
 }
 
+// Effective settings for a user = global attendance_settings with any
+// per-user overrides applied (NULL override => inherit global).
+async function getEffectiveSettings(userId) {
+    const g = await getSettings();
+    let u = {};
+    try {
+        u = (await db.query('SELECT * FROM attendance_user_settings WHERE user_id=$1', [userId])).rows[0] || {};
+    } catch (e) { /* table may not exist yet on first boot */ }
+    const pick = (k) => (u[k] === null || u[k] === undefined) ? g[k] : u[k];
+    return {
+        ...g,
+        shift_start:        pick('shift_start'),
+        shift_end:          pick('shift_end'),
+        grace_minutes:      pick('grace_minutes'),
+        half_day_after:     pick('half_day_after'),
+        min_working_hours:  pick('min_working_hours'),
+        require_gps:        pick('require_gps'),
+        require_selfie:     pick('require_selfie'),
+        max_gps_accuracy_m: pick('max_gps_accuracy_m'),
+        week_off_days:      (u.week_off_days == null ? g.week_off_days : u.week_off_days),
+        office_radius_m:    pick('office_radius_m'),
+        enforce_shop_location: (u.enforce_shop_location == null ? false : u.enforce_shop_location),
+        monthly_salary:     (u.monthly_salary == null ? null : u.monthly_salary),
+        _has_override:      Object.keys(u).length > 0,
+    };
+}
+
+async function getAssignedShopsWithGeofence(userId) {
+    // 1. Check dedicated attendance_shop_users table
+    const attShops = await db.query(
+        `SELECT DISTINCT s.id, s.shop_name, s.latitude, s.longitude,
+                COALESCE(s.geofence_radius_m, 50) AS geofence_radius_m
+         FROM attendance_shop_users asu
+         JOIN shops s ON s.id = asu.shop_id
+         WHERE asu.user_id = $1
+         ORDER BY s.shop_name ASC`,
+        [userId]
+    );
+    if (attShops.rows.length > 0) {
+        return attShops.rows;
+    }
+    // 2. Fallback to general shop_users / shops.user_id for backward compatibility
+    const { rows } = await db.query(
+        `SELECT DISTINCT s.id, s.shop_name, s.latitude, s.longitude,
+                COALESCE(s.geofence_radius_m, 50) AS geofence_radius_m
+         FROM shops s
+         LEFT JOIN shop_users su ON su.shop_id = s.id
+         WHERE (su.user_id = $1 OR s.user_id = $1)
+         ORDER BY s.shop_name ASC`,
+        [userId]
+    );
+    return rows;
+}
+
+// Resolve the primary geofence for reference
+async function resolveOffice(userId, reg, eff) {
+    const assignedShops = await getAssignedShopsWithGeofence(userId);
+    const valid = assignedShops.find(s => s.latitude != null && s.longitude != null);
+    if (valid) {
+        return { lat: Number(valid.latitude), lng: Number(valid.longitude), radius: Number(valid.geofence_radius_m) || eff.office_radius_m, source: 'shop', shop_id: valid.id };
+    }
+    return {
+        lat: reg?.registered_lat, lng: reg?.registered_lng,
+        radius: reg?.allowed_radius_m || eff.office_radius_m, source: 'registration',
+    };
+}
+
 async function logAction(userId, attendanceId, action, detail, req) {
     try {
         await db.query(
@@ -116,7 +206,7 @@ exports.getMyStatus = async (req, res) => {
     try {
         const uid = req.user.id;
         const [settings, regRes, todayRes] = await Promise.all([
-            getSettings(),
+            getEffectiveSettings(uid),
             db.query('SELECT * FROM attendance_registration WHERE user_id = $1', [uid]),
             db.query('SELECT * FROM attendance WHERE user_id = $1 AND date = $2', [uid, todayISO()]),
         ]);
@@ -124,6 +214,12 @@ exports.getMyStatus = async (req, res) => {
         const today = todayRes.rows[0] || null;
         await signSelfieFields(registration, ['selfie_url']);
         await signSelfieFields(today, ['punch_in_selfie_url', 'punch_out_selfie_url']);
+        if (today) {
+            const sessions = await sessionsFor(today.id);
+            await signSelfieFields(sessions, ['punch_in_selfie_url', 'punch_out_selfie_url']);
+            today.sessions = sessions;
+            today.has_open_session = sessions.some((s) => !s.punch_out_at);
+        }
         res.json({ settings, registration, today });
     } catch (err) {
         console.error('[attendance.getMyStatus]', err.message);
@@ -175,10 +271,12 @@ exports.register = async (req, res) => {
     }
 };
 
-// Shared validation for a punch. Returns { ok, error, distance }
-function validatePunch(reg, settings, body, hasFile) {
+// Shared validation for a punch against all assigned shops.
+// Returns { ok, error, distance, matchedShop }
+async function validatePunch(reg, settings, body, hasFile, userId) {
     if (!reg || reg.status !== 'approved')
         return { error: 'Your registration is not approved yet. Please contact admin.' };
+
     const { latitude, longitude, gps_accuracy } = body;
     if (settings.require_gps && (!latitude || !longitude))
         return { error: 'GPS location is required.' };
@@ -188,30 +286,83 @@ function validatePunch(reg, settings, body, hasFile) {
         Number(gps_accuracy) > settings.max_gps_accuracy_m)
         return { error: `GPS accuracy too low (${Math.round(gps_accuracy)}m). Must be within ${settings.max_gps_accuracy_m}m. Move to an open area and retry.` };
 
-    const dist = distanceM(
-        Number(latitude), Number(longitude),
-        Number(reg.registered_lat), Number(reg.registered_lng)
-    );
-    const radius = reg.allowed_radius_m || settings.office_radius_m;
-    if (settings.require_gps && dist != null && dist > radius)
-        return { error: 'You are outside your registered office location.', distance: dist };
-    return { ok: true, distance: dist };
+    if (!settings.require_gps) {
+        const assignedShops = await getAssignedShopsWithGeofence(userId);
+        return { ok: true, matchedShop: assignedShops[0] || null, distance: 0 };
+    }
+
+    const assignedShops = await getAssignedShopsWithGeofence(userId);
+    const validGeofenceShops = assignedShops.filter(s => s.latitude != null && s.longitude != null);
+
+    if (validGeofenceShops.length === 0) {
+        return {
+            error: 'You are outside your assigned shop location.',
+            distance: null
+        };
+    }
+
+    let matchedShop = null;
+    let minDistance = Infinity;
+
+    for (const shop of validGeofenceShops) {
+        const dist = distanceM(
+            Number(latitude), Number(longitude),
+            Number(shop.latitude), Number(shop.longitude)
+        );
+        if (dist != null) {
+            if (dist < minDistance) {
+                minDistance = dist;
+            }
+            const radius = Number(shop.geofence_radius_m) || Number(settings.office_radius_m) || 50;
+            if (dist <= radius) {
+                matchedShop = shop;
+                minDistance = dist;
+                break;
+            }
+        }
+    }
+
+    if (!matchedShop) {
+        return {
+            error: 'You are outside your assigned shop location.',
+            distance: minDistance === Infinity ? null : minDistance
+        };
+    }
+
+    return { ok: true, matchedShop, distance: minDistance };
 }
 
-// POST /api/attendance/punch-in
+// Fetch all sessions for an attendance row (ordered), used by status + UI.
+async function sessionsFor(attendanceId) {
+    if (!attendanceId) return [];
+    const { rows } = await db.query(
+        'SELECT * FROM attendance_sessions WHERE attendance_id=$1 ORDER BY seq', [attendanceId]
+    );
+    return rows;
+}
+
+// POST /api/attendance/punch-in — supports multiple In→Out→In→Out sessions.
 exports.punchIn = async (req, res) => {
     try {
         const uid = req.user.id;
-        const settings = await getSettings();
+        const settings = await getEffectiveSettings(uid);
         const reg = (await db.query('SELECT * FROM attendance_registration WHERE user_id=$1', [uid])).rows[0];
 
-        const existing = (await db.query(
+        let existing = (await db.query(
             'SELECT * FROM attendance WHERE user_id=$1 AND date=$2', [uid, todayISO()]
         )).rows[0];
-        if (existing?.punch_in_at)
-            return res.status(409).json({ error: 'You have already punched in today.' });
 
-        const v = validatePunch(reg, settings, req.body, !!req.file);
+        // Block a second punch-in while a session is still open.
+        if (existing) {
+            const open = (await db.query(
+                'SELECT id FROM attendance_sessions WHERE attendance_id=$1 AND punch_out_at IS NULL LIMIT 1',
+                [existing.id]
+            )).rows[0];
+            if (open)
+                return res.status(409).json({ error: 'You have an open session. Please punch out first.' });
+        }
+
+        const v = await validatePunch(reg, settings, req.body, !!req.file, uid);
         if (v.error) return res.status(400).json({ error: v.error, distance: v.distance });
 
         let selfieUrl = null;
@@ -220,46 +371,84 @@ exports.punchIn = async (req, res) => {
         const now = new Date();
         const inStatus = punchInStatus(now, settings);
         const { browser, device } = parseUA(req.headers['user-agent']);
-        const shopId = await resolveShopId(uid);
+        const shopId = v.matchedShop?.id || await resolveShopId(uid);
 
-        const { rows } = await db.query(
-            `INSERT INTO attendance
-               (user_id, shop_id, date, punch_in_at, punch_in_lat, punch_in_lng,
-                punch_in_distance_m, punch_in_accuracy_m, punch_in_selfie_url,
-                punch_in_status, punch_in_ip, punch_in_browser, punch_in_device,
-                attendance_status)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-             ON CONFLICT (user_id, date) DO UPDATE SET
-               punch_in_at=$4, punch_in_lat=$5, punch_in_lng=$6, punch_in_distance_m=$7,
-               punch_in_accuracy_m=$8, punch_in_selfie_url=$9, punch_in_status=$10,
-               punch_in_ip=$11, punch_in_browser=$12, punch_in_device=$13,
-               attendance_status=$14, updated_at=CURRENT_TIMESTAMP
-             RETURNING *`,
-            [uid, shopId, todayISO(), now, req.body.latitude, req.body.longitude,
-             v.distance, req.body.gps_accuracy || null, selfieUrl, inStatus,
-             clientIp(req), browser, device, overallStatus(inStatus)]
-        );
+        // Create the parent day row on the first punch, or reuse it for a new session.
+        if (!existing) {
+            existing = (await db.query(
+                `INSERT INTO attendance
+                   (user_id, shop_id, date, punch_in_at, punch_in_lat, punch_in_lng,
+                    punch_in_distance_m, punch_in_accuracy_m, punch_in_selfie_url,
+                    punch_in_status, punch_in_ip, punch_in_browser, punch_in_device,
+                    attendance_status, status_source)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'punch')
+                 RETURNING *`,
+                [uid, shopId, todayISO(), now, req.body.latitude, req.body.longitude,
+                 v.distance, req.body.gps_accuracy || null, selfieUrl, inStatus,
+                 clientIp(req), browser, device, overallStatus(inStatus)]
+            )).rows[0];
+        } else {
+            // New session opening on an existing day: clear the parent punch-out
+            // so "currently working / online" (punch_in set, punch_out null) is
+            // accurate again. Session rows preserve the full punch history.
+            await db.query(
+                `UPDATE attendance SET punch_out_at=NULL, punch_out_status=NULL,
+                   shop_id=COALESCE($2, shop_id), updated_at=CURRENT_TIMESTAMP WHERE id=$1`, [existing.id, shopId]
+            );
+        }
+
+        const seq = (await db.query(
+            'SELECT COALESCE(MAX(seq),0)+1 AS n FROM attendance_sessions WHERE attendance_id=$1', [existing.id]
+        )).rows[0].n;
+
+        let sess;
+        try {
+            sess = (await db.query(
+                `INSERT INTO attendance_sessions
+                   (attendance_id, user_id, date, seq, punch_in_at, punch_in_lat, punch_in_lng,
+                    punch_in_distance_m, punch_in_accuracy_m, punch_in_selfie_url,
+                    punch_in_status, punch_in_ip, punch_in_browser, punch_in_device)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+                [existing.id, uid, todayISO(), seq, now, req.body.latitude, req.body.longitude,
+                 v.distance, req.body.gps_accuracy || null, selfieUrl, inStatus,
+                 clientIp(req), browser, device]
+            )).rows[0];
+        } catch (err) {
+            // 23505 = unique_violation on uq_att_sessions_open: a concurrent
+            // request already opened a session for this attendance_id first.
+            // Lose the race cleanly instead of creating a duplicate session
+            // (and a duplicate admin WhatsApp alert).
+            if (err.code === '23505')
+                return res.status(409).json({ error: 'You have an open session. Please punch out first.' });
+            throw err;
+        }
+
         if (selfieUrl) {
             await db.query(
                 `INSERT INTO attendance_selfies (user_id, attendance_id, context, url, latitude, longitude)
                  VALUES ($1,$2,'punch_in',$3,$4,$5)`,
-                [uid, rows[0].id, selfieUrl, req.body.latitude, req.body.longitude]
+                [uid, existing.id, selfieUrl, req.body.latitude, req.body.longitude]
             );
         }
-        await logAction(uid, rows[0].id, 'PUNCH_IN', { inStatus, distance: v.distance }, req);
+        await logAction(uid, existing.id, 'PUNCH_IN', { inStatus, seq, distance: v.distance, shopId }, req);
         emitRealtime(req, 'attendance:update', { userId: uid, date: todayISO() });
-        res.status(201).json(rows[0]);
+        const fresh = (await db.query('SELECT * FROM attendance WHERE id=$1', [existing.id])).rows[0];
+        res.status(201).json({ ...fresh, sessions: await sessionsFor(existing.id), session: sess });
+
+        // Admin WhatsApp alert — fired after the response so it can never delay
+        // or fail the punch-in itself; errors are caught and logged internally.
+        notifyAdminsPunch(wa.notifyEmployeePunchIn, uid, fmtTimeIST(now));
     } catch (err) {
         console.error('[attendance.punchIn]', err.message);
         res.status(500).json({ error: 'Punch in failed' });
     }
 };
 
-// POST /api/attendance/punch-out
+// POST /api/attendance/punch-out — closes the latest open session.
 exports.punchOut = async (req, res) => {
     try {
         const uid = req.user.id;
-        const settings = await getSettings();
+        const settings = await getEffectiveSettings(uid);
         const reg = (await db.query('SELECT * FROM attendance_registration WHERE user_id=$1', [uid])).rows[0];
 
         const existing = (await db.query(
@@ -267,10 +456,15 @@ exports.punchOut = async (req, res) => {
         )).rows[0];
         if (!existing?.punch_in_at)
             return res.status(400).json({ error: 'You must punch in before punching out.' });
-        if (existing.punch_out_at)
-            return res.status(409).json({ error: 'You have already punched out today.' });
 
-        const v = validatePunch(reg, settings, req.body, !!req.file);
+        const openSess = (await db.query(
+            `SELECT * FROM attendance_sessions WHERE attendance_id=$1 AND punch_out_at IS NULL
+             ORDER BY seq DESC LIMIT 1`, [existing.id]
+        )).rows[0];
+        if (!openSess)
+            return res.status(409).json({ error: 'No open session to punch out. Please punch in first.' });
+
+        const v = await validatePunch(reg, settings, req.body, !!req.file, uid);
         if (v.error) return res.status(400).json({ error: v.error, distance: v.distance });
 
         let selfieUrl = null;
@@ -278,10 +472,29 @@ exports.punchOut = async (req, res) => {
 
         const now = new Date();
         const outStatus = punchOutStatus(now, settings);
-        const workingHours = Math.max(0,
-            (now - new Date(existing.punch_in_at)) / 3_600_000
-        ).toFixed(2);
         const { browser, device } = parseUA(req.headers['user-agent']);
+        const sessHours = Math.max(0, (now - new Date(openSess.punch_in_at)) / 3_600_000).toFixed(2);
+
+        // Close the open session — guarded by "punch_out_at IS NULL" so a
+        // concurrent duplicate punch-out request can't silently re-close an
+        // already-closed session and trigger a second admin WhatsApp alert.
+        const closeRes = await db.query(
+            `UPDATE attendance_sessions SET
+               punch_out_at=$1, punch_out_lat=$2, punch_out_lng=$3, punch_out_distance_m=$4,
+               punch_out_accuracy_m=$5, punch_out_selfie_url=$6, punch_out_status=$7,
+               punch_out_ip=$8, punch_out_browser=$9, working_hours=$10, updated_at=CURRENT_TIMESTAMP
+             WHERE id=$11 AND punch_out_at IS NULL RETURNING id`,
+            [now, req.body.latitude, req.body.longitude, v.distance,
+             req.body.gps_accuracy || null, selfieUrl, outStatus,
+             clientIp(req), browser, sessHours, openSess.id]
+        );
+        if (closeRes.rowCount === 0)
+            return res.status(409).json({ error: 'No open session to punch out. Please punch in first.' });
+
+        // Recompute the day total from ALL sessions (never overwrites past punches).
+        const totalHours = (await db.query(
+            'SELECT COALESCE(SUM(working_hours),0) AS t FROM attendance_sessions WHERE attendance_id=$1', [existing.id]
+        )).rows[0].t;
 
         const { rows } = await db.query(
             `UPDATE attendance SET
@@ -292,7 +505,7 @@ exports.punchOut = async (req, res) => {
              WHERE id=$11 RETURNING *`,
             [now, req.body.latitude, req.body.longitude, v.distance,
              req.body.gps_accuracy || null, selfieUrl, outStatus,
-             clientIp(req), browser, workingHours, existing.id]
+             clientIp(req), browser, Number(totalHours).toFixed(2), existing.id]
         );
         if (selfieUrl) {
             await db.query(
@@ -301,9 +514,13 @@ exports.punchOut = async (req, res) => {
                 [uid, existing.id, selfieUrl, req.body.latitude, req.body.longitude]
             );
         }
-        await logAction(uid, existing.id, 'PUNCH_OUT', { outStatus, workingHours }, req);
+        await logAction(uid, existing.id, 'PUNCH_OUT', { outStatus, sessHours, seq: openSess.seq }, req);
         emitRealtime(req, 'attendance:update', { userId: uid, date: todayISO() });
-        res.json(rows[0]);
+        res.json({ ...rows[0], sessions: await sessionsFor(existing.id) });
+
+        // Admin WhatsApp alert — fired after the response so it can never delay
+        // or fail the punch-out itself; errors are caught and logged internally.
+        notifyAdminsPunch(wa.notifyEmployeePunchOut, uid, fmtTimeIST(openSess.punch_in_at), fmtTimeIST(now));
     } catch (err) {
         console.error('[attendance.punchOut]', err.message);
         res.status(500).json({ error: 'Punch out failed' });
@@ -372,8 +589,12 @@ exports.requestLocationChange = async (req, res) => {
     }
 };
 
-/* ── Monthly summary helper (reused by self + admin reports) ────── */
-async function monthlySummaryFor(userId, month) {
+/* ── Payroll-aware month computation ──────────────────────────────
+   Buckets every elapsed day of the month into a status and derives paid
+   (payable) days. A day with no attendance row that falls on a configured
+   weekly-off day counts as WEEK_OFF (paid), never Absent. Reused by the
+   self summary, the admin payroll report, and the monthly report.        */
+async function computeMonth(userId, month, settings) {
     const m = month || todayISO().slice(0, 7); // YYYY-MM
     const start = `${m}-01`;
     const end   = `${m}-31`;
@@ -381,33 +602,81 @@ async function monthlySummaryFor(userId, month) {
         `SELECT * FROM attendance WHERE user_id=$1 AND date BETWEEN $2 AND $3 ORDER BY date`,
         [userId, start, end]
     );
-    const settings = await getSettings();
-    let present = 0, late = 0, halfDay = 0, earlyArrival = 0, earlyExit = 0, overtime = 0, totalHours = 0;
-    for (const r of rows) {
-        if (r.attendance_status === 'half_day') halfDay++;
-        else present++;
-        if (r.punch_in_status === 'late') late++;
-        if (r.punch_in_status === 'early_arrival') earlyArrival++;
-        if (r.punch_out_status === 'early_exit') earlyExit++;
-        if (r.punch_out_status === 'overtime') overtime++;
-        totalHours += Number(r.working_hours || 0);
-    }
-    // Working days elapsed this month (up to today if current month)
+    settings = settings || await getSettings();
+    const weekOff = Array.isArray(settings.week_off_days) ? settings.week_off_days.map(Number) : [0];
+
+    // pg returns DATE as a JS Date (local midnight) OR a string depending on
+    // parser config — normalise both to YYYY-MM-DD using local components.
+    const isoDate = (d) => {
+        if (d instanceof Date)
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return String(d).slice(0, 10);
+    };
+    const byDate = new Map();
+    rows.forEach((r) => byDate.set(isoDate(r.date), r));
+
     const now = new Date();
     const [yy, mm] = m.split('-').map(Number);
     const daysInMonth = new Date(yy, mm, 0).getDate();
     const elapsed = (now.getFullYear() === yy && now.getMonth() + 1 === mm)
         ? now.getDate() : daysInMonth;
-    const absent = Math.max(0, elapsed - rows.length);
-    const pct = elapsed ? Math.round((present + halfDay * 0.5) / elapsed * 100) : 0;
 
+    const c = {
+        present: 0, late: 0, half_day: 0, absent: 0,
+        week_off: 0, paid_leave: 0, unpaid_leave: 0, holiday: 0,
+        early_arrival: 0, early_exit: 0, overtime: 0, total_working_hours: 0,
+    };
+
+    for (let d = 1; d <= elapsed; d++) {
+        const iso = `${m}-${String(d).padStart(2, '0')}`;
+        const weekday = new Date(yy, mm - 1, d).getDay();
+        const r = byDate.get(iso);
+        const st = r?.attendance_status;
+
+        // Explicit statuses win over the auto weekly-off default.
+        if (st === 'week_off')          c.week_off++;
+        else if (st === 'paid_leave')   c.paid_leave++;
+        else if (st === 'unpaid_leave') c.unpaid_leave++;
+        else if (st === 'holiday')      c.holiday++;
+        else if (st === 'half_day')     c.half_day++;
+        else if (st === 'absent')       c.absent++;
+        else if (r && r.punch_in_at)    c.present++;               // present / late
+        else if (weekOff.includes(weekday)) c.week_off++;          // auto weekly off (paid)
+        else c.absent++;                                           // no punch, working day
+
+        if (r) {
+            if (r.punch_in_status === 'late') c.late++;
+            if (r.punch_in_status === 'early_arrival') c.early_arrival++;
+            if (r.punch_out_status === 'early_exit') c.early_exit++;
+            if (r.punch_out_status === 'overtime') c.overtime++;
+            c.total_working_hours += Number(r.working_hours || 0);
+        }
+    }
+
+    // Paid (payable) days = Present + Week Off + Paid Leave + Holiday + half-days.
+    const payable_days = c.present + c.week_off + c.paid_leave + c.holiday + c.half_day * 0.5;
+    c.total_working_hours = Number(c.total_working_hours.toFixed(2));
+
+    return { month: m, days: rows, counts: c, elapsed, days_in_month: daysInMonth, payable_days, week_off_days: weekOff };
+}
+
+/* ── Monthly summary helper (reused by self + admin reports) ────── */
+async function monthlySummaryFor(userId, month) {
+    const settings = await getEffectiveSettings(userId);
+    const mo = await computeMonth(userId, month, settings);
+    const c = mo.counts;
+    const pct = mo.elapsed
+        ? Math.round((c.present + c.half_day * 0.5 + c.week_off + c.paid_leave + c.holiday) / mo.elapsed * 100)
+        : 0;
     return {
-        month: m, days: rows,
+        month: mo.month, days: mo.days,
         summary: {
-            present, absent, late, half_day: halfDay,
-            early_arrival: earlyArrival, early_exit: earlyExit, overtime,
+            present: c.present, absent: c.absent, late: c.late, half_day: c.half_day,
+            week_off: c.week_off, paid_leave: c.paid_leave, unpaid_leave: c.unpaid_leave, holiday: c.holiday,
+            early_arrival: c.early_arrival, early_exit: c.early_exit, overtime: c.overtime,
+            payable_days: mo.payable_days,
             attendance_percentage: pct,
-            total_working_hours: Number(totalHours.toFixed(2)),
+            total_working_hours: c.total_working_hours,
             min_working_hours: Number(settings.min_working_hours),
         },
     };
@@ -425,6 +694,10 @@ exports.getSettingsPublic = async (_req, res) => {
 exports.updateSettings = async (req, res) => {
     try {
         const f = req.body || {};
+        // week_off_days: normalise to an int[] of ISO weekdays (0=Sun … 6=Sat).
+        let weekOff = null;
+        if (Array.isArray(f.week_off_days))
+            weekOff = f.week_off_days.map(Number).filter((n) => n >= 0 && n <= 6);
         const { rows } = await db.query(
             `UPDATE attendance_settings SET
                shift_start=COALESCE($1,shift_start),
@@ -436,11 +709,13 @@ exports.updateSettings = async (req, res) => {
                require_gps=COALESCE($7,require_gps),
                require_selfie=COALESCE($8,require_selfie),
                max_gps_accuracy_m=COALESCE($9,max_gps_accuracy_m),
+               week_off_days=COALESCE($11::int[],week_off_days),
+               payroll_days_basis=COALESCE($12,payroll_days_basis),
                updated_by=$10, updated_at=CURRENT_TIMESTAMP
              WHERE id=1 RETURNING *`,
             [f.shift_start, f.shift_end, f.grace_minutes, f.half_day_after,
              f.office_radius_m, f.min_working_hours, f.require_gps, f.require_selfie,
-             f.max_gps_accuracy_m, req.user.id]
+             f.max_gps_accuracy_m, req.user.id, weekOff, f.payroll_days_basis || null]
         );
         res.json(rows[0]);
     } catch (err) {
@@ -617,6 +892,9 @@ exports.getDashboardCards = async (req, res) => {
                COUNT(*) FILTER (WHERE a.punch_in_at IS NOT NULL) AS present,
                COUNT(*) FILTER (WHERE a.attendance_status='late') AS late,
                COUNT(*) FILTER (WHERE a.attendance_status='half_day') AS half_day,
+               COUNT(*) FILTER (WHERE a.attendance_status='week_off') AS week_off,
+               COUNT(*) FILTER (WHERE a.attendance_status IN ('paid_leave','unpaid_leave')) AS on_leave,
+               COUNT(*) FILTER (WHERE a.attendance_status='holiday') AS holiday,
                COUNT(*) FILTER (WHERE a.punch_in_at IS NOT NULL AND a.punch_out_at IS NULL) AS working,
                COUNT(*) FILTER (WHERE a.punch_out_at IS NOT NULL) AS completed,
                COUNT(*) FILTER (WHERE a.punch_out_status='early_exit') AS early_exit,
@@ -629,11 +907,18 @@ exports.getDashboardCards = async (req, res) => {
 
         const total = Number(totalEmp.rows[0].c);
         const present = Number(agg.rows[0].present);
+        const weekOff = Number(agg.rows[0].week_off);
+        const onLeave = Number(agg.rows[0].on_leave);
+        const holiday = Number(agg.rows[0].holiday);
         res.json({
             date,
             total_employees: total,
             present_today: present,
-            absent_today: Math.max(0, total - present),
+            // Week-off / leave / holiday days are NOT counted as absent.
+            absent_today: Math.max(0, total - present - weekOff - onLeave - holiday),
+            week_off: weekOff,
+            on_leave: onLeave,
+            holiday,
             late: Number(agg.rows[0].late),
             half_day: Number(agg.rows[0].half_day),
             working: Number(agg.rows[0].working),
@@ -698,7 +983,9 @@ exports.getAttendanceDetail = async (req, res) => {
         );
         const detail = rows[0];
         await signSelfieFields(detail, ['punch_in_selfie_url', 'punch_out_selfie_url', 'reg_selfie_url']);
-        res.json({ ...detail, timeline: logs.rows });
+        const sessions = await sessionsFor(detail.id);
+        await signSelfieFields(sessions, ['punch_in_selfie_url', 'punch_out_selfie_url']);
+        res.json({ ...detail, sessions, timeline: logs.rows });
     } catch (err) {
         res.status(500).json({ error: 'Failed to load detail' });
     }
@@ -821,5 +1108,427 @@ exports.getScopedShops = async (req, res) => {
         res.json(rows);
     } catch (err) {
         res.status(500).json({ error: 'Failed to load shops' });
+    }
+};
+
+// GET /api/attendance/recent-activity?limit=&date=
+// Live punch feed: each session contributes an IN event and (if closed) an
+// OUT event, newest first. Reads the existing attendance_sessions table —
+// no duplicate attendance logic.
+exports.getRecentActivity = async (req, res) => {
+    try {
+        const date = req.query.date || todayISO();
+        const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 15));
+        const shops = await shopScope(req.user);
+        const params = [date];
+        const scope = shops ? (params.push(shops), `AND a.shop_id = ANY($${params.length}::int[])`) : '';
+        params.push(limit);
+        const limIdx = params.length;
+
+        const { rows } = await db.query(
+            `SELECT * FROM (
+               SELECT s.id AS session_id, s.seq, 'IN' AS kind,
+                      s.punch_in_at AS ts, u.name, u.mobile, u.role,
+                      sh.shop_name, s.punch_in_device AS device, s.punch_in_browser AS browser,
+                      s.punch_in_status AS status
+               FROM attendance_sessions s
+               JOIN attendance a ON a.id = s.attendance_id
+               JOIN users u ON u.id = s.user_id
+               LEFT JOIN shops sh ON sh.id = a.shop_id
+               WHERE s.date = $1 AND s.punch_in_at IS NOT NULL ${scope}
+               UNION ALL
+               SELECT s.id, s.seq, 'OUT',
+                      s.punch_out_at, u.name, u.mobile, u.role,
+                      sh.shop_name, s.punch_in_device, s.punch_out_browser,
+                      s.punch_out_status
+               FROM attendance_sessions s
+               JOIN attendance a ON a.id = s.attendance_id
+               JOIN users u ON u.id = s.user_id
+               LEFT JOIN shops sh ON sh.id = a.shop_id
+               WHERE s.date = $1 AND s.punch_out_at IS NOT NULL ${scope}
+             ) e
+             ORDER BY e.ts DESC
+             LIMIT $${limIdx}`,
+            params
+        );
+        res.json(rows);
+    } catch (err) {
+        console.error('[attendance.getRecentActivity]', err.message);
+        res.status(500).json({ error: 'Failed to load recent activity' });
+    }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   PAYROLL — day status, salary config, salary calculation
+══════════════════════════════════════════════════════════════════ */
+
+const DAY_STATUSES = ['present', 'absent', 'week_off', 'paid_leave', 'unpaid_leave', 'half_day', 'holiday'];
+
+// PUT /api/attendance/day-status  { user_id, date, status }
+// Admin/manager sets a day's status (WEEK_OFF / leave / holiday), creating
+// the attendance row if the employee has no punch that day. Never touches
+// punch data — only the manual status flag.
+exports.setDayStatus = async (req, res) => {
+    try {
+        const { user_id, date, status } = req.body || {};
+        if (!user_id || !date || !DAY_STATUSES.includes(status))
+            return res.status(400).json({ error: `status must be one of: ${DAY_STATUSES.join(', ')}` });
+
+        // Manager scope guard.
+        const shops = await shopScope(req.user);
+        if (shops) {
+            const inScope = (await db.query(
+                'SELECT 1 FROM shop_users WHERE user_id=$1 AND shop_id = ANY($2::int[]) LIMIT 1', [user_id, shops]
+            )).rows[0];
+            if (!inScope) return res.status(403).json({ error: 'Employee is outside your shops.' });
+        }
+
+        const shopId = await resolveShopId(user_id);
+        const { rows } = await db.query(
+            `INSERT INTO attendance (user_id, shop_id, date, attendance_status, status_source)
+             VALUES ($1,$2,$3,$4,'manual')
+             ON CONFLICT (user_id, date) DO UPDATE SET
+               attendance_status=$4, status_source='manual', updated_at=CURRENT_TIMESTAMP
+             RETURNING *`,
+            [user_id, shopId, date, status]
+        );
+        await logAction(req.user.id, rows[0].id, 'SET_DAY_STATUS', { user_id, date, status }, req);
+        emitRealtime(req, 'attendance:update', { userId: user_id, date });
+        res.json(rows[0]);
+    } catch (err) {
+        console.error('[attendance.setDayStatus]', err.message);
+        res.status(500).json({ error: 'Failed to set day status' });
+    }
+};
+
+// GET /api/attendance/employees — list employees with their monthly salary
+exports.getEmployeeSalaries = async (req, res) => {
+    try {
+        const shops = await shopScope(req.user);
+        const params = [];
+        let where = "u.status='active'";
+        if (shops) {
+            params.push(shops);
+            where += ` AND EXISTS (SELECT 1 FROM shop_users su WHERE su.user_id=u.id AND su.shop_id = ANY($${params.length}::int[]))`;
+        }
+        const { rows } = await db.query(
+            `SELECT u.id AS user_id, u.name, u.mobile, u.role,
+                    COALESCE(r.monthly_salary,0) AS monthly_salary,
+                    r.status AS registration_status, s.shop_name
+             FROM users u
+             LEFT JOIN attendance_registration r ON r.user_id = u.id
+             LEFT JOIN shops s ON s.id = r.shop_id
+             WHERE ${where}
+             ORDER BY u.name`, params
+        );
+        res.json(rows);
+    } catch (err) {
+        console.error('[attendance.getEmployeeSalaries]', err.message);
+        res.status(500).json({ error: 'Failed to load employees' });
+    }
+};
+
+// PUT /api/attendance/employees/:userId/salary  { monthly_salary }
+exports.setEmployeeSalary = async (req, res) => {
+    try {
+        const salary = Number((req.body || {}).monthly_salary);
+        if (!(salary >= 0)) return res.status(400).json({ error: 'monthly_salary must be a non-negative number.' });
+        const uid = req.params.userId;
+        const shopId = await resolveShopId(uid);
+        // Upsert on the registration row so salary persists even pre-approval.
+        const { rows } = await db.query(
+            `INSERT INTO attendance_registration (user_id, shop_id, monthly_salary, status)
+             VALUES ($1,$2,$3,'pending')
+             ON CONFLICT (user_id) DO UPDATE SET monthly_salary=$3
+             RETURNING user_id, monthly_salary`,
+            [uid, shopId, salary]
+        );
+        await logAction(req.user.id, null, 'SET_SALARY', { user_id: uid, monthly_salary: salary }, req);
+        res.json(rows[0]);
+    } catch (err) {
+        console.error('[attendance.setEmployeeSalary]', err.message);
+        res.status(500).json({ error: 'Failed to set salary' });
+    }
+};
+
+// GET /api/attendance/payroll?month=YYYY-MM&shop_id=&user_id=
+// Computes payable days + gross/net salary per employee for the month.
+exports.getPayroll = async (req, res) => {
+    try {
+        const month = req.query.month || todayISO().slice(0, 7);
+        const settings = await getSettings();
+        const shops = await shopScope(req.user);
+
+        // Which employees to include (active, in scope, with a registration/salary).
+        const params = [];
+        let where = "u.status='active'";
+        if (shops) {
+            params.push(shops);
+            where += ` AND EXISTS (SELECT 1 FROM shop_users su WHERE su.user_id=u.id AND su.shop_id = ANY($${params.length}::int[]))`;
+        }
+        if (req.query.shop_id) { params.push(req.query.shop_id); where += ` AND r.shop_id=$${params.length}`; }
+        if (req.query.user_id) { params.push(req.query.user_id); where += ` AND u.id=$${params.length}`; }
+
+        // Per-user salary override (attendance_user_settings) wins over the
+        // registration salary when set.
+        const { rows: emps } = await db.query(
+            `SELECT u.id AS user_id, u.name, u.mobile, u.role,
+                    COALESCE(us.monthly_salary, r.monthly_salary, 0) AS monthly_salary, s.shop_name
+             FROM users u
+             LEFT JOIN attendance_registration r ON r.user_id = u.id
+             LEFT JOIN attendance_user_settings us ON us.user_id = u.id
+             LEFT JOIN shops s ON s.id = r.shop_id
+             WHERE ${where}
+             ORDER BY u.name`, params
+        );
+
+        const report = [];
+        for (const e of emps) {
+            const eff = await getEffectiveSettings(e.user_id);
+            const mo = await computeMonth(e.user_id, month, eff);
+            const c = mo.counts;
+            const divisor = settings.payroll_days_basis === 'fixed30' ? 30 : mo.days_in_month;
+            const monthlySalary = Number(e.monthly_salary || 0);
+            const perDay = divisor ? monthlySalary / divisor : 0;
+            const gross = Number((perDay * mo.payable_days).toFixed(2));
+            const net = gross; // deductions layer can be added later
+            report.push({
+                user_id: e.user_id, name: e.name, mobile: e.mobile, role: e.role, shop_name: e.shop_name,
+                monthly_salary: monthlySalary,
+                present: c.present, half_day: c.half_day, week_off: c.week_off,
+                paid_leave: c.paid_leave, unpaid_leave: c.unpaid_leave,
+                holiday: c.holiday, absent: c.absent,
+                payable_days: mo.payable_days,
+                days_in_month: mo.days_in_month, payroll_divisor: divisor,
+                per_day_rate: Number(perDay.toFixed(2)),
+                total_working_hours: c.total_working_hours,
+                gross_salary: gross, net_salary: net,
+            });
+        }
+        res.json({ month, days_basis: settings.payroll_days_basis, report });
+    } catch (err) {
+        console.error('[attendance.getPayroll]', err.message);
+        res.status(500).json({ error: 'Failed to build payroll' });
+    }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   PER-EMPLOYEE SETTINGS (attendance rules + payroll, admin)
+══════════════════════════════════════════════════════════════════ */
+
+// Guard: managers may only touch employees in their shops.
+async function assertUserInScope(actor, userId, res) {
+    const shops = await shopScope(actor);
+    if (!shops) return true; // admin
+    const ok = (await db.query(
+        'SELECT 1 FROM shop_users WHERE user_id=$1 AND shop_id = ANY($2::int[]) LIMIT 1', [userId, shops]
+    )).rows[0];
+    if (!ok) { res.status(403).json({ error: 'Employee is outside your shops.' }); return false; }
+    return true;
+}
+
+// GET /api/attendance/user-settings/:userId
+// Returns global defaults, the user's raw overrides, the effective merged
+// values, the assigned shop (with GPS/radius), and a current-month payroll
+// preview so the admin sees exactly what will apply.
+exports.getUserSettings = async (req, res) => {
+    try {
+        const uid = req.params.userId;
+        if (!(await assertUserInScope(req.user, uid, res))) return;
+
+        const global = await getSettings();
+        const override = (await db.query('SELECT * FROM attendance_user_settings WHERE user_id=$1', [uid])).rows[0] || null;
+        const effective = await getEffectiveSettings(uid);
+        const reg = (await db.query('SELECT * FROM attendance_registration WHERE user_id=$1', [uid])).rows[0] || null;
+
+        const assignedShops = await getAssignedShopsWithGeofence(uid);
+        const shop = assignedShops[0] || null;
+        const office = await resolveOffice(uid, reg, effective);
+
+        const salary = (override?.monthly_salary != null) ? override.monthly_salary
+            : (reg?.monthly_salary != null ? reg.monthly_salary : 0);
+
+        // Current-month payroll preview for this user.
+        const month = req.query.month || todayISO().slice(0, 7);
+        const mo = await computeMonth(uid, month, effective);
+        const divisor = global.payroll_days_basis === 'fixed30' ? 30 : mo.days_in_month;
+        const perDay = divisor ? Number(salary) / divisor : 0;
+        const payroll = {
+            month, monthly_salary: Number(salary),
+            present: mo.counts.present, half_day: mo.counts.half_day,
+            week_off: mo.counts.week_off, paid_leave: mo.counts.paid_leave,
+            unpaid_leave: mo.counts.unpaid_leave, holiday: mo.counts.holiday,
+            absent: mo.counts.absent, payable_days: mo.payable_days,
+            per_day_rate: Number(perDay.toFixed(2)),
+            gross_salary: Number((perDay * mo.payable_days).toFixed(2)),
+        };
+        payroll.net_salary = payroll.gross_salary;
+
+        res.json({ user_id: Number(uid), global, override, effective, registration: reg, shop, assigned_shops: assignedShops, office, payroll });
+    } catch (err) {
+        console.error('[attendance.getUserSettings]', err.message);
+        res.status(500).json({ error: 'Failed to load user settings' });
+    }
+};
+
+// PUT /api/attendance/user-settings/:userId
+// Upserts per-user overrides. Any field sent as null/'' clears the override
+// (=> inherit global). monthly_salary is mirrored to the registration row so
+// existing payroll queries keep working.
+exports.saveUserSettings = async (req, res) => {
+    try {
+        const uid = req.params.userId;
+        if (!(await assertUserInScope(req.user, uid, res))) return;
+        const b = req.body || {};
+
+        // Normalise "clear" (null / '' ) vs value. Numbers coerced.
+        const numOrNull = (v) => (v === '' || v === null || v === undefined) ? null : Number(v);
+        const timeOrNull = (v) => (v === '' || v === null || v === undefined) ? null : v;
+        const boolOrNull = (v) => (v === null || v === undefined) ? null : !!v;
+        let weekOff = null;
+        if (Array.isArray(b.week_off_days))
+            weekOff = b.week_off_days.map(Number).filter((n) => n >= 0 && n <= 6);
+
+        const { rows } = await db.query(
+            `INSERT INTO attendance_user_settings
+               (user_id, shift_start, shift_end, grace_minutes, half_day_after,
+                min_working_hours, require_gps, require_selfie, max_gps_accuracy_m,
+                week_off_days, office_radius_m, enforce_shop_location, monthly_salary,
+                updated_by, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,CURRENT_TIMESTAMP)
+             ON CONFLICT (user_id) DO UPDATE SET
+               shift_start=$2, shift_end=$3, grace_minutes=$4, half_day_after=$5,
+               min_working_hours=$6, require_gps=$7, require_selfie=$8, max_gps_accuracy_m=$9,
+               week_off_days=$10, office_radius_m=$11, enforce_shop_location=$12,
+               monthly_salary=$13, updated_by=$14, updated_at=CURRENT_TIMESTAMP
+             RETURNING *`,
+            [uid, timeOrNull(b.shift_start), timeOrNull(b.shift_end), numOrNull(b.grace_minutes),
+             timeOrNull(b.half_day_after), numOrNull(b.min_working_hours),
+             boolOrNull(b.require_gps), boolOrNull(b.require_selfie), numOrNull(b.max_gps_accuracy_m),
+             weekOff, numOrNull(b.office_radius_m), boolOrNull(b.enforce_shop_location),
+             numOrNull(b.monthly_salary), req.user.id]
+        );
+
+        // Mirror salary onto the registration row (source of truth for legacy payroll).
+        if (b.monthly_salary !== '' && b.monthly_salary != null) {
+            const shopId = await resolveShopId(uid);
+            await db.query(
+                `INSERT INTO attendance_registration (user_id, shop_id, monthly_salary, status)
+                 VALUES ($1,$2,$3,'pending')
+                 ON CONFLICT (user_id) DO UPDATE SET monthly_salary=$3`,
+                [uid, shopId, Number(b.monthly_salary)]
+            );
+        }
+        await logAction(req.user.id, null, 'SAVE_USER_SETTINGS', { user_id: uid }, req);
+        emitRealtime(req, 'attendance:update', { userId: Number(uid) });
+        res.json(rows[0]);
+    } catch (err) {
+        console.error('[attendance.saveUserSettings]', err.message);
+        res.status(500).json({ error: 'Failed to save user settings' });
+    }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   ATTENDANCE ASSIGNMENT MODULE ENDPOINTS (Admin only)
+══════════════════════════════════════════════════════════════════ */
+
+// GET /api/attendance/assignments — list users with attendance shop assignments
+exports.getAttendanceAssignments = async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT
+                u.id, u.name, u.mobile, u.role, u.status,
+                (SELECT COALESCE(json_agg(d), '[]'::json)
+                 FROM (
+                     SELECT json_build_object(
+                         'id', s.id,
+                         'name', s.shop_name,
+                         'latitude', s.latitude,
+                         'longitude', s.longitude,
+                         'geofence_radius_m', COALESCE(s.geofence_radius_m, 50),
+                         'assigned_at', asu.assigned_at
+                     ) AS d
+                     FROM attendance_shop_users asu
+                     JOIN shops s ON s.id = asu.shop_id
+                     WHERE asu.user_id = u.id
+                     ORDER BY asu.assigned_at ASC
+                 ) ordered_shops) AS attendance_shops
+             FROM users u
+             WHERE u.status = 'active' AND u.role IN ('shop_user', 'manager')
+             ORDER BY u.name ASC, u.id ASC`
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('[attendance.getAttendanceAssignments]', err.message);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// GET /api/attendance/assignments/user/:userId — list attendance shops for a user
+exports.getUserAttendanceShops = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const result = await db.query(
+            `SELECT s.id, s.shop_name, s.latitude, s.longitude,
+                    COALESCE(s.geofence_radius_m, 50) AS geofence_radius_m,
+                    asu.assigned_at, ab.name AS assigned_by_name
+             FROM attendance_shop_users asu
+             JOIN shops s ON s.id = asu.shop_id
+             LEFT JOIN users ab ON ab.id = asu.assigned_by
+             WHERE asu.user_id = $1
+             ORDER BY asu.assigned_at ASC`,
+            [userId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// POST /api/attendance/assignments/user/:userId — assign a shop to user for attendance
+exports.assignUserAttendanceShop = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { shopId } = req.body;
+
+        if (!shopId) return res.status(400).json({ error: 'shopId is required' });
+
+        const shopCheck = await db.query('SELECT id, shop_name FROM shops WHERE id = $1', [shopId]);
+        if (shopCheck.rows.length === 0) return res.status(404).json({ error: 'Shop not found' });
+
+        const userCheck = await db.query('SELECT id FROM users WHERE id = $1', [userId]);
+        if (userCheck.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+        const ins = await db.query(
+            `INSERT INTO attendance_shop_users (shop_id, user_id, assigned_by)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (shop_id, user_id) DO NOTHING
+             RETURNING id`,
+            [shopId, userId, req.user.id]
+        );
+
+        const alreadyAssigned = ins.rows.length === 0;
+        res.json({
+            message: alreadyAssigned ? 'Attendance shop already assigned' : 'Attendance shop assigned successfully',
+            shop: shopCheck.rows[0],
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// DELETE /api/attendance/assignments/user/:userId/shop/:shopId — unassign an attendance shop from a user
+exports.unassignUserAttendanceShop = async (req, res) => {
+    try {
+        const { userId, shopId } = req.params;
+        const result = await db.query(
+            'DELETE FROM attendance_shop_users WHERE user_id = $1 AND shop_id = $2 RETURNING id',
+            [userId, shopId]
+        );
+        if (result.rows.length === 0)
+            return res.status(404).json({ error: 'Attendance assignment not found' });
+        res.json({ message: 'Attendance shop unassigned successfully' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 };

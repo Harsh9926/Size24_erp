@@ -504,6 +504,17 @@ httpServer.listen(PORT, async () => {
         console.error('[migrate] Attendance user-settings schema failed:', err.message);
     }
 
+    // Auto-migrate: dedupe guard for concurrent open attendance sessions
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql  = fs.readFileSync(path.join(__dirname, 'db', 'migrate_attendance_session_dedupe.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] Attendance session dedupe guard ready');
+    } catch (err) {
+        console.error('[migrate] Attendance session dedupe guard failed:', err.message);
+    }
+
     // Auto-migrate: Admin Bank Ledger (payment-in / manager bank deposit records)
     try {
         const fs   = require('fs');

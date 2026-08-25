@@ -9,6 +9,8 @@ const CAMPAIGNS = {
     entry_reminder:  process.env.AISENSY_TPL_REMINDER       || 'entry_reminder',
     admin_summary:   process.env.AISENSY_TPL_ADMIN_SUMMARY  || 'daily_admin_summary',
     sales_summary:   process.env.AISENSY_TPL_SALES_SUMMARY  || 'daily_sales_summary',
+    employee_punch_in:    process.env.AISENSY_TPL_PUNCH_IN  || 'employee_punch_in',
+    attendance_punch_out: process.env.AISENSY_TPL_PUNCH_OUT || 'attendance_punch_out',
 };
 
 /* Normalize phone → "91XXXXXXXXXX" */
@@ -82,5 +84,15 @@ exports.notifyAdminSummary = (phone, date, missingCount, shopList) =>
 exports.notifySalesSummary = (phone, date, totalAmount, shopBreakdown) =>
     sendWhatsApp(phone, CAMPAIGNS.sales_summary, [date, String(totalAmount), shopBreakdown])
         .catch(err => console.error('[AiSensy] sales summary failed:', err.message));
+
+/* Admin punch-in alert — {{1}} = employee name, {{2}} = punch-in time */
+exports.notifyEmployeePunchIn = (phone, employeeName, punchInTime) =>
+    sendWhatsApp(phone, CAMPAIGNS.employee_punch_in, [employeeName, punchInTime])
+        .catch(err => console.error('[AiSensy] employee punch-in notify failed:', err.message));
+
+/* Admin punch-out alert — {{1}} = employee name, {{2}} = punch-in time, {{3}} = punch-out time */
+exports.notifyEmployeePunchOut = (phone, employeeName, punchInTime, punchOutTime) =>
+    sendWhatsApp(phone, CAMPAIGNS.attendance_punch_out, [employeeName, punchInTime, punchOutTime])
+        .catch(err => console.error('[AiSensy] employee punch-out notify failed:', err.message));
 
 exports.ENABLED = ENABLED;
