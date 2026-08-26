@@ -64,7 +64,7 @@ async function buildContext() {
         db.query(
             `SELECT
                COUNT(*) AS total_entries,
-               COALESCE(SUM(CASE WHEN approval_status = 'APPROVED' THEN total_sale ELSE 0 END), 0) AS total_sales,
+               COALESCE(SUM(CASE WHEN approval_status = 'APPROVED' THEN total_sale - COALESCE(payment_in, 0) ELSE 0 END), 0) AS total_sales,
                COALESCE(SUM(CASE WHEN approval_status = 'APPROVED' THEN cash ELSE 0 END), 0) AS total_cash,
                COALESCE(SUM(CASE WHEN approval_status = 'APPROVED' THEN COALESCE(online,0)+COALESCE(razorpay,0) ELSE 0 END), 0) AS total_online,
                COUNT(CASE WHEN approval_status = 'APPROVED' THEN 1 END) AS approved_count,
