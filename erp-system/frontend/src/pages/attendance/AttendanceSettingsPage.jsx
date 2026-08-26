@@ -138,6 +138,8 @@ export default function AttendanceSettingsPage() {
    Empty field = inherit global. Booleans use a tri-state select.
 ══════════════════════════════════════════════════════════════════ */
 function PerEmployeeSettings({ global, iCls, iStyle }) {
+    const { can } = usePermissions();
+    const canEdit = can('attendance_settings.edit');
     const [emps, setEmps] = useState([]);
     const [userId, setUserId] = useState('');
     const [data, setData] = useState(null);   // full GET /user-settings response
