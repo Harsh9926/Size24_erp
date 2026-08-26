@@ -515,6 +515,39 @@ httpServer.listen(PORT, async () => {
         console.error('[migrate] Attendance session dedupe guard failed:', err.message);
     }
 
+    // Auto-migrate: action-level permissions — Phase 1 (Entries module)
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql  = fs.readFileSync(path.join(__dirname, 'db', 'migrate_entries_action_permissions.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] Entries action-permissions ready');
+    } catch (err) {
+        console.error('[migrate] Entries action-permissions failed:', err.message);
+    }
+
+    // Auto-migrate: action-level permissions — Phase 2 (Manager Funds module)
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql  = fs.readFileSync(path.join(__dirname, 'db', 'migrate_manager_funds_action_permissions.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] Manager Funds action-permissions ready');
+    } catch (err) {
+        console.error('[migrate] Manager Funds action-permissions failed:', err.message);
+    }
+
+    // Auto-migrate: action-level permissions — Phase 3 (Attendance module family)
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql  = fs.readFileSync(path.join(__dirname, 'db', 'migrate_attendance_action_permissions.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] Attendance action-permissions ready');
+    } catch (err) {
+        console.error('[migrate] Attendance action-permissions failed:', err.message);
+    }
+
     // Auto-migrate: Admin Bank Ledger (payment-in / manager bank deposit records)
     try {
         const fs   = require('fs');
