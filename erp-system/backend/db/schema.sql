@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS shops (
     created_by      INT REFERENCES users(id) ON DELETE SET NULL,
     latitude        DECIMAL(10,7),
     longitude       DECIMAL(10,7),
+    geofence_radius_m INT DEFAULT 50,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -83,6 +84,16 @@ CREATE TABLE IF NOT EXISTS daily_entries (
 -- Junction table: many users ↔ many shops
 -- shop_users.user_id is the primary assigned user for a shop; others are collaborators.
 CREATE TABLE IF NOT EXISTS shop_users (
+    id          SERIAL PRIMARY KEY,
+    shop_id     INT NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+    user_id     INT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    assigned_by INT REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE(shop_id, user_id)
+);
+
+-- Separate junction table: Attendance Geofencing Shop Assignments (one user ↔ multiple shops)
+CREATE TABLE IF NOT EXISTS attendance_shop_users (
     id          SERIAL PRIMARY KEY,
     shop_id     INT NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
     user_id     INT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,

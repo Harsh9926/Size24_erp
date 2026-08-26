@@ -4,6 +4,7 @@ const shopController = require('../controllers/shopController');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 
 router.post('/',                        authenticateToken, requireRole('admin'), shopController.createShop);
+router.put('/:id',                         authenticateToken, requireRole('admin'), shopController.updateShop);
 router.get('/',                         authenticateToken, shopController.getShops);
 router.get('/:id',                      authenticateToken, shopController.getShopById);
 

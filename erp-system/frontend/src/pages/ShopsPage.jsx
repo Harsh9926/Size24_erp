@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import Layout from '../components/Layout';
-import { Plus, PlusCircle, Trash2, AlertTriangle, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Plus, PlusCircle, Trash2, AlertTriangle, Loader2, Eye, EyeOff, MapPin, Edit, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none";
@@ -11,6 +11,169 @@ const EMPTY_SHOP = {
     state_id: '', city_id: '', shop_name: '', gst_number: '',
     shop_address: '', manager_name: '', mobile_number: '',
     document_type: 'aadhaar', document_number: '', user_id: '',
+    latitude: '', longitude: '', geofence_radius_m: 50,
+};
+
+const EditShopModal = ({ shop, states, allCities, users, onSave, onCancel, saving }) => {
+    const [form, setForm] = useState({
+        state_id: shop.state_id || '',
+        city_id: shop.city_id || '',
+        shop_name: shop.shop_name || '',
+        gst_number: shop.gst_number || '',
+        shop_address: shop.shop_address || '',
+        manager_name: shop.manager_name || '',
+        mobile_number: shop.mobile_number || '',
+        document_type: shop.document_type || 'aadhaar',
+        document_number: shop.document_number || '',
+        user_id: shop.user_id || '',
+        latitude: shop.latitude != null ? shop.latitude : '',
+        longitude: shop.longitude != null ? shop.longitude : '',
+        geofence_radius_m: shop.geofence_radius_m != null ? shop.geofence_radius_m : 50,
+    });
+    const [fetchingGps, setFetchingGps] = useState(false);
+
+    const filteredCities = allCities.filter(c => String(c.state_id) === String(form.state_id));
+
+    const handleStateChange = (stateId) => {
+        setForm(f => ({ ...f, state_id: stateId, city_id: '' }));
+    };
+
+    const handleGpsLocation = () => {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser.');
+            return;
+        }
+        setFetchingGps(true);
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                setForm(f => ({
+                    ...f,
+                    latitude: pos.coords.latitude.toFixed(7),
+                    longitude: pos.coords.longitude.toFixed(7),
+                }));
+                setFetchingGps(false);
+            },
+            (err) => {
+                alert(`Failed to get location: ${err.message}`);
+                setFetchingGps(false);
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave(shop.id, form);
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6 overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 my-auto">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+                    <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                        <Edit className="h-4 w-4 text-indigo-600" /> Edit Shop — {shop.shop_name}
+                    </h2>
+                    <button onClick={onCancel} className="text-gray-400 hover:text-gray-600">
+                        <X className="h-5 w-5" />
+                    </button>
+                </div>
+                <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label className={labelCls}>State</label>
+                        <select className={inputCls} value={form.state_id} onChange={e => handleStateChange(e.target.value)} required>
+                            <option value="">Select State</option>
+                            {states.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className={labelCls}>City</label>
+                        <select className={inputCls} value={form.city_id} onChange={e => setForm(f => ({ ...f, city_id: e.target.value }))} required disabled={!form.state_id}>
+                            <option value="">{form.state_id ? 'Select City' : 'Select state first'}</option>
+                            {filteredCities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className={labelCls}>Shop Name</label>
+                        <input className={inputCls} value={form.shop_name} onChange={e => setForm(f => ({ ...f, shop_name: e.target.value }))} required />
+                    </div>
+                    <div>
+                        <label className={labelCls}>GST Number</label>
+                        <input className={inputCls} value={form.gst_number} onChange={e => setForm(f => ({ ...f, gst_number: e.target.value }))} />
+                    </div>
+                    <div className="sm:col-span-2">
+                        <label className={labelCls}>Shop Address</label>
+                        <input className={inputCls} value={form.shop_address} onChange={e => setForm(f => ({ ...f, shop_address: e.target.value }))} />
+                    </div>
+                    <div>
+                        <label className={labelCls}>Manager Name</label>
+                        <input className={inputCls} value={form.manager_name} onChange={e => setForm(f => ({ ...f, manager_name: e.target.value }))} />
+                    </div>
+                    <div>
+                        <label className={labelCls}>Mobile Number</label>
+                        <input className={inputCls} value={form.mobile_number} onChange={e => setForm(f => ({ ...f, mobile_number: e.target.value }))} />
+                    </div>
+                    <div>
+                        <label className={labelCls}>Document Type</label>
+                        <select className={inputCls} value={form.document_type} onChange={e => setForm(f => ({ ...f, document_type: e.target.value }))}>
+                            {['aadhaar', 'pan', 'voter'].map(d => (
+                                <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className={labelCls}>Document Number</label>
+                        <input className={inputCls} value={form.document_number} onChange={e => setForm(f => ({ ...f, document_number: e.target.value }))} />
+                    </div>
+                    <div>
+                        <label className={labelCls}>Primary User (Optional)</label>
+                        <select className={inputCls} value={form.user_id} onChange={e => setForm(f => ({ ...f, user_id: e.target.value }))}>
+                            <option value="">-- No User --</option>
+                            {users.filter(u => u.role === 'shop_user').map(u => (
+                                <option key={u.id} value={u.id}>{u.name || u.mobile} ({u.mobile})</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="sm:col-span-2 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                                <MapPin className="h-4 w-4 text-indigo-600" /> Geofence Configuration
+                            </span>
+                            <button
+                                type="button"
+                                onClick={handleGpsLocation}
+                                disabled={fetchingGps}
+                                className="px-2.5 py-1 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1"
+                            >
+                                {fetchingGps ? <Loader2 className="h-3 w-3 animate-spin" /> : <MapPin className="h-3 w-3" />} Use Current Location
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                                <label className={labelCls}>Latitude</label>
+                                <input type="number" step="any" className={inputCls} placeholder="e.g. 18.520430" value={form.latitude} onChange={e => setForm(f => ({ ...f, latitude: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className={labelCls}>Longitude</label>
+                                <input type="number" step="any" className={inputCls} placeholder="e.g. 73.856743" value={form.longitude} onChange={e => setForm(f => ({ ...f, longitude: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className={labelCls}>Radius (metres)</label>
+                                <input type="number" min="1" className={inputCls} placeholder="50" value={form.geofence_radius_m} onChange={e => setForm(f => ({ ...f, geofence_radius_m: e.target.value }))} />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="sm:col-span-2 flex justify-end gap-3 mt-2">
+                        <button type="button" onClick={onCancel} className="px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">Cancel</button>
+                        <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
+                            {saving && <Loader2 className="h-4 w-4 animate-spin" />} Save Changes
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
 };
 
 const DeleteConfirmModal = ({ shop, onConfirm, onCancel, deleting, result }) => {
@@ -161,6 +324,9 @@ const ShopsPage = () => {
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [deleting, setDeleting] = useState(false);
     const [deleteResult, setDeleteResult] = useState(null);
+    const [editShop, setEditShop] = useState(null);
+    const [savingEdit, setSavingEdit] = useState(false);
+    const [fetchingFormGps, setFetchingFormGps] = useState(false);
 
     useEffect(() => { loadAll(); }, []);
 
@@ -186,6 +352,29 @@ const ShopsPage = () => {
         setFilteredCities(allCities.filter(c => String(c.state_id) === String(stateId)));
     };
 
+    const handleFormGps = () => {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser.');
+            return;
+        }
+        setFetchingFormGps(true);
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                setShopForm(f => ({
+                    ...f,
+                    latitude: pos.coords.latitude.toFixed(7),
+                    longitude: pos.coords.longitude.toFixed(7),
+                }));
+                setFetchingFormGps(false);
+            },
+            (err) => {
+                alert(`Failed to get location: ${err.message}`);
+                setFetchingFormGps(false);
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    };
+
     const handleShopSubmit = async (e) => {
         e.preventDefault();
         try {
@@ -196,6 +385,20 @@ const ShopsPage = () => {
             alert('Shop created!');
         } catch (err) {
             alert(err.response?.data?.error || 'Error creating shop');
+        }
+    };
+
+    const handleEditSave = async (id, updatedForm) => {
+        setSavingEdit(true);
+        try {
+            await api.put(`/shops/${id}`, updatedForm);
+            setEditShop(null);
+            loadAll();
+            alert('Shop updated successfully!');
+        } catch (err) {
+            alert(err.response?.data?.error || 'Error updating shop');
+        } finally {
+            setSavingEdit(false);
         }
     };
 
@@ -227,6 +430,17 @@ const ShopsPage = () => {
                     onCancel={closeDeleteModal}
                     deleting={deleting}
                     result={deleteResult}
+                />
+            )}
+            {editShop && (
+                <EditShopModal
+                    shop={editShop}
+                    states={states}
+                    allCities={allCities}
+                    users={users}
+                    onSave={handleEditSave}
+                    onCancel={() => setEditShop(null)}
+                    saving={savingEdit}
                 />
             )}
             <div className="mb-8">
@@ -296,7 +510,7 @@ const ShopsPage = () => {
                         </div>
 
                         <div>
-                            <label className={labelCls}>Assign User (Optional)</label>
+                            <label className={labelCls}>Assign Primary User (Optional)</label>
                             <select
                                 className={inputCls}
                                 value={shopForm.user_id}
@@ -307,6 +521,58 @@ const ShopsPage = () => {
                                     <option key={u.id} value={u.id}>{u.name || u.mobile} ({u.mobile})</option>
                                 ))}
                             </select>
+                        </div>
+
+                        {/* Geofence Configuration Section */}
+                        <div className="sm:col-span-2 lg:col-span-3 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                                    <MapPin className="h-4 w-4 text-indigo-600" /> Geofence Configuration
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={handleFormGps}
+                                    disabled={fetchingFormGps}
+                                    className="px-2.5 py-1 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1"
+                                >
+                                    {fetchingFormGps ? <Loader2 className="h-3 w-3 animate-spin" /> : <MapPin className="h-3 w-3" />} Use Current Location
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                    <label className={labelCls}>Latitude</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        className={inputCls}
+                                        placeholder="e.g. 18.520430"
+                                        value={shopForm.latitude}
+                                        onChange={e => setShopForm(f => ({ ...f, latitude: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className={labelCls}>Longitude</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        className={inputCls}
+                                        placeholder="e.g. 73.856743"
+                                        value={shopForm.longitude}
+                                        onChange={e => setShopForm(f => ({ ...f, longitude: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className={labelCls}>Radius (metres)</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        className={inputCls}
+                                        placeholder="50"
+                                        value={shopForm.geofence_radius_m}
+                                        onChange={e => setShopForm(f => ({ ...f, geofence_radius_m: e.target.value }))}
+                                    />
+                                </div>
+                            </div>
                         </div>
 
                         <div className="sm:col-span-2 lg:col-span-3">
@@ -331,7 +597,7 @@ const ShopsPage = () => {
                     <table className="min-w-full divide-y divide-gray-100">
                         <thead className="bg-gray-50">
                             <tr>
-                                {['Shop Name', 'City', 'State', 'GST', 'Manager', 'Mobile', 'Status', 'Actions'].map(h => (
+                                {['Shop Name', 'City', 'State', 'GST', 'Manager', 'Geofence (GPS)', 'Users', 'Actions'].map(h => (
                                     <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>
                                 ))}
                             </tr>
@@ -348,7 +614,17 @@ const ShopsPage = () => {
                                     <td className="px-5 py-3 text-sm text-gray-600">{shop.state_name}</td>
                                     <td className="px-5 py-3 text-sm text-gray-500 font-mono">{shop.gst_number || '—'}</td>
                                     <td className="px-5 py-3 text-sm text-gray-600">{shop.manager_name || '—'}</td>
-                                    <td className="px-5 py-3 text-sm text-gray-600">{shop.mobile_number || '—'}</td>
+                                    <td className="px-5 py-3 text-xs">
+                                        {shop.latitude != null && shop.longitude != null ? (
+                                            <span className="font-mono text-gray-700 bg-gray-100 px-2 py-1 rounded inline-flex items-center gap-1">
+                                                📍 {Number(shop.latitude).toFixed(4)}, {Number(shop.longitude).toFixed(4)} ({shop.geofence_radius_m || 50}m)
+                                            </span>
+                                        ) : (
+                                            <span className="font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                                                No GPS
+                                            </span>
+                                        )}
+                                    </td>
                                     <td className="px-5 py-3">
                                         <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${parseInt(shop.user_count) > 0 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                                             {parseInt(shop.user_count) > 0 ? `${shop.user_count} User${shop.user_count > 1 ? 's' : ''}` : 'Unassigned'}
@@ -356,6 +632,13 @@ const ShopsPage = () => {
                                     </td>
                                     <td className="px-5 py-3">
                                         <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => setEditShop(shop)}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 transition-colors whitespace-nowrap"
+                                                title={`Edit ${shop.shop_name}`}
+                                            >
+                                                <Edit className="h-3.5 w-3.5" /> Edit
+                                            </button>
                                             <button
                                                 onClick={() => navigate(`/admin/new-entry?shop_id=${shop.id}`)}
                                                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg text-white transition-all whitespace-nowrap"

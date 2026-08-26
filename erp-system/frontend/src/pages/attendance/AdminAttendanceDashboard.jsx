@@ -8,7 +8,7 @@ import { AuthContext } from '../../context/AuthContext';
 import api from '../../services/api';
 import socket from '../../services/socket';
 import {
-    mediaUrl, fmtTime, PUNCH_IN_STATUS, PUNCH_OUT_STATUS, ATT_STATUS,
+    mediaUrl, fmtTime, PUNCH_IN_STATUS, PUNCH_OUT_STATUS, ATT_STATUS, DAY_STATUS_OPTIONS,
 } from '../../components/attendance/attendanceUtils';
 import LocationMap from '../../components/attendance/LocationMap';
 
@@ -74,6 +74,14 @@ export default function AdminAttendanceDashboard() {
         try { const r = await api.get(`/attendance/detail/${id}`); setDetail(r.data); } catch {}
     };
 
+    const setDayStatus = async (userId, newStatus) => {
+        if (!newStatus) return;
+        try {
+            await api.put('/attendance/day-status', { user_id: userId, date, status: newStatus });
+            loadCards(); loadTable();
+        } catch (e) { alert(e.response?.data?.error || 'Failed to set status'); }
+    };
+
     return (
         <Layout title={user?.role === 'manager' ? 'Shop Attendance' : 'Attendance Dashboard'}>
             <div className="p-4 sm:p-6 space-y-5">
@@ -95,6 +103,11 @@ export default function AdminAttendanceDashboard() {
                         <option value="present">Present</option>
                         <option value="late">Late</option>
                         <option value="half_day">Half Day</option>
+                        <option value="week_off">Week Off</option>
+                        <option value="paid_leave">Paid Leave</option>
+                        <option value="unpaid_leave">Unpaid Leave</option>
+                        <option value="holiday">Holiday</option>
+                        <option value="absent">Absent</option>
                     </select>
                     <div className="relative flex-1 min-w-[180px]">
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -128,16 +141,16 @@ export default function AdminAttendanceDashboard() {
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="text-left" style={{ background: 'var(--bg-primary)' }}>
-                                    {['Employee', 'Role', 'Shop', 'Punch In', 'Punch Out', 'Hours', 'Status', 'In', 'Out', 'Dist.', 'Selfies', ''].map(h => (
+                                    {['Employee', 'Role', 'Shop', 'Punch In', 'Punch Out', 'Hours', 'Status', 'In', 'Out', 'Dist.', 'Selfies', 'Set Day', ''].map(h => (
                                         <th key={h} className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>{h}</th>
                                     ))}
                                 </tr>
                             </thead>
                             <tbody>
                                 {loading ? (
-                                    <tr><td colSpan={12} className="px-3 py-8 text-center text-gray-400"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>
+                                    <tr><td colSpan={13} className="px-3 py-8 text-center text-gray-400"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>
                                 ) : rows.length === 0 ? (
-                                    <tr><td colSpan={12} className="px-3 py-8 text-center text-gray-400">No attendance records for this day.</td></tr>
+                                    <tr><td colSpan={13} className="px-3 py-8 text-center text-gray-400">No attendance records for this day.</td></tr>
                                 ) : rows.map(r => (
                                     <tr key={r.id} className="border-t" style={{ borderColor: 'var(--border-color)' }}>
                                         <td className="px-3 py-2.5 whitespace-nowrap font-semibold" style={{ color: 'var(--text-primary)' }}>{r.name || r.mobile}</td>
@@ -155,6 +168,14 @@ export default function AdminAttendanceDashboard() {
                                                 {r.punch_in_selfie_url && <img src={mediaUrl(r.punch_in_selfie_url)} alt="in" className="h-8 w-8 rounded object-cover border" />}
                                                 {r.punch_out_selfie_url && <img src={mediaUrl(r.punch_out_selfie_url)} alt="out" className="h-8 w-8 rounded object-cover border" />}
                                             </div>
+                                        </td>
+                                        <td className="px-3 py-2.5">
+                                            <select value="" onChange={e => setDayStatus(r.user_id, e.target.value)}
+                                                className="px-2 py-1 border rounded text-xs outline-none focus:ring-1 focus:ring-teal-700"
+                                                style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+                                                <option value="">Set…</option>
+                                                {DAY_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                            </select>
                                         </td>
                                         <td className="px-3 py-2.5">
                                             <button onClick={() => openDetail(r.id)} className="text-teal-700 hover:text-teal-800"><Eye className="h-4 w-4" /></button>
@@ -209,6 +230,21 @@ function DetailModal({ detail: d, onClose }) {
                         <Row k="Browser" v={d.punch_out_browser} />
                         <Row k="IP" v={d.punch_out_ip} />
                     </div>
+                    {Array.isArray(d.sessions) && d.sessions.length > 1 && (
+                        <div className="md:col-span-2">
+                            <p className="text-xs font-bold uppercase mb-2 text-teal-700">All Sessions ({d.sessions.length})</p>
+                            <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border-color)' }}>
+                                {d.sessions.map(s => (
+                                    <div key={s.id} className="flex items-center justify-between px-3 py-1.5 border-b text-xs" style={{ borderColor: 'var(--border-color)' }}>
+                                        <span className="font-mono text-gray-400">#{s.seq}</span>
+                                        <span>In {fmtTime(s.punch_in_at)}</span>
+                                        <span>Out {s.punch_out_at ? fmtTime(s.punch_out_at) : 'Open'}</span>
+                                        <span className="font-mono font-bold text-teal-700">{s.working_hours ? `${s.working_hours}h` : '—'}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                     <div className="md:col-span-2">
                         <p className="text-xs font-bold uppercase mb-2 text-teal-700">Today's Punch-In Location</p>
                         <LocationMap lat={d.punch_in_lat} lng={d.punch_in_lng} />

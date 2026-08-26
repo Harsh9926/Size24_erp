@@ -11,6 +11,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     PieChart, Pie, Cell,
 } from 'recharts';
+import LiveAttendanceToday from '../components/attendance/LiveAttendanceToday';
 
 /* ─── tiny helpers ─────────────────────────────────────────────── */
 const fmt = (v) => `₹${Number(v || 0).toLocaleString('en-IN')}`;
@@ -534,6 +535,9 @@ const AdminDashboard = () => {
                     );
                 })}
             </div>
+
+            {/* ── Live Attendance Today (real-time, existing attendance APIs) ── */}
+            <LiveAttendanceToday />
 
             {/* ── Live Feed + Anomaly Row ───────────────────────── */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">

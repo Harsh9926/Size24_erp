@@ -62,11 +62,28 @@ export const PUNCH_OUT_STATUS = {
     overtime:   { label: 'Overtime',   cls: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
 };
 export const ATT_STATUS = {
-    present:  { label: 'Present',  cls: 'bg-green-100 text-green-700 border-green-200' },
-    late:     { label: 'Late',     cls: 'bg-amber-100 text-amber-700 border-amber-200' },
-    half_day: { label: 'Half Day', cls: 'bg-orange-100 text-orange-700 border-orange-200' },
-    absent:   { label: 'Absent',   cls: 'bg-red-100 text-red-700 border-red-200' },
+    present:      { label: 'Present',      cls: 'bg-green-100 text-green-700 border-green-200' },
+    late:         { label: 'Late',         cls: 'bg-amber-100 text-amber-700 border-amber-200' },
+    half_day:     { label: 'Half Day',     cls: 'bg-orange-100 text-orange-700 border-orange-200' },
+    absent:       { label: 'Absent',       cls: 'bg-red-100 text-red-700 border-red-200' },
+    week_off:     { label: 'Week Off',     cls: 'bg-sky-100 text-sky-700 border-sky-200' },
+    paid_leave:   { label: 'Paid Leave',   cls: 'bg-teal-100 text-teal-700 border-teal-200' },
+    unpaid_leave: { label: 'Unpaid Leave', cls: 'bg-rose-100 text-rose-700 border-rose-200' },
+    holiday:      { label: 'Holiday',      cls: 'bg-violet-100 text-violet-700 border-violet-200' },
 };
+
+// Day-status options an admin/manager can set on the payroll/attendance grid.
+export const DAY_STATUS_OPTIONS = [
+    { value: 'present',      label: 'Present' },
+    { value: 'week_off',     label: 'Week Off (paid)' },
+    { value: 'paid_leave',   label: 'Paid Leave' },
+    { value: 'unpaid_leave', label: 'Unpaid Leave' },
+    { value: 'half_day',     label: 'Half Day' },
+    { value: 'holiday',      label: 'Holiday (paid)' },
+    { value: 'absent',       label: 'Absent' },
+];
+
+export const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export const fmtTime = (t) => t ? new Date(t).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—';
 export const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN') : '—';

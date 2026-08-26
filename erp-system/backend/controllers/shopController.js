@@ -4,18 +4,24 @@ exports.createShop = async (req, res) => {
     try {
         const {
             state_id, city_id, shop_name, gst_number, shop_address,
-            manager_name, mobile_number, document_type, document_number, user_id
+            manager_name, mobile_number, document_type, document_number, user_id,
+            latitude, longitude, geofence_radius_m
         } = req.body;
+
+        const radius = geofence_radius_m != null && geofence_radius_m !== '' ? Number(geofence_radius_m) : 50;
 
         const result = await db.query(
             `INSERT INTO shops (
                 state_id, city_id, shop_name, gst_number, shop_address,
                 manager_name, mobile_number, document_type, document_number,
-                user_id, created_by
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+                user_id, created_by, latitude, longitude, geofence_radius_m
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
             [state_id, city_id, shop_name, gst_number, shop_address,
              manager_name, mobile_number, document_type, document_number,
-             user_id || null, req.user.id]
+             user_id || null, req.user.id,
+             latitude != null && latitude !== '' ? Number(latitude) : null,
+             longitude != null && longitude !== '' ? Number(longitude) : null,
+             radius]
         );
 
         const shop = result.rows[0];
@@ -29,6 +35,49 @@ exports.createShop = async (req, res) => {
         }
 
         res.status(201).json(shop);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+exports.updateShop = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            state_id, city_id, shop_name, gst_number, shop_address,
+            manager_name, mobile_number, document_type, document_number, user_id,
+            latitude, longitude, geofence_radius_m
+        } = req.body;
+
+        const radius = geofence_radius_m != null && geofence_radius_m !== '' ? Number(geofence_radius_m) : 50;
+
+        const result = await db.query(
+            `UPDATE shops SET
+                state_id = $1, city_id = $2, shop_name = $3, gst_number = $4,
+                shop_address = $5, manager_name = $6, mobile_number = $7,
+                document_type = $8, document_number = $9, user_id = $10,
+                latitude = $11, longitude = $12, geofence_radius_m = $13
+             WHERE id = $14 RETURNING *`,
+            [state_id || null, city_id || null, shop_name, gst_number || null,
+             shop_address || null, manager_name || null, mobile_number || null,
+             document_type || null, document_number || null, user_id || null,
+             latitude != null && latitude !== '' ? Number(latitude) : null,
+             longitude != null && longitude !== '' ? Number(longitude) : null,
+             radius, id]
+        );
+
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Shop not found' });
+
+        const shop = result.rows[0];
+
+        if (user_id) {
+            await db.query(
+                'INSERT INTO shop_users (shop_id, user_id, assigned_by) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+                [shop.id, user_id, req.user.id]
+            );
+        }
+
+        res.json(shop);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

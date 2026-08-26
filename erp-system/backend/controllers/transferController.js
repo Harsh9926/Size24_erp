@@ -185,6 +185,9 @@ exports.getAdminTransfers = async (req, res) => {
     if (manager_id) {
         conditions.push(`ct.to_user_id = $${params.length + 1}`);
         params.push(parseInt(manager_id));
+    } else if (req.user.role === 'manager') {
+        conditions.push(`ct.to_user_id = $${params.length + 1}`);
+        params.push(req.user.id);
     }
 
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';

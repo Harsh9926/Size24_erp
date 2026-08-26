@@ -10,7 +10,7 @@ import {
     Wallet, Receipt, TriangleAlert, Lock,
     Package, ShoppingCart, TrendingUp, Truck, BookOpen, ChevronDown,
     Scissors, Layers, List, Wrench, Building2, Zap, Tag, DollarSign, BookOpenCheck,
-    Scale, Target, Factory, Settings, Brain, Fingerprint, CalendarCheck,
+    Scale, Target, Factory, Settings, Brain, Fingerprint, CalendarCheck, MapPin,
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -219,8 +219,10 @@ const accountingLinks = [
 
 const attendanceAdminLinks = [
     { to: '/attendance',           label: 'Dashboard',      icon: LayoutDashboard },
+    { to: '/attendance/assignments', label: 'Assignments',  icon: MapPin          },
     { to: '/attendance/approvals', label: 'Approvals',      icon: ShieldCheck     },
     { to: '/attendance/reports',   label: 'Reports',        icon: BarChart3       },
+    { to: '/attendance/payroll',   label: 'Payroll',        icon: Wallet          },
     { to: '/attendance/settings',  label: 'Settings',       icon: Settings        },
     { to: '/attendance/me',        label: 'My Attendance',  icon: Fingerprint     },
 ];
@@ -228,6 +230,7 @@ const attendanceManagerLinks = [
     { to: '/attendance/me',      label: 'My Attendance',   icon: Fingerprint     },
     { to: '/attendance',         label: 'Shop Attendance', icon: LayoutDashboard },
     { to: '/attendance/reports', label: 'Reports',         icon: BarChart3       },
+    { to: '/attendance/payroll', label: 'Payroll',         icon: Wallet          },
 ];
 
 const phase3Modules = [

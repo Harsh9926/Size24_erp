@@ -243,7 +243,7 @@ exports.getUserShops = async (req, res) => {
     try {
         const { userId } = req.params;
         const result = await db.query(
-            `SELECT s.id, s.shop_name, su.assigned_at, ab.name AS assigned_by_name
+            `SELECT s.id, s.shop_name, s.latitude, s.longitude, COALESCE(s.geofence_radius_m, 50) AS geofence_radius_m, su.assigned_at, ab.name AS assigned_by_name
              FROM shop_users su
              JOIN shops s       ON s.id  = su.shop_id
              LEFT JOIN users ab ON ab.id = su.assigned_by

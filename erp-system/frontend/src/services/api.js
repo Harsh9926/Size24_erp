@@ -27,7 +27,7 @@ api.interceptors.response.use(
             (status === 403 && (
                 msg === 'Invalid or expired token' ||
                 msg === 'Access token missing' ||
-                msg === 'Insufficient permissions'
+                msg === 'Account is deactivated. Please contact admin.'
             ));
 
         if (shouldLogout && localStorage.getItem('token')) {
