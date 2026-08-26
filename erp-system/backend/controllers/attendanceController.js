@@ -18,7 +18,7 @@ async function notifyAdminsPunch(templateFn, uid, ...args) {
     if (!wa.ENABLED) return;
     try {
         const { rows: admins } = await db.query(
-            `SELECT mobile FROM users WHERE role = 'admin' AND mobile IS NOT NULL AND is_active = true`
+            `SELECT mobile FROM users WHERE role = 'admin' AND mobile IS NOT NULL AND status = 'active'`
         );
         const { rows: nameRows } = await db.query('SELECT name FROM users WHERE id = $1', [uid]);
         const employeeName = nameRows[0]?.name || 'Employee';
