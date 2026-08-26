@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useContext } from 'react';
 import api from '../services/api';
 import Layout from '../components/Layout';
 import { AuthContext } from '../context/AuthContext';
+import { usePermissions } from '../context/PermissionsContext';
 import {
     Lock, Unlock, ChevronLeft, ChevronRight,
     Search, Filter, RefreshCw, Calendar, ArrowRightLeft, Pencil, X,
@@ -29,7 +30,12 @@ const inputCls =
 
 const EntriesPage = () => {
     const { user } = useContext(AuthContext);
-    const canDelete = user?.mobile === '8817654579';
+    const { can } = usePermissions();
+    // Existing hardcoded gate preserved as-is, AND-ed with the new
+    // action-level permission (defense in depth, not a replacement).
+    const canDelete = user?.mobile === '8817654579' && can('entries.delete');
+    const canEdit   = can('entries.edit');
+    const canUnlock = can('entries.unlock');
 
     const [entries,       setEntries]       = useState([]);
     const [shops,         setShops]         = useState([]);
@@ -591,7 +597,7 @@ const EntriesPage = () => {
                                     <td className="px-4 py-4">
                                         <div className="flex items-center gap-1.5">
                                             {/* Unlock — compact, only when locked */}
-                                            {e.locked && !isEditable(e) && (
+                                            {e.locked && !isEditable(e) && canUnlock && (
                                                 <button onClick={() => handleUnlock(e.id)} title="Unlock for editing"
                                                     className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-colors">
                                                     <Unlock className="h-4 w-4" />
@@ -599,10 +605,12 @@ const EntriesPage = () => {
                                             )}
 
                                             {/* Edit — secondary icon */}
-                                            <button onClick={() => openEdit(e)} title="Edit entry"
-                                                className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:text-amber-600 hover:border-amber-200 hover:bg-amber-50 transition-colors">
-                                                <Pencil className="h-4 w-4" />
-                                            </button>
+                                            {canEdit && (
+                                                <button onClick={() => openEdit(e)} title="Edit entry"
+                                                    className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:text-amber-600 hover:border-amber-200 hover:bg-amber-50 transition-colors">
+                                                    <Pencil className="h-4 w-4" />
+                                                </button>
+                                            )}
 
                                             {/* View Photo — primary/important, distinct */}
                                             <button onClick={() => openPhoto(e)}

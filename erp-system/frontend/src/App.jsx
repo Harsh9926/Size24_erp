@@ -85,6 +85,8 @@ import AdminAttendanceDashboard from './pages/attendance/AdminAttendanceDashboar
 import AttendanceApprovalsPage  from './pages/attendance/AttendanceApprovalsPage';
 import AttendanceSettingsPage   from './pages/attendance/AttendanceSettingsPage';
 import AttendanceReportsPage    from './pages/attendance/AttendanceReportsPage';
+import AttendancePayrollPage    from './pages/attendance/AttendancePayrollPage';
+import AttendanceAssignmentsPage from './pages/attendance/AttendanceAssignmentsPage';
 
 function AppInner() {
   const { user, setUser } = useContext(AuthContext);
@@ -182,14 +184,19 @@ function AppInner() {
         <Route path="/ai"        element={<PrivateRoute allowedRoles={['admin','manager']}><AIDashboard /></PrivateRoute>} />
 
         {/* ── Attendance Module ─────────────────────────────────── */}
-        {/* Self-service punch (manager + admin; employees use Shop Dashboard) */}
-        <Route path="/attendance/me"          element={<PrivateRoute allowedRoles={['admin','manager']}><MyAttendancePage /></PrivateRoute>} />
+        {/* Self-service punch (manager + admin; employees use Shop Dashboard) —
+            allowedRoles already excludes shop_user from this route, so the
+            module="attendance" check here only ever applies to admin/manager
+            (who ARE covered by the RBAC surface), never to employees. */}
+        <Route path="/attendance/me"          element={<PrivateRoute allowedRoles={['admin','manager']} module="attendance"><MyAttendancePage /></PrivateRoute>} />
         {/* Dashboard + table — admin (all shops) & manager (own shops) */}
-        <Route path="/attendance"             element={<PrivateRoute allowedRoles={['admin','manager']}><AdminAttendanceDashboard /></PrivateRoute>} />
-        <Route path="/attendance/reports"     element={<PrivateRoute allowedRoles={['admin','manager']}><AttendanceReportsPage /></PrivateRoute>} />
+        <Route path="/attendance"             element={<PrivateRoute allowedRoles={['admin','manager']} module="attendance"><AdminAttendanceDashboard /></PrivateRoute>} />
+        <Route path="/attendance/reports"     element={<PrivateRoute allowedRoles={['admin','manager']} module="attendance_reports"><AttendanceReportsPage /></PrivateRoute>} />
+        <Route path="/attendance/payroll"     element={<PrivateRoute allowedRoles={['admin','manager']} module="attendance_payroll"><AttendancePayrollPage /></PrivateRoute>} />
         {/* Admin-only approvals & config */}
-        <Route path="/attendance/approvals"   element={<PrivateRoute allowedRoles={['admin']}><AttendanceApprovalsPage /></PrivateRoute>} />
-        <Route path="/attendance/settings"    element={<PrivateRoute allowedRoles={['admin']}><AttendanceSettingsPage /></PrivateRoute>} />
+        <Route path="/attendance/assignments" element={<PrivateRoute allowedRoles={['admin']} module="attendance_assignments"><AttendanceAssignmentsPage /></PrivateRoute>} />
+        <Route path="/attendance/approvals"   element={<PrivateRoute allowedRoles={['admin']} module="attendance_approvals"><AttendanceApprovalsPage /></PrivateRoute>} />
+        <Route path="/attendance/settings"    element={<PrivateRoute allowedRoles={['admin']} module="attendance_settings"><AttendanceSettingsPage /></PrivateRoute>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />

@@ -2,10 +2,13 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Layout from '../../components/Layout';
 import { BarChart3, Download, FileSpreadsheet, FileText, Loader2, Printer } from 'lucide-react';
 import api from '../../services/api';
+import { usePermissions } from '../../context/PermissionsContext';
 
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 
 export default function AttendanceReportsPage() {
+    const { can } = usePermissions();
+    const canExport = can('attendance_reports.export');
     const [month, setMonth] = useState(thisMonth());
     const [shops, setShops] = useState([]);
     const [shopId, setShopId] = useState('');
@@ -52,8 +55,11 @@ export default function AttendanceReportsPage() {
                         {shops.map(s => <option key={s.id} value={s.id}>{s.shop_name}</option>)}
                     </select>
                     <div className="ml-auto flex gap-2">
+                        {canExport && (<>
                         <button onClick={() => downloadFile('csv')} className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-teal-700 rounded-lg hover:bg-teal-800"><Download className="h-4 w-4" /> CSV</button>
                         <button onClick={() => downloadFile('excel')} className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white rounded-lg" style={{ background: '#059669' }}><FileSpreadsheet className="h-4 w-4" /> Excel</button>
+                        </>)}
+                        {/* Print uses already-visible report data (attendance_reports.view), not the export endpoint — not gated by attendance_reports.export */}
                         <button onClick={() => window.print()} className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-700 bg-gray-100 border border-gray-200 rounded-lg hover:bg-gray-200"><Printer className="h-4 w-4" /> PDF / Print</button>
                     </div>
                 </div>

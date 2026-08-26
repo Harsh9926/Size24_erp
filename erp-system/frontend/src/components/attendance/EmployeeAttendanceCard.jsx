@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useContext } from 'react';
 import {
     Clock, MapPin, Camera, LogIn, LogOut, Loader2, CheckCircle2,
     AlertCircle, CalendarDays, TrendingUp, TrendingDown, Timer, Percent,
@@ -7,6 +7,8 @@ import {
 import SelfieCapture from './SelfieCapture';
 import CompleteRegistrationModal from './CompleteRegistrationModal';
 import AttendanceCalendar from './AttendanceCalendar';
+import { AuthContext } from '../../context/AuthContext';
+import { usePermissions } from '../../context/PermissionsContext';
 import {
     getPosition, buildFormData, attApi, to12h, fmtTime,
     PUNCH_IN_STATUS, PUNCH_OUT_STATUS,
@@ -25,6 +27,14 @@ const StatCell = ({ icon: Icon, label, value, color }) => (
 
 // Self-service attendance card. Works for employee / manager / admin.
 const EmployeeAttendanceCard = () => {
+    const { user } = useContext(AuthContext);
+    const { can }  = usePermissions();
+    // shop_user's own punch is exempt from this RBAC surface on the backend
+    // (see routes/attendance.js — exemptRoles: ['shop_user']); mirror that
+    // here so the button doesn't disappear for every employee just because
+    // ROLE_DEFAULTS.shop_user.attendance is NO_ACCESS at the module level.
+    // admin/manager (who ARE covered by the permission) get the real check.
+    const canPunchPermission = user?.role === 'shop_user' ? true : can('attendance.punch');
     const [data, setData]       = useState(null);   // { settings, registration, today }
     const [monthly, setMonthly] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -54,12 +64,16 @@ const EmployeeAttendanceCard = () => {
 
     useEffect(() => { load(); }, [load]);
 
-    // Live working-hours timer once punched in (and not out).
+    // Live timer for the currently open session (In with no Out yet).
+    const openSession = (data?.today?.sessions || []).find((s) => !s.punch_out_at);
     useEffect(() => {
-        const t = data?.today;
-        if (!t?.punch_in_at || t?.punch_out_at) { setLiveTimer(''); return; }
+        if (!openSession?.punch_in_at) { setLiveTimer(''); return; }
+        const base = new Date(openSession.punch_in_at).getTime();
+        const priorH = (data?.today?.sessions || [])
+            .filter((s) => s.punch_out_at)
+            .reduce((a, s) => a + Number(s.working_hours || 0), 0);
         const tick = () => {
-            const ms = Date.now() - new Date(t.punch_in_at).getTime();
+            const ms = Date.now() - base + priorH * 3600000;
             const h = Math.floor(ms / 3600000);
             const m = Math.floor((ms % 3600000) / 60000);
             const s = Math.floor((ms % 60000) / 1000);
@@ -68,7 +82,7 @@ const EmployeeAttendanceCard = () => {
         tick();
         const iv = setInterval(tick, 1000);
         return () => clearInterval(iv);
-    }, [data?.today?.punch_in_at, data?.today?.punch_out_at]);
+    }, [openSession?.id, openSession?.punch_in_at]);
 
     const doPunch = async () => {
         setBusy(true); setMsg(null);
@@ -158,8 +172,10 @@ const EmployeeAttendanceCard = () => {
     /* ── Approved — full attendance UI ────────────────────────────── */
     const inS  = today?.punch_in_status  && PUNCH_IN_STATUS[today.punch_in_status];
     const outS = today?.punch_out_status && PUNCH_OUT_STATUS[today.punch_out_status];
-    const canPunchIn  = !today?.punch_in_at;
-    const canPunchOut = today?.punch_in_at && !today?.punch_out_at;
+    const sessions = today?.sessions || [];
+    const hasOpen = today?.has_open_session;
+    const canPunchIn  = !hasOpen && canPunchPermission;   // start a new session unless one is open
+    const canPunchOut = !!hasOpen && canPunchPermission;  // close the currently open session
 
     return (
         <div className="mb-6 space-y-4">
@@ -237,13 +253,32 @@ const EmployeeAttendanceCard = () => {
                             <button onClick={() => { setPunchMode('in'); setMsg(null); }} disabled={!canPunchIn}
                                 className="flex-1 min-w-[140px] py-3 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2 disabled:bg-gray-300 disabled:cursor-not-allowed"
                                 style={{ background: canPunchIn ? '#0f766e' : undefined }}>
-                                <LogIn className="h-4 w-4" /> {canPunchIn ? 'Punch In' : 'Punched In ✓'}
+                                <LogIn className="h-4 w-4" /> {sessions.length ? 'Punch In Again' : 'Punch In'}
                             </button>
                             <button onClick={() => { setPunchMode('out'); setMsg(null); }} disabled={!canPunchOut}
                                 className="flex-1 min-w-[140px] py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 border disabled:opacity-50 disabled:cursor-not-allowed"
                                 style={{ borderColor: '#0f766e', color: canPunchOut ? '#0f766e' : '#9ca3af' }}>
-                                <LogOut className="h-4 w-4" /> {today?.punch_out_at ? 'Punched Out ✓' : 'Punch Out'}
+                                <LogOut className="h-4 w-4" /> Punch Out
                             </button>
+                        </div>
+                    )}
+
+                    {sessions.length > 0 && (
+                        <div className="mt-4 rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border-color)' }}>
+                            <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide"
+                                style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>
+                                Today's Sessions ({sessions.length})
+                            </div>
+                            <div className="divide-y" style={{ borderColor: 'var(--border-color)' }}>
+                                {sessions.map((s) => (
+                                    <div key={s.id} className="flex items-center justify-between px-3 py-2 text-xs" style={{ color: 'var(--text-primary)' }}>
+                                        <span className="font-mono font-semibold text-gray-400">#{s.seq}</span>
+                                        <span className="flex items-center gap-1"><LogIn className="h-3 w-3 text-teal-700" /> {fmtTime(s.punch_in_at)}</span>
+                                        <span className="flex items-center gap-1"><LogOut className="h-3 w-3 text-teal-700" /> {s.punch_out_at ? fmtTime(s.punch_out_at) : <span className="text-amber-600 font-semibold">Open</span>}</span>
+                                        <span className="font-mono font-bold text-teal-700">{s.working_hours ? `${s.working_hours}h` : '—'}</span>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
 
@@ -264,14 +299,14 @@ const EmployeeAttendanceCard = () => {
                     <button onClick={load} className="p-1 text-teal-700 hover:text-teal-800"><RefreshCw className="h-4 w-4" /></button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-                    <StatCell icon={CheckCircle2} label="Present"    value={sum.present ?? 0}       color="#16a34a" />
-                    <StatCell icon={AlertCircle}  label="Absent"     value={sum.absent ?? 0}        color="#dc2626" />
-                    <StatCell icon={Clock}        label="Late"       value={sum.late ?? 0}          color="#d97706" />
-                    <StatCell icon={Timer}        label="Half Day"   value={sum.half_day ?? 0}      color="#ea580c" />
-                    <StatCell icon={TrendingUp}   label="Early Arr." value={sum.early_arrival ?? 0} color="#2563eb" />
-                    <StatCell icon={TrendingDown} label="Early Exit" value={sum.early_exit ?? 0}    color="#d97706" />
-                    <StatCell icon={TrendingUp}   label="Overtime"   value={sum.overtime ?? 0}      color="#4f46e5" />
-                    <StatCell icon={Percent}      label="Attendance" value={`${sum.attendance_percentage ?? 0}%`} color="#0f766e" />
+                    <StatCell icon={CheckCircle2} label="Present"     value={sum.present ?? 0}       color="#16a34a" />
+                    <StatCell icon={AlertCircle}  label="Absent"      value={sum.absent ?? 0}        color="#dc2626" />
+                    <StatCell icon={CalendarDays} label="Week Off"    value={sum.week_off ?? 0}      color="#0284c7" />
+                    <StatCell icon={CheckCircle2} label="Paid Leave"  value={sum.paid_leave ?? 0}    color="#0d9488" />
+                    <StatCell icon={Timer}        label="Half Day"    value={sum.half_day ?? 0}      color="#ea580c" />
+                    <StatCell icon={Clock}        label="Late"        value={sum.late ?? 0}          color="#d97706" />
+                    <StatCell icon={TrendingUp}   label="Payable Days" value={sum.payable_days ?? 0} color="#4f46e5" />
+                    <StatCell icon={Percent}      label="Attendance"  value={`${sum.attendance_percentage ?? 0}%`} color="#0f766e" />
                 </div>
                 <div className="mb-3">
                     <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>

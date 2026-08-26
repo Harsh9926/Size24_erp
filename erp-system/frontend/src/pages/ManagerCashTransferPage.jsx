@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import Layout from '../components/Layout';
+import { usePermissions } from '../context/PermissionsContext';
 import {
     ArrowUpRight, Building2, Upload, CheckCircle2, XCircle,
     Clock, AlertCircle, Loader2, RefreshCw, X, Wallet, FileText, Receipt,
@@ -38,6 +39,9 @@ const TypeBadge = ({ type }) => {
 
 /* ── Page ─────────────────────────────────────────────────────────── */
 const ManagerCashTransferPage = () => {
+    const { can } = usePermissions();
+    const canTransfer = can('manager_funds.transfer');
+    const canApprove  = can('manager_funds.approve_transfer');
     const [activeTab,          setActiveTab]          = useState('admin');
     const [transfers,          setTransfers]          = useState([]);
     const [incomingTransfers,  setIncomingTransfers]  = useState([]);
@@ -294,6 +298,7 @@ const ManagerCashTransferPage = () => {
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="flex items-center gap-2">
+                                                {canApprove && (<>
                                                 <button
                                                     onClick={() => handleAccept(t.id)}
                                                     disabled={!!actionLoading[t.id]}
@@ -314,6 +319,7 @@ const ManagerCashTransferPage = () => {
                                                         : <XCircle  className="h-3 w-3" />}
                                                     Reject
                                                 </button>
+                                                </>)}
                                             </div>
                                         </td>
                                     </tr>
@@ -456,7 +462,8 @@ const ManagerCashTransferPage = () => {
                                 )}
                             </div>
 
-                            <button type="submit" disabled={submitting}
+                            <button type="submit" disabled={submitting || !canTransfer}
+                                title={!canTransfer ? 'You do not have permission to create fund transfers' : undefined}
                                 className="w-full py-3 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2 transition-all"
                                 style={{ background: submitting ? '#9ca3af' : '#8b5cf6' }}>
                                 {submitting

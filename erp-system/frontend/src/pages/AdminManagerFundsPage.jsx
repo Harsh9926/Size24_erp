@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import Layout from '../components/Layout';
 import WalletHistoryModal from '../components/WalletHistoryModal';
+import { usePermissions } from '../context/PermissionsContext';
 import {
     CheckCircle2, XCircle, Clock, Loader2, RefreshCw,
     Eye, AlertCircle, Building2, ArrowUpRight, ArrowDownRight,
@@ -170,6 +171,8 @@ const SendToManagerModal = ({ open, onClose, onConfirm, managers, acting }) => {
 /* ── Page ─────────────────────────────────────────────────────────── */
 const AdminManagerFundsPage = () => {
     const navigate = useNavigate();
+    const { can } = usePermissions();
+    const canApprove = can('manager_funds.approve_transfer');
 
     const [transfers,     setTransfers]     = useState([]);
     const [managers,      setManagers]      = useState([]);
@@ -580,7 +583,7 @@ const AdminManagerFundsPage = () => {
                             <option value="all">All</option>
                         </select>
 
-                        {selectedIds.size > 0 && (
+                        {selectedIds.size > 0 && canApprove && (
                             <button onClick={handleBulkApprove} disabled={bulkActing}
                                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white rounded-lg transition-all"
                                 style={{ background: bulkActing ? '#9ca3af' : 'linear-gradient(135deg,#059669,#10b981)' }}>
@@ -621,7 +624,7 @@ const AdminManagerFundsPage = () => {
                         <tbody>
                             {filtered.map(t => {
                                 const isActing = acting === t.id;
-                                const canAct   = t.status === 'pending' && t.type !== 'user_to_manager';
+                                const canAct   = t.status === 'pending' && t.type !== 'user_to_manager' && canApprove;
                                 return (
                                     <tr key={`${t.type}-${t.id}`}
                                         style={{ borderTop: '1px solid var(--border-color)' }}>

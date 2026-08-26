@@ -8,6 +8,7 @@ export const PermissionsContext = createContext({
     hasAccess:          () => true,
     canWrite:           () => true,
     getPermission:      () => 'WRITE',
+    can:                () => true,
     refreshPermissions: () => {},
 });
 
@@ -74,6 +75,17 @@ export const PermissionsProvider = ({ children }) => {
         return permissions[module] ?? 'NO_ACCESS';
     }, [user, permissions]);
 
+    /* Action-level check (Phase 1: entries.* only). Backed by the `actions`
+       map returned alongside the existing module keys in /permissions/me —
+       falls back to true (fail-open) only when no action data has loaded
+       yet AND no user is present is impossible (guarded), so an unknown
+       action key simply resolves to whatever the backend sent, defaulting
+       to false rather than granting silently. */
+    const can = useCallback((actionKey) => {
+        if (!user) return false;
+        return permissions.actions?.[actionKey] === true;
+    }, [user, permissions]);
+
     return (
         <PermissionsContext.Provider value={{
             permissions,
@@ -81,6 +93,7 @@ export const PermissionsProvider = ({ children }) => {
             hasAccess,
             canWrite,
             getPermission,
+            can,
             refreshPermissions: fetchPermissions,
         }}>
             {children}

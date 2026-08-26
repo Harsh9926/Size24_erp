@@ -4,6 +4,7 @@ import { Loader2, CheckCircle2, XCircle, MapPin, Clock, ShieldCheck, RefreshCw }
 import api from '../../services/api';
 import { mediaUrl, fmtDate } from '../../components/attendance/attendanceUtils';
 import LocationMap from '../../components/attendance/LocationMap';
+import { usePermissions } from '../../context/PermissionsContext';
 
 export default function AttendanceApprovalsPage() {
     const [tab, setTab] = useState('registrations');
@@ -101,6 +102,9 @@ const Empty = ({ text }) => (
 );
 
 function ApprovalCard({ title, subtitle, selfie, lat, lng, accuracy, when, busy, onApprove, onReject }) {
+    const { can } = usePermissions();
+    const canApprove = can('attendance_approvals.approve');
+    const canReject  = can('attendance_approvals.reject');
     return (
         <div className="rounded-xl border overflow-hidden" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
             <div className="p-4 flex gap-4">
@@ -116,17 +120,23 @@ function ApprovalCard({ title, subtitle, selfie, lat, lng, accuracy, when, busy,
                 </div>
             </div>
             <div className="px-4 pb-3"><LocationMap lat={lat} lng={lng} height={140} /></div>
+            {(canApprove || canReject) && (
             <div className="flex border-t" style={{ borderColor: 'var(--border-color)' }}>
+                {canApprove && (
                 <button onClick={onApprove} disabled={busy}
                     className="flex-1 py-2.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50 flex items-center justify-center gap-1.5 disabled:opacity-50">
                     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Approve
                 </button>
+                )}
+                {canReject && (
                 <button onClick={onReject} disabled={busy}
                     className="flex-1 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center justify-center gap-1.5 border-l disabled:opacity-50"
                     style={{ borderColor: 'var(--border-color)' }}>
                     <XCircle className="h-4 w-4" /> Reject
                 </button>
+                )}
             </div>
+            )}
         </div>
     );
 }
