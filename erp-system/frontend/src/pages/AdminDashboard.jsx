@@ -32,6 +32,7 @@ const EditModal = ({ entry, onClose, onSaved }) => {
         cash:                String(entry.cash                  ?? 0),
         razorpay:            String(entry.razorpay              ?? 0),
         online:              String(entry.online                 ?? 0),
+        cheque:              String(entry.cheque                 ?? 0),
         payment_in:          String(entry.payment_in            ?? 0),
         payment_in_admin_id: String(entry.payment_in_admin_id  ?? ''),
         date:                entry.date ? String(entry.date).split('T')[0] : '',
@@ -48,7 +49,7 @@ const EditModal = ({ entry, onClose, onSaved }) => {
 
     const total       = parseFloat(form.total_sale || 0);
     const piAmt       = parseFloat(form.payment_in || 0);
-    const breakdown   = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + piAmt;
+    const breakdown   = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + parseFloat(form.cheque || 0) + piAmt;
     const diff        = breakdown - total;
     const mismatch    = Math.abs(diff) > 0.01;
     const oldCash     = parseFloat(entry.cash || 0);
@@ -70,6 +71,7 @@ const EditModal = ({ entry, onClose, onSaved }) => {
                 cash:                parseFloat(form.cash),
                 online:              parseFloat(form.online),
                 razorpay:            parseFloat(form.razorpay),
+                cheque:              parseFloat(form.cheque),
                 payment_in:          piAmt,
                 payment_in_admin_id: form.payment_in_admin_id || null,
                 date:                form.date || undefined,
@@ -126,11 +128,12 @@ const EditModal = ({ entry, onClose, onSaved }) => {
                     </div>
 
                     {/* Breakdown */}
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                         {[
                             { key: 'cash',     label: 'Cash' },
                             { key: 'razorpay', label: 'Razorpay' },
                             { key: 'online',   label: 'QR/Card/Bank' },
+                            { key: 'cheque',   label: 'Cheque' },
                         ].map(({ key, label }) => (
                             <div key={key}>
                                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>{label}</label>
@@ -826,14 +829,14 @@ const AdminDashboard = () => {
             </div>
 
             {/* ── Payment Breakdown Pie Chart ────────────────────── */}
-            {!loading && (data.totalCash > 0 || data.totalOnline > 0) && (() => {
+            {!loading && (data.totalCash > 0 || data.totalOnline > 0 || data.totalCheque > 0) && (() => {
                 const totalCash    = Number(data.totalCash    || 0);
                 const totalOnline  = Number(data.totalOnline  || 0);
-                const totalRazorpay= Number(data.totalRazorpay|| 0);
+                const totalCheque  = Number(data.totalCheque  || 0);
                 const pieData = [
                     { name: 'Cash',         value: totalCash,     color: '#10b981' },
-                    { name: 'QR/Card/Bank', value: totalOnline,   color: '#6366f1' },
-                    { name: 'Razorpay',     value: totalRazorpay, color: '#f59e0b' },
+                    { name: 'QR/Card/Bank/Razorpay', value: totalOnline, color: '#6366f1' },
+                    { name: 'Cheque',       value: totalCheque,   color: '#f59e0b' },
                 ].filter(d => d.value > 0);
                 const grandTotal = pieData.reduce((s, d) => s + d.value, 0);
 
@@ -909,7 +912,7 @@ const AdminDashboard = () => {
                     <table className="min-w-full divide-y" style={{ borderColor: 'var(--border-color)' }}>
                         <thead style={{ background: 'var(--bg-primary)' }}>
                             <tr>
-                                {['Date', 'Shop', 'City', 'Total Sale', 'Cash', 'Online', 'Approval', 'Action'].map(h => (
+                                {['Date', 'Shop', 'City', 'Total Sale', 'Cash', 'Online', 'Cheque', 'Approval', 'Action'].map(h => (
                                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
                                         style={{ color: 'var(--text-secondary)' }}>{h}</th>
                                 ))}
@@ -938,6 +941,9 @@ const AdminDashboard = () => {
                                         <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{fmt(entry.cash)}</td>
                                         <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
                                             {fmt((+entry.online || 0) + (+entry.razorpay || 0))}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                                            {fmt(entry.cheque)}
                                         </td>
                                         <td className="px-4 py-3">
                                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full ${statusCfg.cls}`}>

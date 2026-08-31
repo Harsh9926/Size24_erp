@@ -140,7 +140,8 @@ const EntryDrawer = ({ entry, onClose, onApprove, onReject, onDelete, actionLoad
     const breakdownSum =
         parseFloat(entry.cash     ?? 0) +
         parseFloat(entry.online   ?? entry.paytm ?? 0) +
-        parseFloat(entry.razorpay ?? 0);
+        parseFloat(entry.razorpay ?? 0) +
+        parseFloat(entry.cheque   ?? 0);
     const diff    = (breakdownSum - excelTotal).toFixed(2);
     const isMatch = Math.abs(breakdownSum - excelTotal) <= 0.01;
 
@@ -232,6 +233,7 @@ const EntryDrawer = ({ entry, onClose, onApprove, onReject, onDelete, actionLoad
                                 <DetailRow label="Cash"              value={fmtAmt(entry.cash)} />
                                 <DetailRow label="RazorPay"          value={fmtAmt(entry.razorpay)} />
                                 <DetailRow label="QR / Card / Bank"  value={fmtAmt(entry.online ?? entry.paytm ?? 0)} />
+                                <DetailRow label="Cheque"            value={fmtAmt(entry.cheque)} />
                             </div>
 
                             {/* Validation banner */}
@@ -769,7 +771,7 @@ const AdminApprovalPage = () => {
                                         )}
                                         {[
                                             'Date', 'Shop', 'Total Sale', 'Cash',
-                                            'RazorPay', 'QR/Card/Bank', 'Breakdown', 'Match',
+                                            'RazorPay', 'QR/Card/Bank', 'Cheque', 'Breakdown', 'Match',
                                             'Submitted', 'Status', '',
                                         ].map((h) => (
                                             <th key={h}
@@ -787,7 +789,8 @@ const AdminApprovalPage = () => {
                                         const breakdownSum =
                                             parseFloat(entry.cash     ?? 0) +
                                             parseFloat(entry.online   ?? entry.paytm ?? 0) +
-                                            parseFloat(entry.razorpay ?? 0);
+                                            parseFloat(entry.razorpay ?? 0) +
+                                            parseFloat(entry.cheque   ?? 0);
                                         const isMatch   = Math.abs(breakdownSum - excelTotal) <= 0.01;
                                         const isChecked = selectedIds.has(entry.id);
 
@@ -840,6 +843,11 @@ const AdminApprovalPage = () => {
                                                 <td className="px-4 py-3.5 whitespace-nowrap"
                                                     style={{ color: 'var(--text-secondary)' }}>
                                                     {fmtAmt(entry.online ?? entry.paytm ?? 0)}
+                                                </td>
+
+                                                <td className="px-4 py-3.5 whitespace-nowrap"
+                                                    style={{ color: 'var(--text-secondary)' }}>
+                                                    {fmtAmt(entry.cheque)}
                                                 </td>
 
                                                 <td className={`px-4 py-3.5 font-bold whitespace-nowrap ${isMatch ? 'text-green-600' : 'text-red-600'}`}>

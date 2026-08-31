@@ -24,6 +24,7 @@ exports.getAdminDashboard = async (req, res) => {
                COALESCE(SUM(de.total_sale - COALESCE(de.payment_in, 0)), 0)           AS total_sales,
                COALESCE(SUM(COALESCE(de.cash, 0)), 0)                                 AS total_cash,
                COALESCE(SUM(COALESCE(de.online, 0) + COALESCE(de.razorpay, 0)), 0)    AS total_online,
+               COALESCE(SUM(COALESCE(de.cheque, 0)), 0)                               AS total_cheque,
                COUNT(*) AS total_entries
              FROM daily_entries de
              JOIN shops s ON de.shop_id = s.id
@@ -112,6 +113,7 @@ exports.getAdminDashboard = async (req, res) => {
             totalSales:   parseFloat(summary.total_sales),
             totalCash:    parseFloat(summary.total_cash),
             totalOnline:  parseFloat(summary.total_online),
+            totalCheque:  parseFloat(summary.total_cheque),
             totalEntries: parseInt(summary.total_entries),
             entries: entriesQ.rows,
 

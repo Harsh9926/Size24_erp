@@ -43,6 +43,7 @@ const ReportsPage = () => {
             Cash:        r.cash,
             'QR/Card':   r.online,
             Razorpay:    r.razorpay,
+            Cheque:      r.cheque,
             Expense:     r.expense,
             Difference:  r.difference,
         })));
@@ -67,15 +68,15 @@ const ReportsPage = () => {
         doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, 10, 26);
         autoTable(doc, {
             startY: 32,
-            head: [['Date', 'Shop', 'City', 'Status', 'Total Sale', 'Cash', 'QR/Card', 'Razorpay', 'Expense', 'Diff']],
+            head: [['Date', 'Shop', 'City', 'Status', 'Total Sale', 'Cash', 'QR/Card', 'Razorpay', 'Cheque', 'Expense', 'Diff']],
             body: reportData.map(r => [
                 r.date?.split('T')[0], r.shop_name, r.city_name, r.approval_status,
-                `Rs${r.total_sale}`, `Rs${r.cash}`, `Rs${r.online}`, `Rs${r.razorpay}`, `Rs${r.expense}`, `Rs${r.difference}`
+                `Rs${r.total_sale}`, `Rs${r.cash}`, `Rs${r.online}`, `Rs${r.razorpay}`, `Rs${r.cheque}`, `Rs${r.expense}`, `Rs${r.difference}`
             ]),
             styles: { fontSize: 8 },
             headStyles: { fillColor: [255, 107, 0], textColor: 255 },
             alternateRowStyles: { fillColor: [255, 248, 240] },
-            foot: [[`Total Records: ${reportData.length}`, '', '', '', '', '', '', '', '']],
+            foot: [[`Total Records: ${reportData.length}`, '', '', '', '', '', '', '', '', '']],
             footStyles: { fillColor: [30, 30, 47], textColor: [255, 107, 0], fontStyle: 'bold' },
         });
         doc.save('SIZE24_ERP_Report.pdf');
@@ -91,13 +92,14 @@ const ReportsPage = () => {
             Cash:        parseFloat(r.cash || 0),
             'QR/Card/Bank': parseFloat(r.online || 0),
             Razorpay:    parseFloat(r.razorpay || 0),
+            Cheque:      parseFloat(r.cheque || 0),
             Expense:     parseFloat(r.expense || 0),
             Difference:  parseFloat(r.difference || 0),
         }));
         const ws = XLSX.utils.json_to_sheet(rows);
         // Set column widths
         ws['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 16 }, { wch: 10 },
-                       { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+                       { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'ERP Report');
         XLSX.writeFile(wb, `SIZE24_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -134,7 +136,7 @@ const ReportsPage = () => {
             {fetched && (
                 <>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                        {[['Total Sales', summary.total_sale, 'text-emerald-600'], ['Total Cash', summary.total_cash, 'text-blue-600'], ['Total Online', summary.total_online, 'text-purple-600'], ['Total Expense', summary.total_expense, 'text-red-500']].map(([label, val, cls]) => (
+                        {[['Total Sales', summary.total_sale, 'text-emerald-600'], ['Total Cash', summary.total_cash, 'text-blue-600'], ['Total Online', summary.total_online, 'text-purple-600'], ['Total Cheque', summary.total_cheque, 'text-amber-600'], ['Total Expense', summary.total_expense, 'text-red-500']].map(([label, val, cls]) => (
                             <div key={label} className="rounded-xl p-4 shadow-sm border" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
                                 <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>{label}</p>
                                 <p className={`text-xl font-bold ${cls}`}>₹{Number(val || 0).toLocaleString('en-IN')}</p>
@@ -164,7 +166,7 @@ const ReportsPage = () => {
                         <div className="overflow-x-auto">
                             <table className="min-w-full divide-y">
                                 <thead style={{ background: 'var(--bg-primary)' }}>
-                                    <tr>{['Date', 'Shop', 'City', 'Status', 'Total Sale', 'Cash', 'QR/Card', 'Razorpay', 'Expense', 'Diff'].map(h => (
+                                    <tr>{['Date', 'Shop', 'City', 'Status', 'Total Sale', 'Cash', 'QR/Card', 'Razorpay', 'Cheque', 'Expense', 'Diff'].map(h => (
                                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase" style={{ color: 'var(--text-secondary)' }}>{h}</th>
                                     ))}</tr>
                                 </thead>
@@ -189,6 +191,7 @@ const ReportsPage = () => {
                                                 <td className="px-4 py-2 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>₹{Number(r.cash).toLocaleString('en-IN')}</td>
                                                 <td className="px-4 py-2 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>₹{Number(r.online).toLocaleString('en-IN')}</td>
                                                 <td className="px-4 py-2 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>₹{Number(r.razorpay).toLocaleString('en-IN')}</td>
+                                                <td className="px-4 py-2 text-sm whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>₹{Number(r.cheque).toLocaleString('en-IN')}</td>
                                                 <td className="px-4 py-2 text-sm text-red-500 whitespace-nowrap">₹{Number(r.expense).toLocaleString('en-IN')}</td>
                                                 <td className="px-4 py-2 text-sm whitespace-nowrap">
                                                     <span className={`font-semibold ${+r.difference === 0 ? 'text-green-600' : 'text-red-600'}`}>₹{Number(r.difference).toLocaleString('en-IN')}</span>
@@ -196,7 +199,7 @@ const ReportsPage = () => {
                                             </tr>
                                         );
                                     })}
-                                    {reportData.length === 0 && <tr><td colSpan="9" className="text-center py-10 text-gray-400">No records found for selected filters</td></tr>}
+                                    {reportData.length === 0 && <tr><td colSpan="10" className="text-center py-10 text-gray-400">No records found for selected filters</td></tr>}
                                 </tbody>
                             </table>
                         </div>

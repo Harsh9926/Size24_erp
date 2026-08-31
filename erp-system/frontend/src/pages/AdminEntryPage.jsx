@@ -104,7 +104,7 @@ const getTodayISO = () => {
 
 const fmtAmt = (v) => `₹${parseFloat(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
-const EMPTY = { shop_id: '', date: getTodayISO(), excel_total_sale: '', cash: '', online: '', razorpay: '', payment_in: '', payment_in_admin_id: '' };
+const EMPTY = { shop_id: '', date: getTodayISO(), excel_total_sale: '', cash: '', online: '', razorpay: '', cheque: '', payment_in: '', payment_in_admin_id: '' };
 
 /* ══════════════════════════════════════════════════════════════════
    CAMERA CAPTURE MODAL — live preview → capture → retake / use photo
@@ -303,7 +303,7 @@ const AdminEntryPage = () => {
     };
 
     const total      = parseFloat(form.excel_total_sale || 0);
-    const breakdown  = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + parseFloat(form.payment_in || 0);
+    const breakdown  = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + parseFloat(form.cheque || 0) + parseFloat(form.payment_in || 0);
     const diff       = breakdown - total;
     const mismatch   = form.excel_total_sale !== '' && Math.abs(diff) > 0.01;
     const canSubmit  = form.shop_id && form.date && form.excel_total_sale !== '' && !submitting && (!mismatch || allowMismatch) && !!proofKey && !proofUploading;
@@ -378,7 +378,7 @@ const AdminEntryPage = () => {
             ...prev,
             ...(date ? { date } : {}),
             excel_total_sale: String(totalSale.toFixed(2)),
-            cash: '', online: '', razorpay: '',
+            cash: '', online: '', razorpay: '', cheque: '',
         }));
     };
 
@@ -402,6 +402,7 @@ const AdminEntryPage = () => {
                 cash:                parseFloat(form.cash     || 0),
                 online:              parseFloat(form.online   || 0),
                 razorpay:            parseFloat(form.razorpay || 0),
+                cheque:              parseFloat(form.cheque   || 0),
                 payment_in:          piAmt,
                 payment_in_admin_id: form.payment_in_admin_id || null,
                 photo_url:           null,
@@ -539,12 +540,13 @@ const AdminEntryPage = () => {
                             </div>
                         </div>
 
-                        {/* Breakdown: Cash / Online / Razorpay */}
-                        <div className="grid grid-cols-3 gap-3">
+                        {/* Breakdown: Cash / Online / Razorpay / Cheque */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             {[
                                 ['cash',     'Cash'],
                                 ['online',   'QR / Card / Bank'],
                                 ['razorpay', 'Razorpay'],
+                                ['cheque',   'Cheque'],
                             ].map(([field, label]) => (
                                 <div key={field}>
                                     <label className={lCls}>{label} (₹)</label>
@@ -601,7 +603,7 @@ const AdminEntryPage = () => {
                                     !mismatch ? 'bg-green-50' : allowMismatch ? 'bg-amber-50' : 'bg-red-50'
                                 }`}>
                                     <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-600 font-medium">Breakdown (Cash + Razorpay + QR + Payment In)</span>
+                                        <span className="text-gray-600 font-medium">Breakdown (Cash + Razorpay + QR + Cheque + Payment In)</span>
                                         <span className="font-bold text-gray-800">{fmtAmt(breakdown)}</span>
                                     </div>
                                     <div className="flex justify-between items-center text-sm">

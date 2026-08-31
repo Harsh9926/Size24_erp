@@ -28,6 +28,7 @@ exports.downloadCSV = async (req, res) => {
                 COALESCE(de.cash,0) AS cash,
                 COALESCE(de.online, de.paytm, 0) AS online,
                 COALESCE(de.razorpay,0) AS razorpay,
+                COALESCE(de.cheque,0) AS cheque,
                 COALESCE(de.expense,0) AS expense,
                 COALESCE(de.difference,0) AS difference
              FROM daily_entries de
@@ -39,7 +40,7 @@ exports.downloadCSV = async (req, res) => {
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'No data found' });
 
-        const fields = ['date', 'shop_name', 'total_sale', 'cash', 'paytm', 'razorpay', 'expense', 'difference'];
+        const fields = ['date', 'shop_name', 'total_sale', 'cash', 'paytm', 'razorpay', 'cheque', 'expense', 'difference'];
         const csv = new Parser({ fields }).parse(result.rows);
         res.header('Content-Type', 'text/csv');
         res.attachment('erp_report.csv');
@@ -63,6 +64,7 @@ exports.getReportData = async (req, res) => {
                 COALESCE(de.cash, 0)                                AS cash,
                 COALESCE(de.online, de.paytm, 0)                    AS online,
                 COALESCE(de.razorpay, 0)                            AS razorpay,
+                COALESCE(de.cheque, 0)                              AS cheque,
                 COALESCE(de.expense, 0)                             AS expense,
                 COALESCE(de.difference, 0)                          AS difference
              FROM daily_entries de
@@ -77,6 +79,7 @@ exports.getReportData = async (req, res) => {
             total_sale:    (acc.total_sale    || 0) + parseFloat(r.total_sale || 0),
             total_cash:    (acc.total_cash    || 0) + parseFloat(r.cash       || 0),
             total_online:  (acc.total_online  || 0) + parseFloat(r.online     || 0) + parseFloat(r.razorpay || 0),
+            total_cheque:  (acc.total_cheque  || 0) + parseFloat(r.cheque     || 0),
             total_expense: (acc.total_expense || 0) + parseFloat(r.expense    || 0),
         }), {});
         res.json({ data: result.rows, summary, count: result.rows.length });

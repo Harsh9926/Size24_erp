@@ -26,9 +26,10 @@ const emitDashboard = (req, payload) => {
  * cash              — user-entered
  * online            — QR / Card / Bank (user-entered)
  * razorpay          — user-entered
+ * cheque            — user-entered
  * approval_status   — PENDING | APPROVED | REJECTED
  *
- * Breakdown validation:  cash + online + razorpay  must == excel_total_sale
+ * Breakdown validation:  cash + online + razorpay + cheque  must == excel_total_sale
  */
 
 const getTodayUTC = () => new Date().toISOString().split('T')[0];
@@ -39,7 +40,7 @@ const getTodayUTC = () => new Date().toISOString().split('T')[0];
 // - admin:     saves as APPROVED immediately, credits cash to wallet
 // ─────────────────────────────────────────────────────────────────
 exports.createEntry = async (req, res) => {
-    const { shop_id, date, excel_total_sale, cash, online, razorpay, entry_type,
+    const { shop_id, date, excel_total_sale, cash, online, razorpay, cheque, entry_type,
             payment_in, payment_in_admin_id, photo_proof_key } = req.body;
     const isAdmin   = req.user.role === 'admin';
     const entryType = entry_type === 'no_sale' ? 'no_sale' : 'normal';
@@ -62,7 +63,7 @@ exports.createEntry = async (req, res) => {
     }
 
     const excelTotal   = parseFloat(excel_total_sale || 0);
-    const breakdownSum = parseFloat(cash || 0) + parseFloat(online || 0) + parseFloat(razorpay || 0) + parseFloat(payment_in || 0);
+    const breakdownSum = parseFloat(cash || 0) + parseFloat(online || 0) + parseFloat(razorpay || 0) + parseFloat(cheque || 0) + parseFloat(payment_in || 0);
 
     // Breakdown validation — strict for shop users, advisory-only for admin
     if (!isAdmin && Math.abs(excelTotal - breakdownSum) > 0.01) {
@@ -82,12 +83,12 @@ exports.createEntry = async (req, res) => {
 
             const result = await client.query(
                 `INSERT INTO daily_entries
-                    (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay,
+                    (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay, cheque,
                      payment_in, payment_in_admin_id, photo_proof_key,
                      approval_status, locked, approved_by, approved_at, wallet_credited, entry_type, created_by)
-                 VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, $11, 'APPROVED', true, $9, NOW(), true, $10, $9)
+                 VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, $9, $12, 'APPROVED', true, $10, NOW(), true, $11, $10)
                  RETURNING *`,
-                [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0,
+                [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0, cheque || 0,
                  piAmt, piAdmin, req.user.id, entryType, proofKey],
             );
 
@@ -140,12 +141,12 @@ exports.createEntry = async (req, res) => {
 
         const result = await client.query(
             `INSERT INTO daily_entries
-                (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay,
+                (shop_id, date, total_sale, excel_total_sale, cash, online, razorpay, cheque,
                  payment_in, payment_in_admin_id, photo_proof_key,
                  approval_status, wallet_credited, entry_type, created_by)
-             VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, $11, 'PENDING', true, $9, $10)
+             VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, $9, $12, 'PENDING', true, $10, $11)
              RETURNING *`,
-            [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0,
+            [shop_id, entryDate, excelTotal, cash || 0, online || 0, razorpay || 0, cheque || 0,
              piAmt, piAdmin, entryType, req.user.id, proofKey],
         );
 
@@ -204,7 +205,7 @@ exports.createEntry = async (req, res) => {
 exports.updateEntry = async (req, res) => {
     const { id } = req.params;
     const isAdmin = req.user.role === 'admin';
-    const { cash, online, razorpay, total_sale, excel_total_sale, date,
+    const { cash, online, razorpay, cheque, total_sale, excel_total_sale, date,
             payment_in, payment_in_admin_id, photo_proof_key } = req.body;
 
     const client = await db.pool.connect();
@@ -238,8 +239,9 @@ exports.updateEntry = async (req, res) => {
         const newCash      = parseFloat(cash     ?? entry.cash     ?? 0);
         const newOnline    = parseFloat(online   ?? entry.online   ?? 0);
         const newRazorpay  = parseFloat(razorpay ?? entry.razorpay ?? 0);
+        const newCheque    = parseFloat(cheque   ?? entry.cheque   ?? 0);
         const newPiAmtVal  = payment_in !== undefined ? parseFloat(payment_in || 0) : parseFloat(entry.payment_in || 0);
-        const breakdownSum = newCash + newOnline + newRazorpay + newPiAmtVal;
+        const breakdownSum = newCash + newOnline + newRazorpay + newCheque + newPiAmtVal;
 
         // Admin can override totals; for shop_user the excel total is immutable
         const newTotal = isAdmin && total_sale !== undefined
@@ -270,9 +272,9 @@ exports.updateEntry = async (req, res) => {
             return res.status(400).json({ error: PHOTO_PROOF_REQUIRED_MSG });
         }
 
-        const setCols  = ['cash = $1', 'online = $2', 'razorpay = $3', 'payment_in = $4', 'payment_in_admin_id = $5'];
-        const setVals  = [newCash, newOnline, newRazorpay, newPiAmtVal, newPiAdmin];
-        let   pIdx     = 6;
+        const setCols  = ['cash = $1', 'online = $2', 'razorpay = $3', 'cheque = $4', 'payment_in = $5', 'payment_in_admin_id = $6'];
+        const setVals  = [newCash, newOnline, newRazorpay, newCheque, newPiAmtVal, newPiAdmin];
+        let   pIdx     = 7;
 
         setCols.push(`photo_proof_key = $${pIdx++}`); setVals.push(effectiveProof);
 

@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS daily_entries (
     id               SERIAL PRIMARY KEY,
     shop_id          INT REFERENCES shops(id) ON DELETE CASCADE,
     date             DATE NOT NULL,
-    -- total_sale = cash + online + razorpay (kept in sync)
+    -- total_sale = cash + online + razorpay + cheque (kept in sync)
     total_sale       DECIMAL(12, 2) DEFAULT 0,
     -- excel_total_sale = value locked from Excel upload (equals total_sale at insert)
     excel_total_sale DECIMAL(12, 2) DEFAULT 0,
@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS daily_entries (
     -- paytm kept for backward-compat with legacy rows
     paytm            DECIMAL(12, 2) DEFAULT 0,
     razorpay         DECIMAL(12, 2) DEFAULT 0,
+    cheque           DECIMAL(12, 2) DEFAULT 0,
     expense          DECIMAL(12, 2) DEFAULT 0,
     difference       DECIMAL(12, 2) DEFAULT 0,
     approval_status  VARCHAR(20) NOT NULL DEFAULT 'PENDING'

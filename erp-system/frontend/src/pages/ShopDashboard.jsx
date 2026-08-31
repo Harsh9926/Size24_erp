@@ -57,6 +57,7 @@ const EMPTY_FORM = () => ({
     cash:                 '',
     online:               '',   // QR / Card / Bank
     razorpay:             '',
+    cheque:               '',
     payment_in:           '',
     payment_in_admin_id:  '',
 });
@@ -362,11 +363,11 @@ const ShopDashboard = () => {
     useEffect(() => {
         if (!excelLoaded) return; // Only enforce when Excel locked
         // total sale stays fixed as excel_total_sale; we don't auto-update it here
-    }, [form.cash, form.online, form.razorpay, excelLoaded]);
+    }, [form.cash, form.online, form.razorpay, form.cheque, excelLoaded]);
 
     /* ── Computed validation ──────────────────────────────────────── */
     const excelTotal   = parseFloat(form.excel_total_sale || 0);
-    const breakdownSum = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + parseFloat(form.payment_in || 0);
+    const breakdownSum = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + parseFloat(form.cheque || 0) + parseFloat(form.payment_in || 0);
     const difference   = (breakdownSum - excelTotal).toFixed(2);
     const isMatch      = Math.abs(breakdownSum - excelTotal) <= 0.01;
 
@@ -447,6 +448,7 @@ const ShopDashboard = () => {
             cash:                String(entry.cash      ?? ''),
             online:              String(entry.online    ?? entry.paytm ?? ''),
             razorpay:            String(entry.razorpay  ?? ''),
+            cheque:              String(entry.cheque    ?? ''),
             payment_in:          String(entry.payment_in          ?? ''),
             payment_in_admin_id: String(entry.payment_in_admin_id ?? ''),
         });
@@ -463,11 +465,11 @@ const ShopDashboard = () => {
     const handleNoSalesToggle = (checked) => {
         setNoSalesToday(checked);
         if (checked) {
-            setForm(f => ({ ...f, excel_total_sale: '0', cash: '0', online: '0', razorpay: '0', payment_in: '0', payment_in_admin_id: '' }));
+            setForm(f => ({ ...f, excel_total_sale: '0', cash: '0', online: '0', razorpay: '0', cheque: '0', payment_in: '0', payment_in_admin_id: '' }));
             setExcelLoaded(true);
             setXlError(''); setXlSuccess('');
         } else {
-            setForm(f => ({ ...f, excel_total_sale: '', cash: '', online: '', razorpay: '' }));
+            setForm(f => ({ ...f, excel_total_sale: '', cash: '', online: '', razorpay: '', cheque: '' }));
             setExcelLoaded(false);
         }
     };
@@ -495,6 +497,7 @@ const ShopDashboard = () => {
                 cash:                form.cash     || '0',
                 online:              form.online   || '0',
                 razorpay:            form.razorpay || '0',
+                cheque:              form.cheque   || '0',
                 payment_in:          form.payment_in          || '0',
                 payment_in_admin_id: form.payment_in_admin_id || null,
                 photo_url:           photoUrl,
@@ -557,6 +560,7 @@ const ShopDashboard = () => {
             cash:             '',
             online:           '',
             razorpay:         '',
+            cheque:           '',
         });
         setXlSuccess(
             `✓ Excel loaded — ${previewRows.length} row(s) · Total Sale ₹${totalSale.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,
@@ -912,6 +916,17 @@ const ShopDashboard = () => {
                                     disabled={isFormLocked || !excelLoaded} />
                             </div>
 
+                            {/* ── Cheque ────────────────────────────── */}
+                            <div>
+                                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>Cheque (₹)</label>
+                                <input id="field-cheque" type="number" min="0" step="0.01"
+                                    className={inputCls(isFormLocked || !excelLoaded)}
+                                    value={form.cheque}
+                                    onChange={(e) => !isFormLocked && excelLoaded && setForm((p) => ({ ...p, cheque: e.target.value }))}
+                                    placeholder="0.00"
+                                    disabled={isFormLocked || !excelLoaded} />
+                            </div>
+
                             {/* ── Payment In ────────────────────────── */}
                             <div>
                                 <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text-secondary)' }}>
@@ -970,7 +985,7 @@ const ShopDashboard = () => {
                                         }
                                     </div>
                                     <p className="text-[10px] text-center mt-1 text-gray-600">
-                                        Cash + RazorPay + QR/Card/Bank + Payment In = Total Sale
+                                        Cash + RazorPay + QR/Card/Bank + Cheque + Payment In = Total Sale
                                     </p>
                                 </div>
                             )}
@@ -1146,7 +1161,7 @@ const ShopDashboard = () => {
                             <table className="min-w-full divide-y" style={{ borderColor: 'var(--border-color)' }}>
                                 <thead style={{ background: 'var(--bg-primary)' }}>
                                     <tr>
-                                        {['Date', 'Total Sale', 'Cash', 'RazorPay', 'QR/Card/Bank', 'Status', ''].map((h) => (
+                                        {['Date', 'Total Sale', 'Cash', 'RazorPay', 'QR/Card/Bank', 'Cheque', 'Status', ''].map((h) => (
                                             <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase"
                                                 style={{ color: 'var(--text-secondary)' }}>{h}</th>
                                         ))}
@@ -1165,6 +1180,7 @@ const ShopDashboard = () => {
                                             <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>₹{Number(e.cash || 0).toLocaleString('en-IN')}</td>
                                             <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>₹{Number(e.razorpay || 0).toLocaleString('en-IN')}</td>
                                             <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>₹{Number(e.online ?? e.paytm ?? 0).toLocaleString('en-IN')}</td>
+                                            <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>₹{Number(e.cheque || 0).toLocaleString('en-IN')}</td>
                                             <td className="px-4 py-3">
                                                 <StatusBadge status={status} />
                                                 {status === 'REJECTED' && e.rejection_note && (
@@ -1186,7 +1202,7 @@ const ShopDashboard = () => {
                                         );
                                     })}
                                     {displayEntries.length === 0 && (
-                                        <tr><td colSpan="7" className="text-center py-12 text-gray-600 text-sm">No entries yet</td></tr>
+                                        <tr><td colSpan="8" className="text-center py-12 text-gray-600 text-sm">No entries yet</td></tr>
                                     )}
                                 </tbody>
                             </table>

@@ -214,6 +214,7 @@ const EntriesPage = () => {
             cash:                entry.cash      ?? '',
             online:              entry.online    ?? entry.paytm ?? '',
             razorpay:            entry.razorpay  ?? '',
+            cheque:              entry.cheque    ?? '',
             payment_in:          entry.payment_in          ?? '',
             payment_in_admin_id: entry.payment_in_admin_id ?? '',
         });
@@ -239,6 +240,7 @@ const EntriesPage = () => {
         const breakdown = parseFloat(editForm.cash || 0)
             + parseFloat(editForm.online || 0)
             + parseFloat(editForm.razorpay || 0)
+            + parseFloat(editForm.cheque || 0)
             + piAmt;
         const total = parseFloat(editForm.total_sale || 0);
         if (Math.abs(breakdown - total) > 0.01) {
@@ -256,6 +258,7 @@ const EntriesPage = () => {
                 cash:                parseFloat(editForm.cash     || 0),
                 online:              parseFloat(editForm.online   || 0),
                 razorpay:            parseFloat(editForm.razorpay || 0),
+                cheque:              parseFloat(editForm.cheque   || 0),
                 payment_in:          piAmt,
                 payment_in_admin_id: editForm.payment_in_admin_id || null,
             });
@@ -484,7 +487,7 @@ const EntriesPage = () => {
                     <table className="min-w-full divide-y divide-gray-100">
                         <thead className="bg-gray-50/80">
                             <tr>
-                                {['Date', 'Shop', 'Total Sale', 'Cash', 'QR/Card/Bank', 'RazorPay', 'Payment In', 'Approval', 'Lock', 'Actions'].map(h => (
+                                {['Date', 'Shop', 'Total Sale', 'Cash', 'QR/Card/Bank', 'RazorPay', 'Cheque', 'Payment In', 'Approval', 'Lock', 'Actions'].map(h => (
                                     <th key={h}
                                         className="px-4 py-3.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                                         {h}
@@ -495,14 +498,14 @@ const EntriesPage = () => {
                         <tbody className="divide-y divide-gray-100">
                             {loading && (
                                 <tr>
-                                    <td colSpan="10" className="text-center py-12 text-gray-400 text-sm">
+                                    <td colSpan="11" className="text-center py-12 text-gray-400 text-sm">
                                         <Loader2 className="h-5 w-5 animate-spin inline mr-2 align-[-3px]" /> Loading entries…
                                     </td>
                                 </tr>
                             )}
                             {!loading && entries.length === 0 && (
                                 <tr>
-                                    <td colSpan="10" className="text-center py-12 text-gray-400 text-sm">
+                                    <td colSpan="11" className="text-center py-12 text-gray-400 text-sm">
                                         No entries found{hasFilters ? ' for the selected filters' : ''}
                                     </td>
                                 </tr>
@@ -551,6 +554,11 @@ const EntriesPage = () => {
                                     {/* RazorPay */}
                                     <td className="px-4 py-4 text-sm text-gray-600 tabular-nums whitespace-nowrap">
                                         ₹{Number(e.razorpay || 0).toLocaleString('en-IN')}
+                                    </td>
+
+                                    {/* Cheque */}
+                                    <td className="px-4 py-4 text-sm text-gray-600 tabular-nums whitespace-nowrap">
+                                        ₹{Number(e.cheque || 0).toLocaleString('en-IN')}
                                     </td>
 
                                     {/* Payment In */}
@@ -823,6 +831,7 @@ const EntriesPage = () => {
                                 { label: 'Cash (₹)',         key: 'cash',       type: 'number' },
                                 { label: 'QR/Card/Bank (₹)', key: 'online',     type: 'number' },
                                 { label: 'RazorPay (₹)',     key: 'razorpay',   type: 'number' },
+                                { label: 'Cheque (₹)',       key: 'cheque',     type: 'number' },
                             ].map(({ label, key, type }) => (
                                 <div key={key}>
                                     <label className="block text-xs font-semibold text-gray-500 mb-1">{label}</label>
