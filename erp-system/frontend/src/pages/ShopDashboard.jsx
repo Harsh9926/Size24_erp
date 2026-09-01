@@ -367,7 +367,11 @@ const ShopDashboard = () => {
 
     /* ── Computed validation ──────────────────────────────────────── */
     const excelTotal   = parseFloat(form.excel_total_sale || 0);
-    const breakdownSum = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + parseFloat(form.cheque || 0) + parseFloat(form.payment_in || 0);
+    // Payment In is a non-sales fund deposit — excluded from the breakdown that
+    // must reconcile against Total Sale (matches backend entryController.js;
+    // this was the one remaining spot still including it, causing shop users to
+    // see "matches" client-side while the backend's stricter check would reject it).
+    const breakdownSum = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + parseFloat(form.cheque || 0);
     const difference   = (breakdownSum - excelTotal).toFixed(2);
     const isMatch      = Math.abs(breakdownSum - excelTotal) <= 0.01;
 
@@ -985,7 +989,7 @@ const ShopDashboard = () => {
                                         }
                                     </div>
                                     <p className="text-[10px] text-center mt-1 text-gray-600">
-                                        Cash + RazorPay + QR/Card/Bank + Cheque + Payment In = Total Sale
+                                        Cash + RazorPay + QR/Card/Bank + Cheque = Total Sale
                                     </p>
                                 </div>
                             )}
