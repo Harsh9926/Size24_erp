@@ -15,7 +15,15 @@ CREATE TABLE IF NOT EXISTS permission_actions (
     action_key   VARCHAR(80) NOT NULL,
     description  TEXT,
     created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(module_name, action_key)
+    UNIQUE(module_name, action_key),
+    -- action_key alone must also be unique: user_action_permissions.action_key
+    -- has a FK referencing permission_actions(action_key) by itself, and
+    -- Postgres requires a unique constraint matching exactly the referenced
+    -- column(s) — the composite UNIQUE(module_name, action_key) above does
+    -- NOT satisfy that. Without this, the FK below fails to create with
+    -- "there is no unique constraint matching given keys for referenced
+    -- table" on every fresh run of this migration.
+    UNIQUE(action_key)
 );
 CREATE INDEX IF NOT EXISTS idx_perm_actions_module ON permission_actions(module_name);
 
