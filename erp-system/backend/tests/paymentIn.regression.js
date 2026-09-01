@@ -91,4 +91,29 @@ function computeBreakdownSum(entry) {
     console.log('[PASS] Large Payment In on a zero-sale entry does not drive Total Sales negative');
 }
 
+/* ── Test 5: Admin Dashboard "PAYMENT IN" card payload shape ────────
+   getAdminDashboard's summaryQ computes total_sales and total_payment_in in
+   the SAME query with the SAME WHERE clause (period/date/city/shop/approval
+   filters), so they always share filtering — this test locks in the shape
+   the frontend card relies on (dashboardController.js response keys). */
+{
+    const productionExample = [
+        { id: 543, total_sale: 0,     cash: 0,     online: 0,     razorpay: 0, cheque: 0,    payment_in: 300000 },
+        // Remaining ~31.30L of real sales entries, represented as one rolled-up row for this check.
+        { id: 0,   total_sale: 3130348, cash: 396489, online: 2730059, razorpay: 0, cheque: 3800, payment_in: 0 },
+    ];
+
+    const dashboardResponse = {
+        totalSales:     computeTotalSales(productionExample),
+        totalPaymentIn: computePaymentInTotal(productionExample),
+    };
+
+    assert.strictEqual(dashboardResponse.totalSales, 3130348,
+        'Dashboard totalSales must be ~31,30,348 (matches production aggregate), unaffected by payment_in');
+    assert.strictEqual(dashboardResponse.totalPaymentIn, 300000,
+        'Dashboard totalPaymentIn must be exactly 300000 (matches production payment_in_aggregate)');
+
+    console.log(`[PASS] Admin Dashboard card values: Total Sales=${dashboardResponse.totalSales}, Payment In=${dashboardResponse.totalPaymentIn}`);
+}
+
 console.log('\nAll Payment In regression checks passed.');

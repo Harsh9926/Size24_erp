@@ -244,6 +244,7 @@ const CARD_FILTERS = {
     online:   { label: 'Online Entries',          pred: (e) => parseFloat(e.online || 0) + parseFloat(e.razorpay || 0) > 0 },
     approved: { label: 'Approved Entries',        pred: (e) => (e.approval_status || '').toUpperCase() === 'APPROVED' },
     pending:  { label: 'Pending Entries',         pred: (e) => (e.approval_status || '').toUpperCase() === 'PENDING' },
+    payment_in: { label: 'Payment In Entries',    pred: (e) => parseFloat(e.payment_in || 0) > 0 },
 };
 
 /* ─── MAIN COMPONENT ───────────────────────────────────────────── */
@@ -415,6 +416,11 @@ const AdminDashboard = () => {
         { label: 'Total Sales',      value: data.totalSales       ?? 0, icon: TrendingUp,  color: 'text-emerald-600', bg: 'bg-emerald-50', isCurrency: true,  filterKey: 'all'      },
         { label: 'Total Cash',        value: data.totalCash        ?? 0, icon: IndianRupee, color: 'text-blue-600',    bg: 'bg-blue-50',    isCurrency: true,  filterKey: 'cash'     },
         { label: 'Total Online',      value: data.totalOnline      ?? 0, icon: CreditCard,  color: 'text-purple-600',  bg: 'bg-purple-50',  isCurrency: true,  filterKey: 'online'   },
+        // Payment In is a non-sales fund deposit (e.g. money deposited into the
+        // shop's bank account) — shown separately, never added to or subtracted
+        // from Total Sales. Visually distinct (indigo, Wallet icon) so it reads
+        // as its own category rather than another sales payment mode.
+        { label: 'Payment In',        value: data.totalPaymentIn   ?? 0, icon: Wallet,      color: 'text-indigo-600',  bg: 'bg-indigo-50',  isCurrency: true,  filterKey: 'payment_in' },
         { label: 'Approved Entries',  value: data.totalEntries     ?? 0, icon: ShieldCheck, color: 'text-teal-600',    bg: 'bg-teal-50',    isCurrency: false, filterKey: 'approved' },
         { label: 'Pending Approvals', value: data.pendingEntriesCount ?? 0, icon: AlertCircle, color: 'text-amber-600', bg: 'bg-amber-50', isCurrency: false, filterKey: 'pending', href: '/admin/approvals' },
     ];
