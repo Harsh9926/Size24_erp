@@ -303,7 +303,9 @@ const AdminEntryPage = () => {
     };
 
     const total      = parseFloat(form.excel_total_sale || 0);
-    const breakdown  = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + parseFloat(form.cheque || 0) + parseFloat(form.payment_in || 0);
+    // Payment In is a non-sales fund deposit — excluded from the breakdown that
+    // must reconcile against Total Sale (matches backend entryController.js).
+    const breakdown  = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + parseFloat(form.cheque || 0);
     const diff       = breakdown - total;
     const mismatch   = form.excel_total_sale !== '' && Math.abs(diff) > 0.01;
     const canSubmit  = form.shop_id && form.date && form.excel_total_sale !== '' && !submitting && (!mismatch || allowMismatch) && !!proofKey && !proofUploading;

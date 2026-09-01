@@ -21,10 +21,15 @@ exports.getAdminDashboard = async (req, res) => {
         // ── Summary totals (approved only, NULL-safe) ────────────
         const summaryQ = await db.query(
             `SELECT
-               COALESCE(SUM(de.total_sale - COALESCE(de.payment_in, 0)), 0)           AS total_sales,
+               -- Payment In is a non-sales fund deposit (e.g. boss depositing cash into
+               -- the shop's bank account) — it must never reduce Total Sales. total_sale
+               -- already excludes it (see entryController.js breakdown validation).
+               COALESCE(SUM(de.total_sale), 0)                                        AS total_sales,
                COALESCE(SUM(COALESCE(de.cash, 0)), 0)                                 AS total_cash,
                COALESCE(SUM(COALESCE(de.online, 0) + COALESCE(de.razorpay, 0)), 0)    AS total_online,
                COALESCE(SUM(COALESCE(de.cheque, 0)), 0)                               AS total_cheque,
+               -- Shown separately — a fund deposit, not a sales payment mode.
+               COALESCE(SUM(COALESCE(de.payment_in, 0)), 0)                           AS total_payment_in,
                COUNT(*) AS total_entries
              FROM daily_entries de
              JOIN shops s ON de.shop_id = s.id
@@ -42,7 +47,7 @@ exports.getAdminDashboard = async (req, res) => {
 
         const chartQ = await db.query(
             `SELECT ${groupBy} AS label,
-               COALESCE(SUM(de.total_sale - COALESCE(de.payment_in, 0)), 0)          AS sales,
+               COALESCE(SUM(de.total_sale), 0)                                       AS sales,
                COALESCE(SUM(COALESCE(de.cash, 0)), 0)                                AS cash,
                COALESCE(SUM(COALESCE(de.online, 0) + COALESCE(de.razorpay, 0)), 0)   AS online
              FROM daily_entries de
@@ -114,6 +119,7 @@ exports.getAdminDashboard = async (req, res) => {
             totalCash:    parseFloat(summary.total_cash),
             totalOnline:  parseFloat(summary.total_online),
             totalCheque:  parseFloat(summary.total_cheque),
+            totalPaymentIn: parseFloat(summary.total_payment_in),
             totalEntries: parseInt(summary.total_entries),
             entries: entriesQ.rows,
 
@@ -139,7 +145,7 @@ exports.getShopDashboard = async (req, res) => {
 
         const summaryQ = await db.query(
             `SELECT
-               COALESCE(SUM(total_sale - COALESCE(payment_in, 0)), 0)   AS total_sales,
+               COALESCE(SUM(total_sale), 0)                             AS total_sales,
                COALESCE(SUM(cash), 0)                 AS total_cash,
                COALESCE(SUM(online + razorpay), 0)    AS total_online
              FROM daily_entries
@@ -204,7 +210,7 @@ exports.getManagerDashboard = async (req, res) => {
 
         const summaryQ = await db.query(
             `SELECT
-               COALESCE(SUM(total_sale - COALESCE(payment_in, 0)), 0)   AS total_sales,
+               COALESCE(SUM(total_sale), 0)                             AS total_sales,
                COALESCE(SUM(cash), 0)                 AS total_cash,
                COALESCE(SUM(online + razorpay), 0)    AS total_online
              FROM daily_entries
@@ -215,7 +221,7 @@ exports.getManagerDashboard = async (req, res) => {
 
         const chartQ = await db.query(
             `SELECT TO_CHAR(date, 'DD Mon') AS label,
-               SUM(total_sale - COALESCE(payment_in, 0)) AS sales,
+               SUM(total_sale) AS sales,
                SUM(cash)                 AS cash,
                SUM(online + razorpay)    AS online
              FROM daily_entries

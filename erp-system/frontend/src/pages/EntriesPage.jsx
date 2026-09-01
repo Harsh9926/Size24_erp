@@ -236,12 +236,13 @@ const EntriesPage = () => {
             return;
         }
 
-        // Breakdown must match total sale
+        // Breakdown must match total sale. Payment In is a non-sales fund
+        // deposit and is excluded — it must never be required to reconcile
+        // against Total Sale (matches backend entryController.js).
         const breakdown = parseFloat(editForm.cash || 0)
             + parseFloat(editForm.online || 0)
             + parseFloat(editForm.razorpay || 0)
-            + parseFloat(editForm.cheque || 0)
-            + piAmt;
+            + parseFloat(editForm.cheque || 0);
         const total = parseFloat(editForm.total_sale || 0);
         if (Math.abs(breakdown - total) > 0.01) {
             setEditError(`Breakdown ₹${breakdown.toFixed(2)} must match Total Sale ₹${total.toFixed(2)}.`);
@@ -883,12 +884,12 @@ const EntriesPage = () => {
                                 const breakdown = parseFloat(editForm.cash || 0)
                                     + parseFloat(editForm.online || 0)
                                     + parseFloat(editForm.razorpay || 0)
-                                    + parseFloat(editForm.payment_in || 0);
+                                    + parseFloat(editForm.cheque || 0);
                                 const total  = parseFloat(editForm.total_sale || 0);
                                 const ok     = Math.abs(breakdown - total) <= 0.01;
                                 return (
                                     <div className={`px-3 py-2 rounded-lg border text-xs flex justify-between ${ok ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-600'}`}>
-                                        <span>Cash + Razorpay + QR + Payment In</span>
+                                        <span>Cash + Razorpay + QR + Cheque</span>
                                         <span className="font-bold">{fmt(breakdown)} {ok ? '✓' : `≠ ${fmt(total)}`}</span>
                                     </div>
                                 );

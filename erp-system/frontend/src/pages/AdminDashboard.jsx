@@ -49,7 +49,9 @@ const EditModal = ({ entry, onClose, onSaved }) => {
 
     const total       = parseFloat(form.total_sale || 0);
     const piAmt       = parseFloat(form.payment_in || 0);
-    const breakdown   = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + parseFloat(form.cheque || 0) + piAmt;
+    // Payment In is a non-sales fund deposit — excluded from the breakdown that
+    // must reconcile against Total Sale (matches backend entryController.js).
+    const breakdown   = parseFloat(form.cash || 0) + parseFloat(form.online || 0) + parseFloat(form.razorpay || 0) + parseFloat(form.cheque || 0);
     const diff        = breakdown - total;
     const mismatch    = Math.abs(diff) > 0.01;
     const oldCash     = parseFloat(entry.cash || 0);
@@ -172,7 +174,7 @@ const EditModal = ({ entry, onClose, onSaved }) => {
                     <div className={`rounded-xl border overflow-hidden ${mismatch ? 'border-red-200' : 'border-green-200'}`}>
                         <div className={`px-4 pt-3 pb-2.5 space-y-1.5 ${mismatch ? 'bg-red-50' : 'bg-green-50'}`}>
                             <div className="flex justify-between items-center text-xs">
-                                <span style={{ color: 'var(--text-secondary)' }}>Breakdown (Cash + Razorpay + QR + Payment In)</span>
+                                <span style={{ color: 'var(--text-secondary)' }}>Breakdown (Cash + Razorpay + QR + Cheque)</span>
                                 <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{fmt(breakdown)}</span>
                             </div>
                             <div className="flex justify-between items-center text-xs">

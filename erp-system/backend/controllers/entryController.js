@@ -63,7 +63,11 @@ exports.createEntry = async (req, res) => {
     }
 
     const excelTotal   = parseFloat(excel_total_sale || 0);
-    const breakdownSum = parseFloat(cash || 0) + parseFloat(online || 0) + parseFloat(razorpay || 0) + parseFloat(cheque || 0) + parseFloat(payment_in || 0);
+    // Payment In is a non-sales fund deposit (e.g. money the boss deposits into
+    // the shop's bank account) — it must NEVER be required to reconcile against
+    // Total Sale. Matches the documented FIELD CONTRACT above: only the actual
+    // sales payment modes (cash/online/razorpay/cheque) need to sum to the total.
+    const breakdownSum = parseFloat(cash || 0) + parseFloat(online || 0) + parseFloat(razorpay || 0) + parseFloat(cheque || 0);
 
     // Breakdown validation — strict for shop users, advisory-only for admin
     if (!isAdmin && Math.abs(excelTotal - breakdownSum) > 0.01) {
@@ -241,7 +245,9 @@ exports.updateEntry = async (req, res) => {
         const newRazorpay  = parseFloat(razorpay ?? entry.razorpay ?? 0);
         const newCheque    = parseFloat(cheque   ?? entry.cheque   ?? 0);
         const newPiAmtVal  = payment_in !== undefined ? parseFloat(payment_in || 0) : parseFloat(entry.payment_in || 0);
-        const breakdownSum = newCash + newOnline + newRazorpay + newCheque + newPiAmtVal;
+        // Payment In excluded — non-sales fund deposit, must not be required to
+        // reconcile against Total Sale (see FIELD CONTRACT comment at top of file).
+        const breakdownSum = newCash + newOnline + newRazorpay + newCheque;
 
         // Admin can override totals; for shop_user the excel total is immutable
         const newTotal = isAdmin && total_sale !== undefined
