@@ -597,10 +597,11 @@ exports.requestLocationChange = async (req, res) => {
 async function computeMonth(userId, month, settings) {
     const m = month || todayISO().slice(0, 7); // YYYY-MM
     const start = `${m}-01`;
-    const end   = `${m}-31`;
     const { rows } = await db.query(
-        `SELECT * FROM attendance WHERE user_id=$1 AND date BETWEEN $2 AND $3 ORDER BY date`,
-        [userId, start, end]
+        // `${m}-31` breaks for any month with fewer than 31 days ("date/time
+        // field value out of range") — use an open-ended upper bound instead.
+        `SELECT * FROM attendance WHERE user_id=$1 AND date >= $2::date AND date < ($2::date + INTERVAL '1 month') ORDER BY date`,
+        [userId, start]
     );
     settings = settings || await getSettings();
     const weekOff = Array.isArray(settings.week_off_days) ? settings.week_off_days.map(Number) : [0];
@@ -1000,8 +1001,8 @@ exports.getMonthlyReport = async (req, res) => {
     try {
         const month = req.query.month || todayISO().slice(0, 7);
         const shops = await shopScope(req.user);
-        const params = [`${month}-01`, `${month}-31`];
-        let where = 'a.date BETWEEN $1 AND $2';
+        const params = [`${month}-01`];
+        let where = "a.date >= $1::date AND a.date < ($1::date + INTERVAL '1 month')";
         if (shops) { params.push(shops); where += ` AND a.shop_id = ANY($${params.length}::int[])`; }
         if (req.query.shop_id) { params.push(req.query.shop_id); where += ` AND a.shop_id=$${params.length}`; }
         if (req.query.user_id) { params.push(req.query.user_id); where += ` AND a.user_id=$${params.length}`; }
@@ -1054,8 +1055,8 @@ exports.exportReport = async (req, res) => {
         // Reuse getMonthlyReport logic by calling internally
         const month = req.query.month || todayISO().slice(0, 7);
         const shops = await shopScope(req.user);
-        const params = [`${month}-01`, `${month}-31`];
-        let where = 'a.date BETWEEN $1 AND $2';
+        const params = [`${month}-01`];
+        let where = "a.date >= $1::date AND a.date < ($1::date + INTERVAL '1 month')";
         if (shops) { params.push(shops); where += ` AND a.shop_id = ANY($${params.length}::int[])`; }
         if (req.query.shop_id) { params.push(req.query.shop_id); where += ` AND a.shop_id=$${params.length}`; }
 

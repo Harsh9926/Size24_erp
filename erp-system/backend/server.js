@@ -471,6 +471,18 @@ httpServer.listen(PORT, async () => {
         console.error('[migrate] attendance_shop_users migration failed:', err.message);
     }
 
+    // Auto-migrate: shops.geofence_radius_m (schema.sql only creates it on a
+    // fresh table — older production shops rows predate this column)
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql  = fs.readFileSync(path.join(__dirname, 'db', 'migrate_shops_geofence_radius.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] shops.geofence_radius_m ready');
+    } catch (err) {
+        console.error('[migrate] shops.geofence_radius_m migration failed:', err.message);
+    }
+
     // Auto-migrate: Employee Attendance Management module
     try {
         const fs   = require('fs');

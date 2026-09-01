@@ -1,85 +1,108 @@
-# Production DB repair runbook — permissions schema + performance fix
+# Production DB repair runbook — attendance date bug + schema/ownership gaps
 
-Run in order, on the VPS, from `~/Size24_erp/erp-system/backend`. Everything here is
-additive/idempotent — no drops, no truncates, no data loss. Your existing backup
-(`/home/ubuntu/size24_backup_20260901_070737.sql`) already covers this.
+Root cause of "Attendance unavailable" / can't mark attendance: `computeMonth()` (and two
+report queries) built the month's end-date as the literal string `${month}-31` — invalid
+for any month with fewer than 31 days (September has 30), so Postgres rejected it with
+`date/time field value out of range: "2026-09-31"`. This has been fixed in code (now uses
+an open-ended `date < (start + INTERVAL '1 month')` bound). Two more real bugs found in the
+same log dump: a genuinely missing column (`shops.geofence_radius_m`) and a table-ownership
+problem blocking the app's own auto-migrations. All three are fixed/scripted below.
 
-## 1. Pull latest
+Run in order, on the VPS, from `~/Size24_erp/erp-system/backend`. Nothing here drops,
+truncates, or deletes data.
+
+## 1. Pull latest code
 
 ```bash
 cd ~/Size24_erp && git pull origin main
 cd erp-system/backend
 ```
 
-## 2. Apply the new performance-index migration
+This brings the `computeMonth`/`getMonthlyReport`/`exportReport` date fix and the new
+`migrate_shops_geofence_radius.sql` (now wired into `server.js`'s boot auto-migrations).
+
+## 2. Fix table ownership (superuser step — this is why migrations have been silently failing)
+
+Your logs show:
+```
+must be owner of table permission_actions
+must be owner of table daily_entries
+```
+These tables were created/altered by `postgres` at some point (e.g. when we ran
+`fix_action_permissions_schema.sql` via `sudo -u postgres psql`), so the app's own DB user
+(`admin`, per `.env`) can't ALTER them — every boot's auto-migration against them fails
+silently (caught and logged, doesn't crash the app, but never actually applies). Reassign
+ownership of every table in the schema to `admin` so this stops recurring for any future
+migration, not just these two:
 
 ```bash
-sudo -u postgres psql -d size24 -f db/migrate_report_perf_indexes.sql
+sudo -u postgres psql -d size24 -c "
+DO \$\$
+DECLARE r RECORD;
+BEGIN
+    FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+    LOOP
+        EXECUTE format('ALTER TABLE public.%I OWNER TO admin', r.tablename);
+    END LOOP;
+END \$\$;
+"
 ```
 
-Expect three `CREATE INDEX` lines, no errors. This is the fix for the Reports 30s
-timeout (see ROOT CAUSE below) — safe to run now even though `fix_action_permissions_schema.sql`,
-`migrate_attendance_action_permissions.sql`, `attendance_schema.sql`, and
-`attendance_payroll_schema.sql` are already applied per your last update.
+This only changes ownership metadata — no data is touched. Safe to run even though most
+tables are already owned by `admin`.
 
-## 3. Verify schema (read-only)
+## 3. Apply the shops geofence column fix (also happens automatically on next restart, but run explicitly to confirm now)
 
 ```bash
-sudo -u postgres psql -d size24 -c "\di daily_entries" 
-sudo -u postgres psql -d size24 -c "\di attendance"
-sudo -u postgres psql -d size24 -c "SELECT conname FROM pg_constraint WHERE conrelid='permission_actions'::regclass;"
-sudo -u postgres psql -d size24 -c "SELECT to_regclass('user_action_permissions');"
-sudo -u postgres psql -d size24 -c "SELECT column_name, data_type FROM information_schema.columns WHERE table_name='daily_entries' AND column_name='cheque';"
+sudo -u postgres psql -d size24 -f db/migrate_shops_geofence_radius.sql
 ```
 
-Expect: `idx_daily_entries_date`, `idx_daily_entries_created_at` present on `daily_entries`;
-`idx_attendance_user_date` present on `attendance`; `permission_actions_action_key_key` in
-the constraint list; `user_action_permissions` resolves; `cheque | numeric`.
+## 4. Verify
 
-## 4. Restart backend (picks up the new `config/db.js` pool/timeout settings)
+```bash
+sudo -u postgres psql -d size24 -c "SELECT column_name FROM information_schema.columns WHERE table_name='shops' AND column_name='geofence_radius_m';"
+sudo -u postgres psql -d size24 -c "SELECT tableowner FROM pg_tables WHERE tablename IN ('permission_actions','daily_entries');"
+```
+
+Expect: the column row present; both tables owned by `admin`.
+
+## 5. Restart backend
 
 ```bash
 pm2 restart backend
 pm2 status
 ```
 
-Confirm `backend` is `online` and stays up for ~30s without restart-looping.
+Watch it stay `online` (not restart-looping) for ~30s.
 
-## 5. Check logs for anything unexpected
+## 6. Check logs — the two previously-failing auto-migrations should now succeed
 
 ```bash
-pm2 logs backend --lines 100 --nostream
+pm2 logs backend --lines 60 --nostream
 ```
 
-Look for `relation does not exist`, `column does not exist`, or `statement timeout` — the
-last one is now expected/intentional if a query genuinely still needs >25s; if you see it,
-report which endpoint so we can add a targeted date-range default rather than raising the
-timeout blindly.
+Expect to see `[migrate] Entries action-permissions ready`, `[migrate] Payment In fields
+ready`, and `[migrate] shops.geofence_radius_m ready` — no more "must be owner of table" or
+"date/time field value out of range" lines.
 
-## 6. Smoke test (replace TOKEN with a valid admin JWT)
+## 7. Test in the browser / curl
+
+- Reload **My Attendance** — the "Attendance unavailable" error should be gone and you
+  should be able to punch in.
+- Admin → Attendance → Assignments and Payroll should load without the
+  `geofence_radius_m does not exist` error.
 
 ```bash
-for ep in \
-  "attendance/assignments" \
-  "attendance/payroll?month=2026-09" \
-  "attendance/me/monthly" \
-  "dashboard/admin?period=monthly"; do
+for ep in "attendance/me/monthly" "attendance/assignments" "attendance/payroll?month=2026-09"; do
   echo -n "$ep -> "
-  curl -s -o /dev/null -w "%{http_code}  %{time_total}s\n" -H "Authorization: Bearer TOKEN" "http://localhost:5000/api/$ep"
+  curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer TOKEN" "http://localhost:5000/api/$ep"
 done
 ```
 
-All should return `200` well under a few seconds (previously the Reports page alone was
-taking 30s+; the new indexes should bring a full unfiltered `daily_entries` scan down from
-a sequential scan to an index scan).
-
-Then in the browser: reload Admin Dashboard, Reports (try it with **no date filter**, the
-worst case that was previously timing out), Attendance → Assignments, Payroll, and your own
-Monthly Attendance tab.
+All should return `200`.
 
 ---
 
-Paste back the output of steps 3, 5, and the smoke-test timings — if the Reports page (no
-filter) is still slow after this, the next step is capping/defaulting its date range in
-`reportController.js` rather than adding more indexes, and I've already identified exactly
-where that change goes (`buildQuery` in `reportController.js`).
+Paste back the output of steps 4 and 6 (and any non-200 curl codes) if anything still
+fails — with real logs like the ones you already gave me, I can pinpoint exact bugs instead
+of guessing.
