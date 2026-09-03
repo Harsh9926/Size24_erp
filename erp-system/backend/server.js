@@ -333,6 +333,12 @@ httpServer.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Allowed CORS origins: ${allowedOrigins.join(', ')}`);
 
+    // Warm the face-verification models in the background so the first
+    // punch-in of the day isn't slowed by a cold model load. Non-fatal if it
+    // fails here — faceVerificationService retries lazily on next call.
+    require('./services/faceVerificationService').ensureModelsLoaded()
+        .catch((err) => console.error('[faceVerification] Startup model preload failed:', err.message));
+
     // Auto-migrate: shop_users junction table — only creates if missing
     try {
         const exists = await db.query(
@@ -591,6 +597,17 @@ httpServer.listen(PORT, async () => {
         console.log('[migrate] Attendance back-date edit columns ready');
     } catch (err) {
         console.error('[migrate] Attendance back-date edit migration failed:', err.message);
+    }
+
+    // Auto-migrate: Face verification for punch-in (descriptor cache + audit columns)
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql  = fs.readFileSync(path.join(__dirname, 'db', 'migrate_attendance_face_verification.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] Attendance face verification columns ready');
+    } catch (err) {
+        console.error('[migrate] Attendance face verification migration failed:', err.message);
     }
 
     // Auto-migrate: RBAC tables (module_permissions + permission_logs)

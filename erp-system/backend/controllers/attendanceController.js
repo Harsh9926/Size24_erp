@@ -3,7 +3,8 @@
 // Roles: 'shop_user' = Employee, 'manager', 'admin'.
 
 const db = require('../config/db');
-const { uploadImage, signSelfieFields } = require('../services/storageService');
+const { uploadImage, signSelfieFields, getImageBuffer } = require('../services/storageService');
+const { getFaceDescriptor, verifyAgainstDescriptor, DEFAULT_THRESHOLD } = require('../services/faceVerificationService');
 const { Parser: Json2csvParser } = require('json2csv');
 const XLSX = require('xlsx');
 const wa = require('../services/aiSensyService');
@@ -197,6 +198,28 @@ const emitRealtime = (req, event, payload) => {
     try { req.app.get('io')?.emit(event, payload); } catch (e) {}
 };
 
+// Resolve (computing + caching if needed) the face descriptor for an
+// employee's APPROVED registration selfie. Returns null if unavailable for
+// any reason — callers must treat null as "cannot verify" (fail closed),
+// never as "skip the check".
+async function getRegisteredFaceDescriptor(reg) {
+    if (!reg || reg.status !== 'approved' || !reg.selfie_url) return null;
+    if (Array.isArray(reg.face_descriptor) && reg.face_descriptor.length) return reg.face_descriptor;
+    try {
+        const buf = await getImageBuffer(reg.selfie_url);
+        const descriptor = await getFaceDescriptor(buf);
+        if (!descriptor) return null;
+        await db.query(
+            `UPDATE attendance_registration SET face_descriptor=$1, face_descriptor_updated_at=CURRENT_TIMESTAMP WHERE id=$2`,
+            [JSON.stringify(descriptor), reg.id]
+        );
+        return descriptor;
+    } catch (err) {
+        console.error('[attendance.getRegisteredFaceDescriptor]', err.message);
+        return null;
+    }
+}
+
 /* ══════════════════════════════════════════════════════════════════
    SELF / EMPLOYEE + MANAGER ENDPOINTS
 ══════════════════════════════════════════════════════════════════ */
@@ -251,7 +274,8 @@ exports.register = async (req, res) => {
              ON CONFLICT (user_id) DO UPDATE SET
                shop_id=$2, latitude=$3, longitude=$4, gps_accuracy_m=$5,
                selfie_url=$6, status='pending', reject_reason=NULL,
-               reviewed_by=NULL, reviewed_at=NULL, created_at=CURRENT_TIMESTAMP
+               reviewed_by=NULL, reviewed_at=NULL, created_at=CURRENT_TIMESTAMP,
+               face_descriptor=NULL, face_descriptor_updated_at=NULL
              RETURNING *`,
             [uid, shopId, latitude || null, longitude || null, gps_accuracy || null, selfieUrl]
         );
@@ -365,6 +389,31 @@ exports.punchIn = async (req, res) => {
         const v = await validatePunch(reg, settings, req.body, !!req.file, uid);
         if (v.error) return res.status(400).json({ error: v.error, distance: v.distance });
 
+        // Face verification — mandatory for every self-punch-in, independent of
+        // the require_selfie GPS/photo toggle above. Runs AFTER the geofence
+        // check but BEFORE any attendance/session row is created or the selfie
+        // is persisted to storage: a failed match must leave zero trace of a
+        // punch. Fails closed on every ambiguous outcome (no file, no face
+        // detected, model error) — never silently skipped for a normal employee.
+        if (!req.file) {
+            return res.status(400).json({ error: 'A live selfie is required for face verification.' });
+        }
+        const referenceDescriptor = await getRegisteredFaceDescriptor(reg);
+        if (!referenceDescriptor) {
+            return res.status(400).json({ error: 'No approved reference photo on file. Please contact admin to complete registration.' });
+        }
+        const threshold = Number(settings.face_match_threshold ?? DEFAULT_THRESHOLD);
+        const faceCheck = await verifyAgainstDescriptor(req.file.buffer, referenceDescriptor, threshold);
+        if (!faceCheck.matched) {
+            await logAction(uid, existing?.id || null, 'PUNCH_IN_FACE_FAIL', { distance: faceCheck.distance, reason: faceCheck.reason }, req);
+            return res.status(400).json({
+                error: faceCheck.reason === 'no_face_detected'
+                    ? 'No face detected in the selfie. Please retry in good lighting, facing the camera directly.'
+                    : 'Face verification failed. Attendance cannot be marked.',
+                distance: faceCheck.distance,
+            });
+        }
+
         let selfieUrl = null;
         if (req.file) selfieUrl = await uploadImage(req.file, { userId: uid, context: 'punch_in' });
 
@@ -380,12 +429,13 @@ exports.punchIn = async (req, res) => {
                    (user_id, shop_id, date, punch_in_at, punch_in_lat, punch_in_lng,
                     punch_in_distance_m, punch_in_accuracy_m, punch_in_selfie_url,
                     punch_in_status, punch_in_ip, punch_in_browser, punch_in_device,
-                    attendance_status, status_source)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'punch')
+                    attendance_status, status_source, punch_in_face_verified, punch_in_face_distance)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'punch',$15,$16)
                  RETURNING *`,
                 [uid, shopId, todayISO(), now, req.body.latitude, req.body.longitude,
                  v.distance, req.body.gps_accuracy || null, selfieUrl, inStatus,
-                 clientIp(req), browser, device, overallStatus(inStatus)]
+                 clientIp(req), browser, device, overallStatus(inStatus),
+                 faceCheck.matched, faceCheck.distance]
             )).rows[0];
         } else {
             // New session opening on an existing day: clear the parent punch-out
@@ -393,7 +443,9 @@ exports.punchIn = async (req, res) => {
             // accurate again. Session rows preserve the full punch history.
             await db.query(
                 `UPDATE attendance SET punch_out_at=NULL, punch_out_status=NULL,
-                   shop_id=COALESCE($2, shop_id), updated_at=CURRENT_TIMESTAMP WHERE id=$1`, [existing.id, shopId]
+                   shop_id=COALESCE($2, shop_id), punch_in_face_verified=$3, punch_in_face_distance=$4,
+                   updated_at=CURRENT_TIMESTAMP WHERE id=$1`,
+                [existing.id, shopId, faceCheck.matched, faceCheck.distance]
             );
         }
 
@@ -407,11 +459,12 @@ exports.punchIn = async (req, res) => {
                 `INSERT INTO attendance_sessions
                    (attendance_id, user_id, date, seq, punch_in_at, punch_in_lat, punch_in_lng,
                     punch_in_distance_m, punch_in_accuracy_m, punch_in_selfie_url,
-                    punch_in_status, punch_in_ip, punch_in_browser, punch_in_device)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+                    punch_in_status, punch_in_ip, punch_in_browser, punch_in_device,
+                    punch_in_face_verified, punch_in_face_distance)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
                 [existing.id, uid, todayISO(), seq, now, req.body.latitude, req.body.longitude,
                  v.distance, req.body.gps_accuracy || null, selfieUrl, inStatus,
-                 clientIp(req), browser, device]
+                 clientIp(req), browser, device, faceCheck.matched, faceCheck.distance]
             )).rows[0];
         } catch (err) {
             // 23505 = unique_violation on uq_att_sessions_open: a concurrent
@@ -430,7 +483,7 @@ exports.punchIn = async (req, res) => {
                 [uid, existing.id, selfieUrl, req.body.latitude, req.body.longitude]
             );
         }
-        await logAction(uid, existing.id, 'PUNCH_IN', { inStatus, seq, distance: v.distance, shopId }, req);
+        await logAction(uid, existing.id, 'PUNCH_IN', { inStatus, seq, distance: v.distance, shopId, faceDistance: faceCheck.distance }, req);
         emitRealtime(req, 'attendance:update', { userId: uid, date: todayISO() });
         const fresh = (await db.query('SELECT * FROM attendance WHERE id=$1', [existing.id])).rows[0];
         res.status(201).json({ ...fresh, sessions: await sessionsFor(existing.id), session: sess });
@@ -712,11 +765,13 @@ exports.updateSettings = async (req, res) => {
                max_gps_accuracy_m=COALESCE($9,max_gps_accuracy_m),
                week_off_days=COALESCE($11::int[],week_off_days),
                payroll_days_basis=COALESCE($12,payroll_days_basis),
+               face_match_threshold=COALESCE($13,face_match_threshold),
                updated_by=$10, updated_at=CURRENT_TIMESTAMP
              WHERE id=1 RETURNING *`,
             [f.shift_start, f.shift_end, f.grace_minutes, f.half_day_after,
              f.office_radius_m, f.min_working_hours, f.require_gps, f.require_selfie,
-             f.max_gps_accuracy_m, req.user.id, weekOff, f.payroll_days_basis || null]
+             f.max_gps_accuracy_m, req.user.id, weekOff, f.payroll_days_basis || null,
+             f.face_match_threshold || null]
         );
         res.json(rows[0]);
     } catch (err) {
@@ -829,7 +884,9 @@ exports.approveLocationChange = async (req, res) => {
         await client.query(
             `UPDATE attendance_registration SET
                registered_lat=$1, registered_lng=$2, latitude=$1, longitude=$2,
-               selfie_url=COALESCE($3, selfie_url)
+               selfie_url=COALESCE($3, selfie_url),
+               face_descriptor=CASE WHEN $3 IS NOT NULL THEN NULL ELSE face_descriptor END,
+               face_descriptor_updated_at=CASE WHEN $3 IS NOT NULL THEN NULL ELSE face_descriptor_updated_at END
              WHERE user_id=$4`,
             [lc.latitude, lc.longitude, lc.selfie_url, lc.user_id]
         );

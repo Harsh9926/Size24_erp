@@ -95,7 +95,9 @@ const EmployeeAttendanceCard = () => {
                     throw new Error(`GPS accuracy ±${Math.round(gps.accuracy)}m is too low (max ${s.max_gps_accuracy_m}m). Move to an open area.`);
                 }
             }
-            if (s.require_selfie && !selfie) throw new Error('Please take a selfie first.');
+            // Punch-in always requires a live selfie for face verification, regardless
+            // of the require_selfie setting (which only governs punch-out).
+            if ((punchMode === 'in' || s.require_selfie) && !selfie) throw new Error('Please take a selfie first.');
             const fd = buildFormData({ selfie, latitude: gps.latitude, longitude: gps.longitude, accuracy: gps.accuracy });
             await attApi.post(`/attendance/punch-${punchMode}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
             setMsg({ type: 'success', text: `Punch ${punchMode === 'in' ? 'In' : 'Out'} successful!` });
@@ -234,9 +236,14 @@ const EmployeeAttendanceCard = () => {
                                 <Camera className="h-4 w-4 text-teal-700" />
                                 {punchMode === 'in' ? 'Punch In' : 'Punch Out'} — take a selfie {settings.require_gps && '· GPS will be captured'}
                             </p>
-                            {settings.require_selfie && <SelfieCapture onCapture={setSelfie} />}
+                            {(punchMode === 'in' || settings.require_selfie) && <SelfieCapture onCapture={setSelfie} />}
+                            {punchMode === 'in' && (
+                                <p className="text-[11px] mt-1.5" style={{ color: 'var(--text-secondary)' }}>
+                                    Your live selfie is matched against your registered photo — attendance is marked only on a face match.
+                                </p>
+                            )}
                             <div className="flex gap-2 mt-3">
-                                <button onClick={doPunch} disabled={busy || (settings.require_selfie && !selfie)}
+                                <button onClick={doPunch} disabled={busy || ((punchMode === 'in' || settings.require_selfie) && !selfie)}
                                     className="flex-1 py-2.5 rounded-lg text-sm font-bold text-white bg-teal-700 hover:bg-teal-800 disabled:bg-gray-300 flex items-center justify-center gap-2">
                                     {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing…</>
                                         : punchMode === 'in' ? <><LogIn className="h-4 w-4" /> Confirm Punch In</>

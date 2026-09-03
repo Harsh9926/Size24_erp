@@ -141,6 +141,30 @@ async function getViewUrl(ref) {
 }
 
 /**
+ * Fetch the raw bytes of a stored image reference (S3 key or local "/uploads/..." path).
+ * Used server-side for face verification — never exposed to the frontend.
+ * Returns null if the reference is empty or cannot be read.
+ */
+async function getImageBuffer(ref) {
+    if (!ref) return null;
+    try {
+        if (s3 && isS3Key(ref)) {
+            const obj = await s3.send(new GetObjectCommand({ Bucket: process.env.AWS_S3_BUCKET, Key: ref }));
+            const chunks = [];
+            for await (const chunk of obj.Body) chunks.push(chunk);
+            return Buffer.concat(chunks);
+        }
+        const localPath = ref.startsWith('/uploads')
+            ? path.join(__dirname, '..', ref)
+            : path.join(uploadsDir, ref);
+        return fs.readFileSync(localPath);
+    } catch (err) {
+        console.error('[storage] getImageBuffer failed for', ref, err.message);
+        return null;
+    }
+}
+
+/**
  * Replace selfie-reference fields on a row (or array of rows) with presigned view URLs.
  * @param {object|object[]} data
  * @param {string[]} fields  column names holding selfie references
@@ -159,6 +183,7 @@ async function signSelfieFields(data, fields) {
 module.exports = {
     uploadImage,
     getViewUrl,
+    getImageBuffer,
     signSelfieFields,
     S3_ENABLED: !!s3,
 };
