@@ -14,6 +14,12 @@ ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_in_face_distance NUMERIC(6
 ALTER TABLE attendance_sessions ADD COLUMN IF NOT EXISTS punch_in_face_verified BOOLEAN;
 ALTER TABLE attendance_sessions ADD COLUMN IF NOT EXISTS punch_in_face_distance NUMERIC(6,4);
 
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_out_face_verified BOOLEAN;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS punch_out_face_distance NUMERIC(6,4);
+
+ALTER TABLE attendance_sessions ADD COLUMN IF NOT EXISTS punch_out_face_verified BOOLEAN;
+ALTER TABLE attendance_sessions ADD COLUMN IF NOT EXISTS punch_out_face_distance NUMERIC(6,4);
+
 -- Configurable match strictness (lower = stricter). Default matches
 -- faceVerificationService.js's DEFAULT_THRESHOLD.
 ALTER TABLE attendance_settings ADD COLUMN IF NOT EXISTS face_match_threshold NUMERIC(4,3) NOT NULL DEFAULT 0.550;

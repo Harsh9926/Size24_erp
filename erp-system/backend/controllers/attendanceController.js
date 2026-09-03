@@ -520,6 +520,29 @@ exports.punchOut = async (req, res) => {
         const v = await validatePunch(reg, settings, req.body, !!req.file, uid);
         if (v.error) return res.status(400).json({ error: v.error, distance: v.distance });
 
+        // Face verification — mandatory for every self-punch-out, same as
+        // punch-in: a punch-out selfie of someone other than the registered
+        // employee must never close a session. Fails closed on every
+        // ambiguous outcome, before the session/selfie is persisted.
+        if (!req.file) {
+            return res.status(400).json({ error: 'A live selfie is required for face verification.' });
+        }
+        const referenceDescriptor = await getRegisteredFaceDescriptor(reg);
+        if (!referenceDescriptor) {
+            return res.status(400).json({ error: 'No approved reference photo on file. Please contact admin to complete registration.' });
+        }
+        const threshold = Number(settings.face_match_threshold ?? DEFAULT_THRESHOLD);
+        const faceCheck = await verifyAgainstDescriptor(req.file.buffer, referenceDescriptor, threshold);
+        if (!faceCheck.matched) {
+            await logAction(uid, existing.id, 'PUNCH_OUT_FACE_FAIL', { distance: faceCheck.distance, reason: faceCheck.reason }, req);
+            return res.status(400).json({
+                error: faceCheck.reason === 'no_face_detected'
+                    ? 'No face detected in the selfie. Please retry in good lighting, facing the camera directly.'
+                    : 'Face verification failed. Attendance cannot be marked.',
+                distance: faceCheck.distance,
+            });
+        }
+
         let selfieUrl = null;
         if (req.file) selfieUrl = await uploadImage(req.file, { userId: uid, context: 'punch_out' });
 
@@ -535,11 +558,13 @@ exports.punchOut = async (req, res) => {
             `UPDATE attendance_sessions SET
                punch_out_at=$1, punch_out_lat=$2, punch_out_lng=$3, punch_out_distance_m=$4,
                punch_out_accuracy_m=$5, punch_out_selfie_url=$6, punch_out_status=$7,
-               punch_out_ip=$8, punch_out_browser=$9, working_hours=$10, updated_at=CURRENT_TIMESTAMP
+               punch_out_ip=$8, punch_out_browser=$9, working_hours=$10, updated_at=CURRENT_TIMESTAMP,
+               punch_out_face_verified=$12, punch_out_face_distance=$13
              WHERE id=$11 AND punch_out_at IS NULL RETURNING id`,
             [now, req.body.latitude, req.body.longitude, v.distance,
              req.body.gps_accuracy || null, selfieUrl, outStatus,
-             clientIp(req), browser, sessHours, openSess.id]
+             clientIp(req), browser, sessHours, openSess.id,
+             faceCheck.matched, faceCheck.distance]
         );
         if (closeRes.rowCount === 0)
             return res.status(409).json({ error: 'No open session to punch out. Please punch in first.' });
@@ -554,11 +579,13 @@ exports.punchOut = async (req, res) => {
                punch_out_at=$1, punch_out_lat=$2, punch_out_lng=$3, punch_out_distance_m=$4,
                punch_out_accuracy_m=$5, punch_out_selfie_url=$6, punch_out_status=$7,
                punch_out_ip=$8, punch_out_browser=$9, working_hours=$10,
-               updated_at=CURRENT_TIMESTAMP
+               updated_at=CURRENT_TIMESTAMP,
+               punch_out_face_verified=$12, punch_out_face_distance=$13
              WHERE id=$11 RETURNING *`,
             [now, req.body.latitude, req.body.longitude, v.distance,
              req.body.gps_accuracy || null, selfieUrl, outStatus,
-             clientIp(req), browser, Number(totalHours).toFixed(2), existing.id]
+             clientIp(req), browser, Number(totalHours).toFixed(2), existing.id,
+             faceCheck.matched, faceCheck.distance]
         );
         if (selfieUrl) {
             await db.query(
@@ -567,7 +594,7 @@ exports.punchOut = async (req, res) => {
                 [uid, existing.id, selfieUrl, req.body.latitude, req.body.longitude]
             );
         }
-        await logAction(uid, existing.id, 'PUNCH_OUT', { outStatus, sessHours, seq: openSess.seq }, req);
+        await logAction(uid, existing.id, 'PUNCH_OUT', { outStatus, sessHours, seq: openSess.seq, faceDistance: faceCheck.distance }, req);
         emitRealtime(req, 'attendance:update', { userId: uid, date: todayISO() });
         res.json({ ...rows[0], sessions: await sessionsFor(existing.id) });
 
