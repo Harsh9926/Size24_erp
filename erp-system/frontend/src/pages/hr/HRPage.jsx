@@ -9,7 +9,7 @@ const inp = { background:'var(--bg-primary)', borderColor:'var(--border-color)',
 const iCls = 'w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-400 transition';
 
 const TABS = ['Employees','Attendance','Salary','Leaves','Tailor Work'];
-const STATUS_COLORS = { present:'#10b981', absent:'#ef4444', half_day:'#f59e0b', leave:'#8b5cf6', holiday:'#6366f1', work_from_home:'#3b82f6' };
+const STATUS_COLORS = { present:'#10b981', absent:'#ef4444', half_day:'#f59e0b', paid_leave:'#8b5cf6', unpaid_leave:'#a855f7', week_off:'#6b7280', holiday:'#6366f1' };
 const EMP_TYPE_COLORS = { full_time:'#10b981', part_time:'#f59e0b', contract:'#3b82f6', tailor:'#8b5cf6', daily_wage:'#6b7280' };
 
 export default function HRPage() {
@@ -22,9 +22,6 @@ export default function HRPage() {
     const [employees, setEmployees] = useState([]);
     const [empSearch, setEmpSearch] = useState('');
     const [empLoading, setEmpLoading] = useState(false);
-    const [showEmpForm, setShowEmpForm] = useState(false);
-    const [empForm, setEmpForm] = useState({ name:'', mobile:'', email:'', department:'', designation:'', employment_type:'full_time', joining_date:'', basic_salary:'', hra:'', da:'', pf_applicable:false, esi_applicable:false });
-
     // Attendance
     const [attDate, setAttDate] = useState(new Date().toISOString().slice(0,10));
     const [attRecords, setAttRecords] = useState([]);
@@ -49,8 +46,14 @@ export default function HRPage() {
     const loadEmployees = useCallback(async () => {
         setEmpLoading(true);
         try {
-            const r = await api.get('/hr/employees', { params:{ search: empSearch || undefined } });
-            setEmployees(r.data);
+            const r = await api.get('/attendance/employees', { params:{ search: empSearch || undefined } });
+            const mapped = r.data.map(e => ({
+                id: e.user_id, emp_code: e.mobile, name: e.name, mobile: e.mobile,
+                department: e.shop_name, designation: e.role, employment_type: e.role,
+                basic_salary: e.monthly_salary, pf_applicable: false, esi_applicable: false,
+                is_active: e.registration_status !== 'inactive',
+            }));
+            setEmployees(mapped);
         } catch {} finally { setEmpLoading(false); }
     }, [empSearch]);
 
@@ -60,14 +63,17 @@ export default function HRPage() {
         if (tab === 'Attendance') {
             setAttLoading(true);
             Promise.all([
-                api.get('/hr/attendance', { params:{ from: attDate, to: attDate } }),
-                api.get('/hr/employees', { params:{ is_active: 'true' } }),
-            ]).then(([attR, empR]) => {
-                const attMap = Object.fromEntries(attR.data.map(a => [a.employee_id, a]));
+                api.get('/attendance/employees'),
+                api.get('/attendance/table', { params:{ date: attDate } }),
+            ]).then(([empR, attR]) => {
+                const attMap = Object.fromEntries(attR.data.map(a => [a.user_id, a.attendance_status]));
                 const init = {};
-                empR.data.forEach(e => { init[e.id] = attMap[e.id]?.status || ''; });
+                const recs = empR.data.map(e => {
+                    init[e.user_id] = attMap[e.user_id] || '';
+                    return { id: e.user_id, emp_code: e.mobile, name: e.name, department: e.shop_name, att_status: attMap[e.user_id] || '' };
+                });
                 setBulkAtt(init);
-                setAttRecords(empR.data.map(e => ({ ...e, att_status: attMap[e.id]?.status || '' })));
+                setAttRecords(recs);
             }).catch(()=>{}).finally(() => setAttLoading(false));
         }
     }, [tab, attDate]);
@@ -75,7 +81,16 @@ export default function HRPage() {
     useEffect(() => {
         if (tab === 'Salary') {
             setSlipLoading(true);
-            api.get('/hr/salary-slips', { params:{ month: salMonth } }).then(r => setSlips(r.data)).catch(()=>{}).finally(()=>setSlipLoading(false));
+            api.get('/attendance/payroll', { params:{ month: salMonth } }).then(r => {
+                const mapped = (r.data.report || []).map(p => ({
+                    id: p.user_id, emp_name: p.name, emp_code: p.mobile, slip_month: salMonth + '-01',
+                    present_days: p.present, working_days: p.days_in_month,
+                    basic: p.monthly_salary, hra: 0, da: 0, gross: p.gross_salary,
+                    pf_deduct: 0, esi_deduct: 0, advance_deduct: 0, net_pay: p.net_salary,
+                    status: 'draft',
+                }));
+                setSlips(mapped);
+            }).catch(()=>{}).finally(()=>setSlipLoading(false));
         }
     }, [tab, salMonth]);
 
@@ -93,27 +108,27 @@ export default function HRPage() {
         }
     }, [tab]);
 
-    const handleCreateEmp = async () => {
-        try {
-            await api.post('/hr/employees', empForm);
-            showMsg('Employee created'); setShowEmpForm(false); loadEmployees();
-        } catch (e) { showMsg(e.response?.data?.error||'Failed','error'); }
-    };
-
     const handleMarkAttendance = async () => {
-        const records = Object.entries(bulkAtt).filter(([,s])=>s).map(([eid,status]) => ({ employee_id: parseInt(eid), att_date: attDate, status }));
+        const records = Object.entries(bulkAtt).filter(([,s])=>s);
         if (!records.length) { showMsg('Select status for at least one employee','error'); return; }
         try {
-            await api.post('/hr/attendance', { records });
+            await Promise.all(records.map(([uid,status]) => api.put('/attendance/day-status', { user_id: parseInt(uid), date: attDate, status })));
             showMsg(`Attendance marked for ${records.length} employees`);
         } catch (e) { showMsg(e.response?.data?.error||'Failed','error'); }
     };
 
     const handleGenSalary = async () => {
         try {
-            const r = await api.post('/hr/salary-slips/generate', { month: salMonth });
-            showMsg(`Generated ${r.data.generated} salary slips`);
-            api.get('/hr/salary-slips', { params:{ month: salMonth } }).then(r => setSlips(r.data));
+            const r = await api.get('/attendance/payroll', { params:{ month: salMonth } });
+            const mapped = (r.data.report || []).map(p => ({
+                id: p.user_id, emp_name: p.name, emp_code: p.mobile, slip_month: salMonth + '-01',
+                present_days: p.present, working_days: p.days_in_month,
+                basic: p.monthly_salary, hra: 0, da: 0, gross: p.gross_salary,
+                pf_deduct: 0, esi_deduct: 0, advance_deduct: 0, net_pay: p.net_salary,
+                status: 'draft',
+            }));
+            setSlips(mapped);
+            showMsg(`Loaded payroll for ${mapped.length} employees`);
         } catch (e) { showMsg(e.response?.data?.error||'Failed','error'); }
     };
 
@@ -172,10 +187,8 @@ export default function HRPage() {
                                 <button onClick={loadEmployees} className="p-2 border rounded-lg" style={{ borderColor:'var(--border-color)', background:'var(--bg-surface)' }}>
                                     <RefreshCw className={`h-4 w-4 ${empLoading?'animate-spin':''}`} style={{ color:'var(--text-secondary)' }} />
                                 </button>
-                                <button onClick={() => setShowEmpForm(true)} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold text-white" style={{ background:ORANGE }}>
-                                    <Plus className="h-4 w-4" /> Add Employee
-                                </button>
                             </div>
+                            <p className="text-xs" style={{ color:'var(--text-secondary)' }}>Employees are added via Users → Attendance Registration/Assignments.</p>
                             <div className="rounded-2xl border overflow-hidden" style={{ background:'var(--bg-surface)', borderColor:'var(--border-color)' }}>
                                 <table className="w-full text-sm">
                                     <thead><tr style={{ background:'var(--bg-primary)', borderBottom:'1px solid var(--border-color)' }}>
@@ -390,44 +403,6 @@ export default function HRPage() {
                     )}
                 </main>
             </div>
-
-            {/* Add Employee Modal */}
-            {showEmpForm && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:'rgba(0,0,0,0.7)', backdropFilter:'blur(4px)' }}>
-                    <div className="w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden" style={{ background:'var(--bg-surface)' }}>
-                        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ background:'var(--bg-primary)', borderColor:'var(--border-color)' }}>
-                            <h3 className="font-bold text-sm" style={{ color:'var(--text-primary)' }}>Add Employee</h3>
-                            <button onClick={() => setShowEmpForm(false)}><X className="h-5 w-5" style={{ color:'var(--text-secondary)' }} /></button>
-                        </div>
-                        <div className="p-5 grid grid-cols-2 gap-4 max-h-96 overflow-y-auto">
-                            {[['name','Name','text'],['mobile','Mobile','tel'],['email','Email','email'],['department','Department','text'],['designation','Designation','text'],['joining_date','Joining Date','date'],['basic_salary','Basic Salary','number'],['hra','HRA','number'],['da','DA','number']].map(([k,l,type]) => (
-                                <div key={k}>
-                                    <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color:'var(--text-secondary)' }}>{l}</label>
-                                    <input type={type} value={empForm[k]} onChange={e=>setEmpForm(f=>({...f,[k]:e.target.value}))} className={iCls} style={inp} />
-                                </div>
-                            ))}
-                            <div>
-                                <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color:'var(--text-secondary)' }}>Employment Type</label>
-                                <select value={empForm.employment_type} onChange={e=>setEmpForm(f=>({...f,employment_type:e.target.value}))} className={iCls} style={inp}>
-                                    {['full_time','part_time','contract','tailor','daily_wage'].map(t => <option key={t} value={t}>{t.replace('_',' ')}</option>)}
-                                </select>
-                            </div>
-                            <div className="col-span-2 flex gap-4">
-                                {[['pf_applicable','PF Applicable'],['esi_applicable','ESI Applicable']].map(([k,l]) => (
-                                    <label key={k} className="flex items-center gap-2 text-sm" style={{ color:'var(--text-primary)' }}>
-                                        <input type="checkbox" checked={empForm[k]} onChange={e=>setEmpForm(f=>({...f,[k]:e.target.checked}))} />
-                                        {l}
-                                    </label>
-                                ))}
-                            </div>
-                            <div className="col-span-2 flex gap-3">
-                                <button onClick={() => setShowEmpForm(false)} className="flex-1 py-2.5 text-sm font-semibold rounded-xl border" style={{ borderColor:'var(--border-color)', background:'var(--bg-primary)', color:'var(--text-primary)' }}>Cancel</button>
-                                <button onClick={handleCreateEmp} className="flex-1 py-2.5 text-sm font-bold rounded-xl text-white" style={{ background:ORANGE }}>Create Employee</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* Tailor Work Form */}
             {showTailorForm && (
