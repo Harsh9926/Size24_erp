@@ -935,6 +935,55 @@ exports.getDashboardCards = async (req, res) => {
     }
 };
 
+// GET /api/attendance/shop-summary?date= — per-shop Total/Present/Absent
+// cards for the Attendance Dashboard. An employee is counted under the shop
+// they are currently assigned to (attendance_shop_users, falling back to
+// shop_users) — the same resolution order used everywhere else for a user's
+// "home" shop.
+exports.getShopWiseAttendance = async (req, res) => {
+    try {
+        const date = req.query.date || todayISO();
+        const shops = await shopScope(req.user);
+        const shopFilter = shops ? 'AND s.id = ANY($2::int[])' : '';
+        const params = shops ? [date, shops] : [date];
+
+        const { rows } = await db.query(
+            `WITH assign AS (
+               SELECT u.id AS user_id,
+                      COALESCE(
+                        (SELECT asu.shop_id FROM attendance_shop_users asu
+                         WHERE asu.user_id = u.id ORDER BY asu.assigned_at ASC LIMIT 1),
+                        (SELECT su.shop_id FROM shop_users su
+                         WHERE su.user_id = u.id ORDER BY su.assigned_at ASC LIMIT 1)
+                      ) AS shop_id
+               FROM users u
+               WHERE u.status = 'active' AND u.role IN ('shop_user','manager')
+             )
+             SELECT s.id AS shop_id, s.shop_name,
+                    COUNT(a.user_id) AS total,
+                    COUNT(*) FILTER (WHERE att.punch_in_at IS NOT NULL) AS present
+             FROM shops s
+             LEFT JOIN assign a ON a.shop_id = s.id
+             LEFT JOIN attendance att ON att.user_id = a.user_id AND att.date = $1
+             WHERE 1=1 ${shopFilter}
+             GROUP BY s.id, s.shop_name
+             ORDER BY s.shop_name`,
+            params
+        );
+        const summary = rows.map((r) => {
+            const total = Number(r.total), present = Number(r.present);
+            return {
+                shop_id: r.shop_id, shop_name: r.shop_name,
+                total, present, absent: Math.max(0, total - present),
+            };
+        });
+        res.json({ date, shops: summary });
+    } catch (err) {
+        console.error('[attendance.getShopWiseAttendance]', err.message);
+        res.status(500).json({ error: 'Failed to load shop-wise attendance' });
+    }
+};
+
 // GET /api/attendance/table?date=&shop_id=&status=&q=
 exports.getAttendanceTable = async (req, res) => {
     try {
@@ -1202,7 +1251,62 @@ exports.setDayStatus = async (req, res) => {
     }
 };
 
-// GET /api/attendance/employees — list employees with their monthly salary
+// PUT /api/attendance/manual — Admin-only back-date attendance marking/editing.
+// { user_id, date, status, punch_in_time, punch_out_time, remarks }
+// punch_in_time/punch_out_time are "HH:MM" (24h) local times, optional and
+// only meaningful for status='present'/'half_day'. Always stamped
+// status_source='manual_admin' and recorded in both attendance_logs
+// (per-attendance timeline) and audit_logs (before/after values), so every
+// manual edit is traceable to the admin who made it.
+exports.setManualAttendance = async (req, res) => {
+    try {
+        const { user_id, date, status, punch_in_time, punch_out_time, remarks } = req.body || {};
+        if (!user_id || !date || !DAY_STATUSES.includes(status))
+            return res.status(400).json({ error: `status must be one of: ${DAY_STATUSES.join(', ')}` });
+
+        const before = (await db.query(
+            'SELECT * FROM attendance WHERE user_id=$1 AND date=$2', [user_id, date]
+        )).rows[0] || null;
+
+        const shopId = before?.shop_id || await resolveShopId(user_id);
+        const punchInAt  = punch_in_time  ? new Date(`${date}T${punch_in_time}:00`)  : null;
+        const punchOutAt = punch_out_time ? new Date(`${date}T${punch_out_time}:00`) : null;
+        let workingHours = null;
+        if (punchInAt && punchOutAt && punchOutAt > punchInAt) {
+            workingHours = Number(((punchOutAt - punchInAt) / 3_600_000).toFixed(2));
+        }
+
+        const { rows } = await db.query(
+            `INSERT INTO attendance
+               (user_id, shop_id, date, attendance_status, status_source,
+                punch_in_at, punch_out_at, working_hours, remarks,
+                manually_edited_by, manually_edited_at)
+             VALUES ($1,$2,$3,$4,'manual_admin',$5,$6,$7,$8,$9,CURRENT_TIMESTAMP)
+             ON CONFLICT (user_id, date) DO UPDATE SET
+               attendance_status=$4, status_source='manual_admin',
+               punch_in_at=$5, punch_out_at=$6, working_hours=$7, remarks=$8,
+               manually_edited_by=$9, manually_edited_at=CURRENT_TIMESTAMP,
+               updated_at=CURRENT_TIMESTAMP
+             RETURNING *`,
+            [user_id, shopId, date, status, punchInAt, punchOutAt, workingHours, remarks || null, req.user.id]
+        );
+        const after = rows[0];
+
+        await db.query(
+            `INSERT INTO audit_logs (table_name, record_id, old_value, new_value, edited_by)
+             VALUES ('attendance', $1, $2, $3, $4)`,
+            [after.id, before ? JSON.stringify(before) : null, JSON.stringify(after), req.user.id]
+        );
+        await logAction(req.user.id, after.id, 'ADMIN_BACKDATE_EDIT', { user_id, date, status, punch_in_time, punch_out_time, remarks }, req);
+        emitRealtime(req, 'attendance:update', { userId: Number(user_id), date });
+        res.json(after);
+    } catch (err) {
+        console.error('[attendance.setManualAttendance]', err.message);
+        res.status(500).json({ error: 'Failed to save manual attendance' });
+    }
+};
+
+// GET /api/attendance/employees?shop_id= — list employees with their monthly salary
 exports.getEmployeeSalaries = async (req, res) => {
     try {
         const shops = await shopScope(req.user);
@@ -1211,6 +1315,10 @@ exports.getEmployeeSalaries = async (req, res) => {
         if (shops) {
             params.push(shops);
             where += ` AND EXISTS (SELECT 1 FROM shop_users su WHERE su.user_id=u.id AND su.shop_id = ANY($${params.length}::int[]))`;
+        }
+        if (req.query.shop_id) {
+            params.push(req.query.shop_id);
+            where += ` AND EXISTS (SELECT 1 FROM shop_users su WHERE su.user_id=u.id AND su.shop_id = $${params.length})`;
         }
         const { rows } = await db.query(
             `SELECT u.id AS user_id, u.name, u.mobile, u.role,

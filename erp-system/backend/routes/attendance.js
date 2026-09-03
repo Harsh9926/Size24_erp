@@ -51,10 +51,13 @@ router.get('/detail/:id',            authenticateToken, adminOrManager, checkAct
 router.get('/report',                authenticateToken, adminOrManager, checkAction('attendance_reports.view'),   ctrl.getMonthlyReport);
 router.get('/export',                authenticateToken, adminOrManager, checkAction('attendance_reports.export'), ctrl.exportReport);
 router.get('/shops',                 authenticateToken, adminOrManager, checkAction('attendance.view_team'), ctrl.getScopedShops);
+router.get('/shop-summary',          authenticateToken, adminOrManager, checkAction('attendance.view_team'), ctrl.getShopWiseAttendance);
 router.get('/recent-activity',       authenticateToken, adminOrManager, checkAction('attendance.view_team'), ctrl.getRecentActivity);
 
 /* ── Payroll: day status, salary config, salary calculation ─────── */
 router.put('/day-status',            authenticateToken, adminOrManager, checkAction('attendance.edit'), ctrl.setDayStatus);
+// Back-date attendance marking/editing — admin-only (never manager), unlike day-status above.
+router.put('/manual',                authenticateToken, admin, checkAction('attendance.edit'), ctrl.setManualAttendance);
 router.get('/employees',             authenticateToken, adminOrManager, checkAction('attendance_payroll.view'), ctrl.getEmployeeSalaries);
 router.put('/employees/:userId/salary', authenticateToken, admin, checkAction('attendance_payroll.edit'), ctrl.setEmployeeSalary);
 router.get('/payroll',               authenticateToken, adminOrManager, checkAction('attendance_payroll.view'), ctrl.getPayroll);

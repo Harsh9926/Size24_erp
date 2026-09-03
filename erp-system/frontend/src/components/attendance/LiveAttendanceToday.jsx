@@ -27,6 +27,7 @@ const lastPunch = (r) => r.punch_out_at || r.punch_in_at;
 
 export default function LiveAttendanceToday() {
     const [cards, setCards] = useState(null);
+    const [shopCards, setShopCards] = useState([]);
     const [rows, setRows] = useState([]);
     const [activity, setActivity] = useState([]);
     const [live, setLive] = useState(false);
@@ -34,12 +35,14 @@ export default function LiveAttendanceToday() {
 
     const load = useCallback(async () => {
         try {
-            const [c, t, a] = await Promise.all([
+            const [c, t, a, s] = await Promise.all([
                 api.get('/attendance/dashboard', { params: { date: todayISO() } }),
                 api.get('/attendance/table', { params: { date: todayISO() } }),
                 api.get('/attendance/recent-activity', { params: { limit: 12 } }),
+                api.get('/attendance/shop-summary', { params: { date: todayISO() } }),
             ]);
             setCards(c.data); setRows(t.data || []); setActivity(a.data || []);
+            setShopCards(s.data?.shops || []);
         } catch { /* endpoints may be unavailable for this role */ }
         finally { setLoading(false); }
     }, []);
@@ -101,6 +104,28 @@ export default function LiveAttendanceToday() {
                 <Stat icon={Plane}        label="On Leave"        value={c.on_leave ?? 0}        color="#7c3aed" />
                 <Stat icon={Clock}        label="Late"            value={c.late ?? 0}            color="#d97706" />
             </div>
+
+            {/* Shop-wise Attendance */}
+            {shopCards.length > 0 && (
+                <div className="px-4 pb-4">
+                    <p className="text-[11px] font-bold uppercase tracking-wide mb-2 flex items-center gap-1.5" style={{ color: 'var(--text-secondary)' }}>
+                        <Store className="h-3.5 w-3.5" /> Shop-wise Attendance
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2.5">
+                        {shopCards.map(s => (
+                            <div key={s.shop_id} className="rounded-lg border p-2.5"
+                                style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+                                <p className="text-xs font-bold truncate mb-1" style={{ color: 'var(--text-primary)' }}>{s.shop_name}</p>
+                                <p className="text-[11px] whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                                    Total: <b style={{ color: 'var(--text-primary)' }}>{s.total}</b>{' '}
+                                    <span className="text-green-600">| Present: <b>{s.present}</b></span>{' '}
+                                    <span className="text-red-600">| Absent: <b>{s.absent}</b></span>
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-0 xl:gap-4 px-4 pb-4">
                 {/* Live table */}

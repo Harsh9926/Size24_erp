@@ -23,21 +23,25 @@ export default function AttendancePayrollPage() {
     const { can } = usePermissions();
     const isAdmin = user?.role === 'admin' && can('attendance_payroll.edit');
     const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [shops, setShops] = useState([]);
+    const [shopId, setShopId] = useState('');
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
     const [msg, setMsg] = useState(null);
     const [edits, setEdits] = useState({});   // user_id -> salary string being edited
     const [savingId, setSavingId] = useState(null);
 
+    useEffect(() => { api.get('/attendance/shops').then(r => setShops(r.data)).catch(() => {}); }, []);
+
     const load = useCallback(async () => {
         setLoading(true); setMsg(null);
         try {
-            const r = await api.get('/attendance/payroll', { params: { month } });
+            const r = await api.get('/attendance/payroll', { params: { month, shop_id: shopId || undefined } });
             setRows(r.data.report || []);
         } catch (e) {
             setMsg({ type: 'error', text: e.response?.data?.error || 'Failed to load payroll' });
         } finally { setLoading(false); }
-    }, [month]);
+    }, [month, shopId]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -73,6 +77,12 @@ export default function AttendancePayrollPage() {
                             <input type="month" value={month} onChange={(e) => setMonth(e.target.value)}
                                 className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-700"
                                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                            <select value={shopId} onChange={(e) => setShopId(e.target.value)}
+                                className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-700"
+                                style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+                                <option value="">All Shops</option>
+                                {shops.map((s) => <option key={s.id} value={s.id}>{s.shop_name}</option>)}
+                            </select>
                             <button onClick={load} className="p-2 text-teal-700 hover:text-teal-800"><RefreshCw className="h-4 w-4" /></button>
                         </div>
                     </div>

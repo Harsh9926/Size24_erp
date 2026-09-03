@@ -582,6 +582,17 @@ httpServer.listen(PORT, async () => {
         console.error('[migrate] Payment In fields migration failed:', err.message);
     }
 
+    // Auto-migrate: Admin back-date attendance marking (remarks + manual-edit audit columns)
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql  = fs.readFileSync(path.join(__dirname, 'db', 'migrate_attendance_backdate_edit.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] Attendance back-date edit columns ready');
+    } catch (err) {
+        console.error('[migrate] Attendance back-date edit migration failed:', err.message);
+    }
+
     // Auto-migrate: RBAC tables (module_permissions + permission_logs)
     try {
         await db.query(`
