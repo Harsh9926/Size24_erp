@@ -1036,9 +1036,9 @@ exports.getShopWiseAttendance = async (req, res) => {
                SELECT u.id AS user_id,
                       COALESCE(
                         (SELECT asu.shop_id FROM attendance_shop_users asu
-                         WHERE asu.user_id = u.id ORDER BY asu.assigned_at ASC LIMIT 1),
+                         WHERE asu.user_id = u.id ORDER BY asu.assigned_at DESC LIMIT 1),
                         (SELECT su.shop_id FROM shop_users su
-                         WHERE su.user_id = u.id ORDER BY su.assigned_at ASC LIMIT 1)
+                         WHERE su.user_id = u.id ORDER BY su.assigned_at DESC LIMIT 1)
                       ) AS shop_id
                FROM users u
                WHERE u.status = 'active' AND u.role IN ('shop_user','manager')
@@ -1482,9 +1482,9 @@ exports.getPayroll = async (req, res) => {
              LEFT JOIN LATERAL (
                  SELECT COALESCE(
                      (SELECT asu.shop_id FROM attendance_shop_users asu
-                      WHERE asu.user_id = u.id ORDER BY asu.assigned_at ASC LIMIT 1),
+                      WHERE asu.user_id = u.id ORDER BY asu.assigned_at DESC LIMIT 1),
                      (SELECT su.shop_id FROM shop_users su
-                      WHERE su.user_id = u.id ORDER BY su.assigned_at ASC LIMIT 1)
+                      WHERE su.user_id = u.id ORDER BY su.assigned_at DESC LIMIT 1)
                  ) AS shop_id
              ) assign ON true
              LEFT JOIN shops s ON s.id = assign.shop_id
