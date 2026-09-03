@@ -1459,8 +1459,17 @@ exports.getPayroll = async (req, res) => {
             params.push(shops);
             where += ` AND EXISTS (SELECT 1 FROM shop_users su WHERE su.user_id=u.id AND su.shop_id = ANY($${params.length}::int[]))`;
         }
-        if (req.query.shop_id) { params.push(req.query.shop_id); where += ` AND r.shop_id=$${params.length}`; }
         if (req.query.user_id) { params.push(req.query.user_id); where += ` AND u.id=$${params.length}`; }
+
+        // Shop shown/filtered in Payroll must match Attendance Assignments
+        // (attendance_shop_users), not the stale one-time shop_id captured on
+        // the registration row — same primary-shop precedence already used
+        // for the attendance dashboard (attendance_shop_users first, then the
+        // legacy shop_users fallback for anyone never explicitly assigned).
+        if (req.query.shop_id) {
+            params.push(req.query.shop_id);
+            where += ` AND assign.shop_id=$${params.length}`;
+        }
 
         // Per-user salary override (attendance_user_settings) wins over the
         // registration salary when set.
@@ -1470,7 +1479,15 @@ exports.getPayroll = async (req, res) => {
              FROM users u
              LEFT JOIN attendance_registration r ON r.user_id = u.id
              LEFT JOIN attendance_user_settings us ON us.user_id = u.id
-             LEFT JOIN shops s ON s.id = r.shop_id
+             LEFT JOIN LATERAL (
+                 SELECT COALESCE(
+                     (SELECT asu.shop_id FROM attendance_shop_users asu
+                      WHERE asu.user_id = u.id ORDER BY asu.assigned_at ASC LIMIT 1),
+                     (SELECT su.shop_id FROM shop_users su
+                      WHERE su.user_id = u.id ORDER BY su.assigned_at ASC LIMIT 1)
+                 ) AS shop_id
+             ) assign ON true
+             LEFT JOIN shops s ON s.id = assign.shop_id
              WHERE ${where}
              ORDER BY u.name`, params
         );
