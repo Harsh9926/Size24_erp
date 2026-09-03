@@ -10,10 +10,21 @@
 // face_recognition) — see backend/models/README.md for provenance.
 
 const path = require('path');
-const faceapi = require('face-api.js');
-const { Canvas, Image, ImageData } = require('canvas');
 
-faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
+// face-api.js / canvas are native/optional dependencies for this feature only.
+// If they aren't installed (e.g. a deploy ran `pm2 restart` without `npm install`
+// after this feature was added), face verification must fail closed — it must
+// NOT take down the rest of the API (login, permissions, etc.) by throwing here.
+let faceapi = null;
+let loadError = null;
+try {
+    faceapi = require('face-api.js');
+    const { Canvas, Image, ImageData } = require('canvas');
+    faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
+} catch (err) {
+    loadError = err;
+    console.error('[faceVerification] face-api.js/canvas unavailable — face verification disabled:', err.message);
+}
 
 const MODELS_DIR = path.join(__dirname, '..', 'models');
 
@@ -23,6 +34,7 @@ const DEFAULT_THRESHOLD = 0.55;
 
 let loadPromise = null;
 function ensureModelsLoaded() {
+    if (loadError) return Promise.reject(loadError);
     if (!loadPromise) {
         loadPromise = Promise.all([
             faceapi.nets.tinyFaceDetector.loadFromDisk(MODELS_DIR),
