@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useContext } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/Layout';
-import { BarChart3, Download, FileSpreadsheet, Loader2, Printer, UserCog, X, CheckCircle2, AlertCircle } from 'lucide-react';
+import { BarChart3, Download, FileSpreadsheet, Loader2, Printer, UserCog, Wallet, X, CheckCircle2, AlertCircle } from 'lucide-react';
 import api from '../../services/api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { AuthContext } from '../../context/AuthContext';
@@ -11,6 +12,7 @@ const thisMonth = () => new Date().toISOString().slice(0, 7);
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
 export default function AttendanceReportsPage() {
+    const navigate = useNavigate();
     const { user } = useContext(AuthContext);
     const { can } = usePermissions();
     const canExport = can('attendance_reports.export');
@@ -77,6 +79,12 @@ export default function AttendanceReportsPage() {
                         {employees.map(e => <option key={e.user_id} value={e.user_id}>{e.name || e.mobile}</option>)}
                     </select>
                     <div className="ml-auto flex gap-2">
+                        {(isAdmin || user?.role === 'manager') && (
+                            <button onClick={() => navigate('/attendance/payroll')}
+                                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-emerald-700 rounded-lg hover:bg-emerald-800">
+                                <Wallet className="h-4 w-4" /> Payroll
+                            </button>
+                        )}
                         {isAdmin && (
                             <button onClick={() => setShowMarkModal(true)}
                                 className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">
