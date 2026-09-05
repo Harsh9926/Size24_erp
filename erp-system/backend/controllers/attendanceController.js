@@ -1498,7 +1498,7 @@ exports.getPayroll = async (req, res) => {
             const eff = await getEffectiveSettings(e.user_id);
             const mo = await computeMonth(e.user_id, month, eff);
             const c = mo.counts;
-            const divisor = settings.payroll_days_basis === 'fixed30' ? 30 : mo.days_in_month;
+            const divisor = settings.payroll_days_basis === 'calendar' ? mo.days_in_month : 30;
             const monthlySalary = Number(e.monthly_salary || 0);
             const perDay = divisor ? monthlySalary / divisor : 0;
             const gross = Number((perDay * mo.payable_days).toFixed(2));
@@ -1510,7 +1510,7 @@ exports.getPayroll = async (req, res) => {
                 paid_leave: c.paid_leave, unpaid_leave: c.unpaid_leave,
                 holiday: c.holiday, absent: c.absent,
                 payable_days: mo.payable_days,
-                days_in_month: mo.days_in_month, payroll_divisor: divisor,
+                days_in_month: divisor, payroll_divisor: divisor,
                 per_day_rate: Number(perDay.toFixed(2)),
                 total_working_hours: c.total_working_hours,
                 gross_salary: gross, net_salary: net,
@@ -1562,7 +1562,7 @@ exports.getUserSettings = async (req, res) => {
         // Current-month payroll preview for this user.
         const month = req.query.month || todayISO().slice(0, 7);
         const mo = await computeMonth(uid, month, effective);
-        const divisor = global.payroll_days_basis === 'fixed30' ? 30 : mo.days_in_month;
+        const divisor = global.payroll_days_basis === 'calendar' ? mo.days_in_month : 30;
         const perDay = divisor ? Number(salary) / divisor : 0;
         const payroll = {
             month, monthly_salary: Number(salary),
