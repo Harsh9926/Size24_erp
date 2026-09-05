@@ -23,10 +23,14 @@ export default function HRPage() {
     const [empSearch, setEmpSearch] = useState('');
     const [empLoading, setEmpLoading] = useState(false);
     // Attendance
+    const [attView, setAttView] = useState('day'); // 'day' | 'month'
     const [attDate, setAttDate] = useState(new Date().toISOString().slice(0,10));
+    const [attMonth, setAttMonth] = useState(new Date().toISOString().slice(0,7));
     const [attRecords, setAttRecords] = useState([]);
     const [attLoading, setAttLoading] = useState(false);
     const [bulkAtt, setBulkAtt] = useState({});
+    const [monthReport, setMonthReport] = useState([]);
+    const [monthLoading, setMonthLoading] = useState(false);
 
     // Salary
     const [salMonth, setSalMonth] = useState(new Date().toISOString().slice(0,7));
@@ -60,7 +64,7 @@ export default function HRPage() {
     useEffect(() => { if (tab === 'Employees') loadEmployees(); }, [tab, loadEmployees]);
 
     useEffect(() => {
-        if (tab === 'Attendance') {
+        if (tab === 'Attendance' && attView === 'day') {
             setAttLoading(true);
             Promise.all([
                 api.get('/attendance/employees'),
@@ -76,7 +80,16 @@ export default function HRPage() {
                 setAttRecords(recs);
             }).catch(()=>{}).finally(() => setAttLoading(false));
         }
-    }, [tab, attDate]);
+    }, [tab, attDate, attView]);
+
+    useEffect(() => {
+        if (tab === 'Attendance' && attView === 'month') {
+            setMonthLoading(true);
+            api.get('/attendance/report', { params:{ month: attMonth } })
+                .then(r => setMonthReport(r.data?.report || []))
+                .catch(()=>{}).finally(() => setMonthLoading(false));
+        }
+    }, [tab, attMonth, attView]);
 
     useEffect(() => {
         if (tab === 'Salary') {
@@ -234,43 +247,94 @@ export default function HRPage() {
                     {/* ATTENDANCE */}
                     {tab === 'Attendance' && (
                         <div className="space-y-4">
-                            <div className="flex gap-3 items-center">
-                                <input type="date" value={attDate} onChange={e=>setAttDate(e.target.value)} className={iCls+' w-40'} style={inp} />
-                                <button onClick={handleMarkAttendance} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white" style={{ background:'#10b981' }}>
-                                    <CheckCircle2 className="h-4 w-4" /> Save Attendance
-                                </button>
+                            <div className="flex gap-3 items-center flex-wrap">
+                                <div className="flex gap-1 p-1 rounded-xl border" style={{ borderColor:'var(--border-color)', background:'var(--bg-surface)' }}>
+                                    {[['day','Day wise'],['month','Month wise']].map(([v,l]) => (
+                                        <button key={v} onClick={()=>setAttView(v)}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${attView===v?'text-white':''}`}
+                                            style={attView===v?{background:ORANGE}:{color:'var(--text-secondary)'}}>
+                                            {l}
+                                        </button>
+                                    ))}
+                                </div>
+                                {attView === 'day' ? (
+                                    <>
+                                        <input type="date" value={attDate} onChange={e=>setAttDate(e.target.value)} className={iCls+' w-40'} style={inp} />
+                                        <button onClick={handleMarkAttendance} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white" style={{ background:'#10b981' }}>
+                                            <CheckCircle2 className="h-4 w-4" /> Save Attendance
+                                        </button>
+                                    </>
+                                ) : (
+                                    <input type="month" value={attMonth} onChange={e=>setAttMonth(e.target.value)} className={iCls+' w-40'} style={inp} />
+                                )}
                             </div>
-                            <div className="rounded-2xl border overflow-hidden" style={{ background:'var(--bg-surface)', borderColor:'var(--border-color)' }}>
-                                <table className="w-full text-sm">
-                                    <thead><tr style={{ background:'var(--bg-primary)', borderBottom:'1px solid var(--border-color)' }}>
-                                        {['Employee','Department','Status'].map(h => (
-                                            <th key={h} className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wide" style={{ color:'var(--text-secondary)' }}>{h}</th>
-                                        ))}
-                                    </tr></thead>
-                                    <tbody>
-                                        {attRecords.map(e => (
-                                            <tr key={e.id} className="border-b" style={{ borderColor:'var(--border-color)' }}>
-                                                <td className="px-3 py-2.5">
-                                                    <p className="text-xs font-semibold" style={{ color:'var(--text-primary)' }}>{e.name}</p>
-                                                    <p className="text-[10px]" style={{ color:'var(--text-secondary)' }}>{e.emp_code}</p>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-xs" style={{ color:'var(--text-secondary)' }}>{e.department||'—'}</td>
-                                                <td className="px-3 py-2.5">
-                                                    <div className="flex gap-1 flex-wrap">
-                                                        {Object.keys(STATUS_COLORS).map(s => (
-                                                            <button key={s} onClick={() => setBulkAtt(prev => ({...prev,[e.id]:s}))}
-                                                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all ${bulkAtt[e.id]===s?'text-white border-transparent':'border-transparent'}`}
-                                                                style={bulkAtt[e.id]===s?{background:STATUS_COLORS[s]}:{background:'var(--bg-primary)',color:'var(--text-secondary)',borderColor:'var(--border-color)'}}>
-                                                                {s.replace('_',' ')}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+
+                            {attView === 'day' ? (
+                                <div className="rounded-2xl border overflow-hidden" style={{ background:'var(--bg-surface)', borderColor:'var(--border-color)' }}>
+                                    <table className="w-full text-sm">
+                                        <thead><tr style={{ background:'var(--bg-primary)', borderBottom:'1px solid var(--border-color)' }}>
+                                            {['Employee','Department','Status'].map(h => (
+                                                <th key={h} className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wide" style={{ color:'var(--text-secondary)' }}>{h}</th>
+                                            ))}
+                                        </tr></thead>
+                                        <tbody>
+                                            {attRecords.map(e => (
+                                                <tr key={e.id} className="border-b" style={{ borderColor:'var(--border-color)' }}>
+                                                    <td className="px-3 py-2.5">
+                                                        <p className="text-xs font-semibold" style={{ color:'var(--text-primary)' }}>{e.name}</p>
+                                                        <p className="text-[10px]" style={{ color:'var(--text-secondary)' }}>{e.emp_code}</p>
+                                                    </td>
+                                                    <td className="px-3 py-2.5 text-xs" style={{ color:'var(--text-secondary)' }}>{e.department||'—'}</td>
+                                                    <td className="px-3 py-2.5">
+                                                        <div className="flex gap-1 flex-wrap">
+                                                            {Object.keys(STATUS_COLORS).map(s => (
+                                                                <button key={s} onClick={() => setBulkAtt(prev => ({...prev,[e.id]:s}))}
+                                                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all ${bulkAtt[e.id]===s?'text-white border-transparent':'border-transparent'}`}
+                                                                    style={bulkAtt[e.id]===s?{background:STATUS_COLORS[s]}:{background:'var(--bg-primary)',color:'var(--text-secondary)',borderColor:'var(--border-color)'}}>
+                                                                    {s.replace('_',' ')}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className="rounded-2xl border overflow-x-auto" style={{ background:'var(--bg-surface)', borderColor:'var(--border-color)' }}>
+                                    <table className="w-full text-sm">
+                                        <thead><tr style={{ background:'var(--bg-primary)', borderBottom:'1px solid var(--border-color)' }}>
+                                            {['Employee','Shop','Present','Absent','Half Day','Late','Early Arr.','Early Exit','Overtime','Attendance %','Total Hours'].map(h => (
+                                                <th key={h} className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wide whitespace-nowrap" style={{ color:'var(--text-secondary)' }}>{h}</th>
+                                            ))}
+                                        </tr></thead>
+                                        <tbody>
+                                            {monthReport.map(r => (
+                                                <tr key={r.user_id} className="border-b" style={{ borderColor:'var(--border-color)' }}>
+                                                    <td className="px-3 py-2.5">
+                                                        <p className="text-xs font-semibold" style={{ color:'var(--text-primary)' }}>{r.name}</p>
+                                                        <p className="text-[10px]" style={{ color:'var(--text-secondary)' }}>{r.mobile}</p>
+                                                    </td>
+                                                    <td className="px-3 py-2.5 text-xs" style={{ color:'var(--text-secondary)' }}>{r.shop_name||'—'}</td>
+                                                    <td className="px-3 py-2.5 text-xs font-bold">{r.present}</td>
+                                                    <td className="px-3 py-2.5 text-xs font-bold text-red-500">{r.absent}</td>
+                                                    <td className="px-3 py-2.5 text-xs">{r.half_day}</td>
+                                                    <td className="px-3 py-2.5 text-xs">{r.late}</td>
+                                                    <td className="px-3 py-2.5 text-xs">{r.early_arrival}</td>
+                                                    <td className="px-3 py-2.5 text-xs">{r.early_exit}</td>
+                                                    <td className="px-3 py-2.5 text-xs">{r.overtime}</td>
+                                                    <td className="px-3 py-2.5 text-xs font-bold" style={{ color:'#10b981' }}>{r.attendance_percentage}%</td>
+                                                    <td className="px-3 py-2.5 text-xs">{r.total_working_hours}h</td>
+                                                </tr>
+                                            ))}
+                                            {!monthLoading && monthReport.length === 0 && (
+                                                <tr><td colSpan={11} className="px-4 py-8 text-center text-sm" style={{ color:'var(--text-secondary)' }}>No attendance data for this month</td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
                         </div>
                     )}
 
