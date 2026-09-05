@@ -97,7 +97,7 @@ export default function HRPage() {
             api.get('/attendance/payroll', { params:{ month: salMonth } }).then(r => {
                 const mapped = (r.data.report || []).map(p => ({
                     id: p.user_id, emp_name: p.name, emp_code: p.mobile, slip_month: salMonth + '-01',
-                    present_days: p.present, working_days: p.days_in_month,
+                    present_days: p.payable_days, working_days: p.days_in_month, actual_present: p.present, week_off: p.week_off,
                     basic: p.monthly_salary, hra: 0, da: 0, gross: p.gross_salary,
                     pf_deduct: 0, esi_deduct: 0, advance_deduct: 0, net_pay: p.net_salary,
                     status: 'draft',
@@ -135,7 +135,7 @@ export default function HRPage() {
             const r = await api.get('/attendance/payroll', { params:{ month: salMonth } });
             const mapped = (r.data.report || []).map(p => ({
                 id: p.user_id, emp_name: p.name, emp_code: p.mobile, slip_month: salMonth + '-01',
-                present_days: p.present, working_days: p.days_in_month,
+                present_days: p.payable_days, working_days: p.days_in_month, actual_present: p.present, week_off: p.week_off,
                 basic: p.monthly_salary, hra: 0, da: 0, gross: p.gross_salary,
                 pf_deduct: 0, esi_deduct: 0, advance_deduct: 0, net_pay: p.net_salary,
                 status: 'draft',
@@ -359,7 +359,10 @@ export default function HRPage() {
                                             <tr key={s.id} className="border-b hover:bg-orange-50/10" style={{ borderColor:'var(--border-color)' }}>
                                                 <td className="px-3 py-2.5 text-xs font-semibold" style={{ color:'var(--text-primary)' }}>{s.emp_name}<p className="text-[10px] font-normal text-gray-400">{s.emp_code}</p></td>
                                                 <td className="px-3 py-2.5 text-xs" style={{ color:'var(--text-secondary)' }}>{new Date(s.slip_month).toLocaleDateString('en-IN',{month:'short',year:'numeric'})}</td>
-                                                <td className="px-3 py-2.5 text-xs">{s.present_days}/{s.working_days}</td>
+                                                <td className="px-3 py-2.5 text-xs">
+                                                    {s.present_days}/{s.working_days}
+                                                    <p className="text-[10px]" style={{ color:'var(--text-secondary)' }}>present {s.actual_present} + week off {s.week_off}</p>
+                                                </td>
                                                 <td className="px-3 py-2.5 text-xs">{fmt(s.basic)}</td>
                                                 <td className="px-3 py-2.5 text-xs">{fmt(parseFloat(s.hra)+parseFloat(s.da))}</td>
                                                 <td className="px-3 py-2.5 text-xs font-bold">{fmt(s.gross)}</td>
