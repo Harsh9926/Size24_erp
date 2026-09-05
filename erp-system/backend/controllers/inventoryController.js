@@ -28,6 +28,43 @@ async function updateStock(client, variantId, qtyChange, txnType, refType, refId
 }
 exports.updateStock = updateStock;
 
+// ── Helper: update PER-SHOP stock + write shop ledger entry ──────────
+// Mirrors updateStock() but scoped to a shop_id. Also keeps the global
+// inv_stock aggregate in sync so existing (non-shop-aware) reports keep
+// working. Locks the row FOR UPDATE so concurrent sales from the same
+// shop can't oversell.
+async function getShopStockForUpdate(client, shopId, variantId) {
+    const r = await client.query(
+        `SELECT qty FROM inv_shop_stock WHERE shop_id=$1 AND variant_id=$2 FOR UPDATE`,
+        [shopId, variantId]
+    );
+    return r.rows[0] ? parseFloat(r.rows[0].qty) : 0;
+}
+exports.getShopStockForUpdate = getShopStockForUpdate;
+
+async function updateShopStock(client, shopId, variantId, qtyChange, txnType, refType, refId, note, userId) {
+    await client.query(
+        `INSERT INTO inv_shop_stock (shop_id, variant_id, qty, updated_at)
+         VALUES ($1, $2, GREATEST(0, $3), NOW())
+         ON CONFLICT (shop_id, variant_id)
+         DO UPDATE SET qty = GREATEST(0, inv_shop_stock.qty + $3), updated_at = NOW()`,
+        [shopId, variantId, qtyChange]
+    );
+    const stockRow = await client.query(
+        `SELECT qty FROM inv_shop_stock WHERE shop_id=$1 AND variant_id=$2`, [shopId, variantId]
+    );
+    const qtyAfter = parseFloat(stockRow.rows[0]?.qty || 0);
+    await client.query(
+        `INSERT INTO inv_shop_stock_ledger (shop_id, variant_id, txn_type, qty_change, qty_after, ref_type, ref_id, note, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [shopId, variantId, txnType, qtyChange, qtyAfter, refType, refId, note, userId]
+    );
+    // Keep the global aggregate stock table in sync (backward compatibility).
+    await updateStock(client, variantId, qtyChange, txnType, refType, refId, note, userId);
+    return qtyAfter;
+}
+exports.updateShopStock = updateShopStock;
+
 /* ══════════════════════════════════════════════════════════════════
    CATEGORIES
 ══════════════════════════════════════════════════════════════════ */
@@ -244,7 +281,7 @@ exports.updateVariant = async (req, res) => {
 ══════════════════════════════════════════════════════════════════ */
 exports.getStockSummary = async (req, res) => {
     try {
-        const { school_id, category_id, low_stock, search } = req.query;
+        const { school_id, category_id, low_stock, search, shop_id } = req.query;
         const conds = ['v.is_active = true'];
         const params = [];
         let i = 1;
@@ -252,22 +289,66 @@ exports.getStockSummary = async (req, res) => {
         if (category_id) { conds.push(`p.category_id = $${i++}`); params.push(category_id); }
         if (search)      { conds.push(`(p.name ILIKE $${i++} OR v.sku ILIKE $${i-1})`); params.push(`%${search}%`); }
 
+        // When shop_id is given, show that shop's stock instead of the
+        // global aggregate — so Item Master never mixes unrelated shops.
+        let stockJoin = `LEFT JOIN inv_stock s ON s.variant_id = v.id`;
+        let qtyExpr   = `COALESCE(s.qty,0)`;
+        if (shop_id) {
+            params.push(shop_id);
+            stockJoin = `LEFT JOIN inv_shop_stock s ON s.variant_id = v.id AND s.shop_id = $${i++}`;
+            qtyExpr   = `COALESCE(s.qty,0)`;
+        }
+
         const r = await db.query(
             `SELECT v.id AS variant_id, p.id AS product_id, p.name AS product_name,
                     c.name AS category_name, sc.name AS school_name,
                     v.size, v.color, v.sku, v.barcode,
                     v.purchase_price, v.sale_price, v.mrp,
-                    COALESCE(s.qty,0) AS qty, p.min_stock,
-                    CASE WHEN COALESCE(s.qty,0) <= p.min_stock THEN true ELSE false END AS low_stock,
-                    COALESCE(s.qty,0) * v.purchase_price AS stock_value
+                    ${qtyExpr} AS qty, p.min_stock,
+                    CASE WHEN ${qtyExpr} <= p.min_stock THEN true ELSE false END AS low_stock,
+                    ${qtyExpr} * v.purchase_price AS stock_value
              FROM inv_variants v
              JOIN inv_products p ON p.id = v.product_id
              LEFT JOIN inv_categories c ON c.id = p.category_id
              LEFT JOIN inv_schools sc ON sc.id = v.school_id
-             LEFT JOIN inv_stock s ON s.variant_id = v.id
+             ${stockJoin}
              WHERE ${conds.join(' AND ')}
-             ${low_stock === 'true' ? 'AND COALESCE(s.qty,0) <= p.min_stock' : ''}
+             ${low_stock === 'true' ? `AND ${qtyExpr} <= p.min_stock` : ''}
              ORDER BY p.name, sc.name, v.size`,
+            params
+        );
+        const total_value = r.rows.reduce((sum, row) => sum + parseFloat(row.stock_value || 0), 0);
+        res.json({ items: r.rows, total_value, count: r.rows.length });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   SHOP-WISE STOCK REPORT — Shop | Product | Variant | Qty | Sale
+   Price | Purchase Price | Stock Value (across all shops, or one)
+══════════════════════════════════════════════════════════════════ */
+exports.getShopStockReport = async (req, res) => {
+    try {
+        const { shop_id, search } = req.query;
+        const conds = ['1=1'];
+        const params = [];
+        let i = 1;
+        if (shop_id) { conds.push(`sh.id = $${i++}`); params.push(shop_id); }
+        if (search)  { conds.push(`(p.name ILIKE $${i++} OR v.sku ILIKE $${i-1} OR p.article_code ILIKE $${i-1})`); params.push(`%${search}%`); }
+
+        const r = await db.query(
+            `SELECT sh.id AS shop_id, sh.shop_name,
+                    p.id AS product_id, p.name AS product_name, p.article_code,
+                    v.id AS variant_id, v.sku, v.size, v.color,
+                    COALESCE(ss.qty,0) AS qty,
+                    COALESCE(ss.sale_price, v.sale_price) AS sale_price,
+                    COALESCE(ss.purchase_price, v.purchase_price) AS purchase_price,
+                    COALESCE(ss.qty,0) * COALESCE(ss.purchase_price, v.purchase_price, 0) AS stock_value
+             FROM inv_shop_stock ss
+             JOIN shops sh        ON sh.id = ss.shop_id
+             JOIN inv_variants v  ON v.id = ss.variant_id
+             JOIN inv_products p  ON p.id = v.product_id
+             WHERE ${conds.join(' AND ')}
+             ORDER BY sh.shop_name, p.name, v.size`,
             params
         );
         const total_value = r.rows.reduce((sum, row) => sum + parseFloat(row.stock_value || 0), 0);

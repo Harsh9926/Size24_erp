@@ -1,5 +1,5 @@
 const db = require('../config/db');
-const { updateStock } = require('./inventoryController');
+const { updateStock, updateShopStock, getShopStockForUpdate } = require('./inventoryController');
 
 async function nextCounter(client, key) {
     const r = await client.query(
@@ -12,10 +12,16 @@ async function nextCounter(client, key) {
    PRODUCT SEARCH — fast debounced search for POS
 ══════════════════════════════════════════════════════════════════ */
 exports.searchProducts = async (req, res) => {
-    const { q } = req.query;
+    const { q, shop_id } = req.query;
     if (!q || q.trim().length < 1) return res.json([]);
     const term = q.trim();
+    // When shop_id is given, "stock" reflects that shop's own inventory —
+    // never a different shop's or the global total — so POS can never
+    // oversell against stock that isn't physically at this location.
+    const stockCol = shop_id ? 'COALESCE(ss.qty, 0)' : 'COALESCE(st.qty, 0)';
+    const shopJoin = shop_id ? `LEFT JOIN inv_shop_stock ss ON ss.variant_id = v.id AND ss.shop_id = $3` : '';
     try {
+        const params = shop_id ? [`%${term}%`, term, shop_id] : [`%${term}%`, term];
         const r = await db.query(`
             SELECT
                 v.id            AS variant_id,
@@ -29,7 +35,7 @@ exports.searchProducts = async (req, res) => {
                 COALESCE(v.mrp, p.sale_price, 0)        AS mrp,
                 COALESCE(p.gst_rate, 0)                 AS gst_rate,
                 COALESCE(p.disc_on_sale, 0)             AS disc_on_sale,
-                COALESCE(st.qty, 0)                     AS stock,
+                ${stockCol}                              AS stock,
                 sc.name   AS school_name,
                 cat.name  AS category_name,
                 p.hsn_code,
@@ -37,6 +43,7 @@ exports.searchProducts = async (req, res) => {
             FROM inv_variants v
             JOIN inv_products p   ON p.id = v.product_id
             LEFT JOIN inv_stock st ON st.variant_id = v.id
+            ${shopJoin}
             LEFT JOIN inv_schools sc  ON sc.id = v.school_id
             LEFT JOIN inv_categories cat ON cat.id = p.category_id
             WHERE v.is_active = true AND p.is_active = true
@@ -55,9 +62,9 @@ exports.searchProducts = async (req, res) => {
                      WHEN v.sku    = $2 THEN 1
                      WHEN p.name ILIKE $2 THEN 2
                      ELSE 3 END,
-                COALESCE(st.qty, 0) DESC NULLS LAST
+                ${stockCol} DESC NULLS LAST
             LIMIT 25
-        `, [`%${term}%`, term]);
+        `, params);
         res.json(r.rows);
     } catch (e) { res.status(500).json({ error: e.message }); }
 };
@@ -67,7 +74,11 @@ exports.searchProducts = async (req, res) => {
 ══════════════════════════════════════════════════════════════════ */
 exports.lookupBarcode = async (req, res) => {
     const { code } = req.params;
+    const { shop_id } = req.query;
+    const stockCol = shop_id ? 'COALESCE(ss.qty, 0)' : 'COALESCE(st.qty, 0)';
+    const shopJoin = shop_id ? `LEFT JOIN inv_shop_stock ss ON ss.variant_id = v.id AND ss.shop_id = $2` : '';
     try {
+        const params = shop_id ? [code, shop_id] : [code];
         const r = await db.query(`
             SELECT v.id AS variant_id, p.id AS product_id, p.name AS product_name,
                    v.sku, v.barcode, v.size, v.color,
@@ -75,15 +86,16 @@ exports.lookupBarcode = async (req, res) => {
                    COALESCE(v.mrp, p.sale_price, 0) AS mrp,
                    COALESCE(p.gst_rate, 0) AS gst_rate,
                    COALESCE(p.disc_on_sale, 0) AS disc_on_sale,
-                   COALESCE(st.qty, 0) AS stock,
+                   ${stockCol} AS stock,
                    sc.name AS school_name, p.hsn_code, p.unit
             FROM inv_variants v
             JOIN inv_products p ON p.id = v.product_id
             LEFT JOIN inv_stock st ON st.variant_id = v.id
+            ${shopJoin}
             LEFT JOIN inv_schools sc ON sc.id = v.school_id
             WHERE (v.barcode = $1 OR v.sku = $1) AND v.is_active = true
             LIMIT 1
-        `, [code]);
+        `, params);
         if (!r.rows.length) return res.status(404).json({ error: 'Product not found' });
         res.json(r.rows[0]);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -179,6 +191,7 @@ exports.createPOSInvoice = async (req, res) => {
         notes,
         payments = [],   // [{ mode:'cash'|'upi'|'card'|'bank'|'wallet', amount, reference }]
         redeem_points = 0,
+        shop_id = null,
     } = req.body;
 
     if (!items?.length) return res.status(400).json({ error: 'items required' });
@@ -186,6 +199,34 @@ exports.createPOSInvoice = async (req, res) => {
     const client = await db.pool.connect();
     try {
         await client.query('BEGIN');
+
+        // ── Shop stock validation (server is the source of truth —
+        //    the frontend's displayed stock is never trusted). Locks
+        //    each shop-stock row FOR UPDATE so two simultaneous bills
+        //    from the same shop can't both oversell the same variant.
+        if (shop_id) {
+            const shopRow = await client.query('SELECT shop_name FROM shops WHERE id=$1', [shop_id]);
+            if (!shopRow.rows.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Invalid shop' }); }
+            const shopName = shopRow.rows[0].shop_name;
+
+            // Merge duplicate variant lines before checking, so "2 lines of
+            // the same item" can't each individually pass a check that the
+            // combined quantity would fail.
+            const neededByVariant = {};
+            for (const item of items) {
+                neededByVariant[item.variant_id] = (neededByVariant[item.variant_id] || 0) + parseFloat(item.qty);
+            }
+            for (const [variantId, needed] of Object.entries(neededByVariant)) {
+                const available = await getShopStockForUpdate(client, shop_id, variantId);
+                if (needed > available) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({
+                        error: `Only ${available} units available at ${shopName}.`,
+                        variant_id: Number(variantId), available, requested: needed,
+                    });
+                }
+            }
+        }
 
         // ── Totals calculation ────────────────────────────────────
         let subtotal = 0, gstAmount = 0;
@@ -218,29 +259,38 @@ exports.createPOSInvoice = async (req, res) => {
             `INSERT INTO inv_sales_invoices
                 (customer_id, invoice_number, invoice_date, due_date,
                  subtotal, discount, gst_amount, total_amount,
-                 paid_amount, balance, notes, status, payment_mode, created_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+                 paid_amount, balance, notes, status, payment_mode, created_by, shop_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
             [customer_id || null, invNum, invoice_date, due_date || null,
              subtotal, discDoc + pointsVal, gstAmount, total,
              totalPaid, total - totalPaid,
-             notes || null, invStatus, primaryMode, req.user.id]
+             notes || null, invStatus, primaryMode, req.user.id, shop_id || null]
         );
         const invId = inv.rows[0].id;
 
         // ── Line items + stock deduction ──────────────────────────
+        // Stock is deducted only from the billing shop's own inventory
+        // (never a different shop's) — and only after the invoice row
+        // above is written, inside this same transaction, so a failed
+        // save never touches stock (the ROLLBACK below undoes it all).
         for (const item of items) {
             const base    = parseFloat(item.qty) * parseFloat(item.unit_price)
                           - parseFloat(item.discount || 0);
             const gstAmt  = base * (parseFloat(item.gst_rate || 0) / 100);
             await client.query(
                 `INSERT INTO inv_sales_invoice_items
-                    (invoice_id, variant_id, qty, unit_price, discount, gst_rate, gst_amount, total_price)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+                    (invoice_id, variant_id, qty, unit_price, discount, gst_rate, gst_amount, total_price, shop_id)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
                 [invId, item.variant_id, item.qty, item.unit_price,
-                 item.discount || 0, item.gst_rate || 0, gstAmt, base + gstAmt]
+                 item.discount || 0, item.gst_rate || 0, gstAmt, base + gstAmt, shop_id || null]
             );
-            await updateStock(client, item.variant_id, -parseFloat(item.qty),
-                'sale', 'invoice', invId, `Sale ${invNum}`, req.user.id);
+            if (shop_id) {
+                await updateShopStock(client, shop_id, item.variant_id, -parseFloat(item.qty),
+                    'sale', 'invoice', invId, `Sale ${invNum}`, req.user.id);
+            } else {
+                await updateStock(client, item.variant_id, -parseFloat(item.qty),
+                    'sale', 'invoice', invId, `Sale ${invNum}`, req.user.id);
+            }
         }
 
         // ── Record split payments ─────────────────────────────────
@@ -333,6 +383,7 @@ exports.createPOSInvoice = async (req, res) => {
         });
     } catch (e) {
         await client.query('ROLLBACK');
+        console.error('[posController.createPOSInvoice]', e.message, e.stack);
         res.status(500).json({ error: e.message });
     } finally { client.release(); }
 };
@@ -367,7 +418,7 @@ exports.getInvoiceForReturn = async (req, res) => {
    POS RETURN — process return with stock reinstatement
 ══════════════════════════════════════════════════════════════════ */
 exports.processPOSReturn = async (req, res) => {
-    const { invoice_id, customer_id, items, reason, return_date, refund_mode } = req.body;
+    const { invoice_id, customer_id, items, reason, return_date, refund_mode, shop_id } = req.body;
     if (!items?.length) return res.status(400).json({ error: 'items required' });
 
     const client = await db.pool.connect();
@@ -381,22 +432,35 @@ exports.processPOSReturn = async (req, res) => {
             total += parseFloat(item.qty) * parseFloat(item.unit_price);
         }
 
+        // Return goes back to the shop the original sale came from
+        // (falls back to the shop passed in the request if given).
+        let returnShopId = shop_id || null;
+        if (!returnShopId && invoice_id) {
+            const invRow = await client.query('SELECT shop_id FROM inv_sales_invoices WHERE id=$1', [invoice_id]);
+            returnShopId = invRow.rows[0]?.shop_id || null;
+        }
+
         const ret = await client.query(
             `INSERT INTO inv_sales_returns
-                (invoice_id, customer_id, return_number, return_date, reason, total_amount, created_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-            [invoice_id || null, customer_id || null, retNum, return_date, reason || null, total, req.user.id]
+                (invoice_id, customer_id, return_number, return_date, reason, total_amount, created_by, shop_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+            [invoice_id || null, customer_id || null, retNum, return_date, reason || null, total, req.user.id, returnShopId]
         );
 
         for (const item of items) {
             await client.query(
-                `INSERT INTO inv_sales_return_items (return_id, variant_id, qty, unit_price, total_price)
-                 VALUES ($1,$2,$3,$4,$5)`,
+                `INSERT INTO inv_sales_return_items (return_id, variant_id, qty, unit_price, total_price, shop_id)
+                 VALUES ($1,$2,$3,$4,$5,$6)`,
                 [ret.rows[0].id, item.variant_id, item.qty, item.unit_price,
-                 parseFloat(item.qty) * parseFloat(item.unit_price)]
+                 parseFloat(item.qty) * parseFloat(item.unit_price), returnShopId]
             );
-            await updateStock(client, item.variant_id, parseFloat(item.qty),
-                'sale_return', 'sale_return', ret.rows[0].id, reason, req.user.id);
+            if (returnShopId) {
+                await updateShopStock(client, returnShopId, item.variant_id, parseFloat(item.qty),
+                    'sale_return', 'sale_return', ret.rows[0].id, reason, req.user.id);
+            } else {
+                await updateStock(client, item.variant_id, parseFloat(item.qty),
+                    'sale_return', 'sale_return', ret.rows[0].id, reason, req.user.id);
+            }
         }
 
         // Reduce customer outstanding if credit sale

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
     Search, Plus, Trash2, X, Printer, Save, CreditCard, User,
@@ -9,6 +9,7 @@ import {
 import api from '../../services/api';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { AuthContext } from '../../context/AuthContext';
 
 // ── helpers ──────────────────────────────────────────────────────
 const today = () => {
@@ -140,6 +141,18 @@ function printInvoice(invoice, items, payments, customer) {
 ══════════════════════════════════════════════════════════════════ */
 export default function POSPage() {
     const navigate = useNavigate();
+    const { user } = useContext(AuthContext);
+
+    // ── Shop selection (stock/search is always scoped to this shop) ─
+    const [shops, setShops]               = useState([]);
+    const [selectedShopId, setSelectedShopId] = useState('');
+    useEffect(() => {
+        api.get('/shops').then(r => {
+            setShops(r.data);
+            if (user?.shopId) setSelectedShopId(String(user.shopId));
+            else if (r.data.length === 1) setSelectedShopId(String(r.data[0].id));
+        }).catch(() => {});
+    }, [user?.shopId]);
 
     // ── Customer state ────────────────────────────────────────────
     const [customer, setCustomer]           = useState(null);
@@ -299,14 +312,15 @@ export default function POSPage() {
         const t = setTimeout(async () => {
             setProdLoading(true);
             try {
-                const r = await api.get(`/pos/search-products?q=${encodeURIComponent(prodSearch)}`);
+                const shopQS = selectedShopId ? `&shop_id=${selectedShopId}` : '';
+                const r = await api.get(`/pos/search-products?q=${encodeURIComponent(prodSearch)}${shopQS}`);
                 setProdResults(r.data);
                 setSelectedProdIdx(0);
                 setShowProdDropdown(true);
             } catch {} finally { setProdLoading(false); }
         }, 200);
         return () => clearTimeout(t);
-    }, [prodSearch, barcodeMode]);
+    }, [prodSearch, barcodeMode, selectedShopId]);
 
     // ── Calculations ──────────────────────────────────────────────
     const subtotal  = lines.reduce((s, l) => s + parseFloat(l.qty || 0) * parseFloat(l.unit_price || 0), 0);
@@ -348,14 +362,23 @@ export default function POSPage() {
         lot_number:   '',
     });
 
+    const shopName = shops.find(s => String(s.id) === String(selectedShopId))?.shop_name || 'this shop';
+
     const addProductToCart = useCallback((prod) => {
+        const available = parseFloat(prod.stock || 0);
+        if (selectedShopId && available <= 0) {
+            showToast(`Only 0 units available at ${shopName}.`, 'error');
+            return;
+        }
         setLines(prev => {
             const existing = prev.findIndex(l => l.variant_id === prod.variant_id);
             if (existing >= 0) {
-                return prev.map((l, i) => i === existing
-                    ? { ...l, qty: String(parseFloat(l.qty || 1) + 1) }
-                    : l
-                );
+                const nextQty = parseFloat(prev[existing].qty || 1) + 1;
+                if (selectedShopId && nextQty > available) {
+                    showToast(`Only ${available} units available at ${shopName}.`, 'error');
+                    return prev;
+                }
+                return prev.map((l, i) => i === existing ? { ...l, qty: String(nextQty) } : l);
             }
             return [...prev, makeCartLine(prod)];
         });
@@ -363,7 +386,7 @@ export default function POSPage() {
         setProdResults([]);
         setShowProdDropdown(false);
         showToast(`${prod.product_name} added`, 'success');
-    }, [showToast]);
+    }, [showToast, selectedShopId, shopName]);
 
     const addEmptyLine = () => setLines(l => [...l, {
         variant_id: '', product_id: '', product_name: '', size: '', color: '', sku: '',
@@ -384,14 +407,26 @@ export default function POSPage() {
     const updExLine = (i,k,v) => setExchangeLines(l => l.map((line,idx) => idx===i ? {...line,[k]:v} : line));
 
     const removeLine = (i) => setLines(l => l.filter((_, idx) => idx !== i));
-    const updLine    = (i, k, v) => setLines(l => l.map((line, idx) => idx === i ? { ...line, [k]: v } : line));
+    const updLine    = (i, k, v) => {
+        if (k === 'qty' && selectedShopId) {
+            const line = lines[i];
+            const requested = parseFloat(v || 0);
+            const available = parseFloat(line?.stock || 0);
+            if (line?.variant_id && requested > available) {
+                showToast(`Only ${available} units available at ${shopName}.`, 'error');
+                v = String(available);
+            }
+        }
+        setLines(l => l.map((line, idx) => idx === i ? { ...line, [k]: v } : line));
+    };
 
     // ── Barcode scan ──────────────────────────────────────────────
     const handleBarcodeEnter = async () => {
         const code = prodSearch.trim();
         if (!code) return;
         try {
-            const r = await api.get(`/pos/barcode/${encodeURIComponent(code)}`);
+            const shopQS = selectedShopId ? `?shop_id=${selectedShopId}` : '';
+            const r = await api.get(`/pos/barcode/${encodeURIComponent(code)}${shopQS}`);
             addProductToCart(r.data);
         } catch { showToast('Product not found for barcode: ' + code, 'error'); }
         setProdSearch('');
@@ -430,11 +465,15 @@ export default function POSPage() {
         if (!lines.length || lines.some(l => !l.variant_id)) {
             showToast('Add at least one valid product', 'error'); return;
         }
+        if (shops.length && !selectedShopId) {
+            showToast('Select a shop before billing', 'error'); return;
+        }
         setSaving(true);
         try {
             const endpoint = (exchangeMode && exchangeLines.length) ? '/pos2/exchange-invoice' : '/pos/invoice';
             const payload = {
                 customer_id:   customer?.id || null,
+                shop_id:       selectedShopId || null,
                 invoice_date:  invoiceDate,
                 discount:      docDisc,
                 notes,
@@ -497,6 +536,7 @@ export default function POSPage() {
             const r = await api.post('/pos/return', {
                 invoice_id:  returnInvoice.id,
                 customer_id: returnInvoice.customer_id,
+                shop_id:     returnInvoice.shop_id || selectedShopId || null,
                 return_date: today(),
                 reason:      'Customer return',
                 items:       toReturn.map(i => ({
@@ -522,6 +562,14 @@ export default function POSPage() {
                 </Link>
                 <div className="w-px h-4 bg-white/20" />
                 <span className="text-white font-bold text-sm" style={{ color: '#FF6B00' }}>POS Terminal</span>
+                {shops.length > 1 && (
+                    <select value={selectedShopId} onChange={e => setSelectedShopId(e.target.value)}
+                        className="text-xs font-bold px-2 py-1 rounded-lg border outline-none"
+                        style={{ background: 'rgba(255,255,255,0.08)', color: '#fff', borderColor: 'rgba(255,255,255,0.15)' }}>
+                        <option value="" style={{ color: '#000' }}>-- Select Shop --</option>
+                        {shops.map(s => <option key={s.id} value={s.id} style={{ color: '#000' }}>{s.shop_name}</option>)}
+                    </select>
+                )}
                 {savedInvoice && (
                     <span className="text-xs font-mono px-2 py-0.5 rounded" style={{ background: 'rgba(255,107,0,0.2)', color: '#FF6B00' }}>
                         {savedInvoice.invoice_number}

@@ -26,6 +26,10 @@ router.get('/stock',               auth, ctrl.getStockSummary);
 router.get('/stock/ledger',        auth, ctrl.getStockLedger);
 router.post('/stock/adjust',       auth, admin, ctrl.createStockAdjustment);
 
+// Shop-wise stock report & Excel import
+router.get('/shop-stock',          auth, ctrl.getShopStockReport);
+router.post('/import-excel',       auth, admin, require('../controllers/inventoryImportController').uploadMiddleware, require('../controllers/inventoryImportController').importShopStock);
+
 // Barcode
 router.get('/barcode/:barcode',    auth, ctrl.lookupBarcode);
 

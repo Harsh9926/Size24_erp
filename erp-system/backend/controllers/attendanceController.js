@@ -721,6 +721,7 @@ async function computeMonth(userId, month, settings) {
         else if (st === 'holiday')      c.holiday++;
         else if (st === 'half_day')     c.half_day++;
         else if (st === 'absent')       c.absent++;
+        else if (st === 'present')      c.present++;               // manual mark, no punch time
         else if (r && r.punch_in_at)    c.present++;               // present / late
         else if (weekOff.includes(weekday)) c.week_off++;          // auto weekly off (paid)
         else c.absent++;                                           // no punch, working day
@@ -1142,7 +1143,7 @@ exports.getMonthlyReport = async (req, res) => {
 
         const { rows } = await db.query(
             `SELECT a.user_id, u.name, u.mobile, u.role, s.shop_name,
-               COUNT(*) FILTER (WHERE a.attendance_status<>'half_day' AND a.punch_in_at IS NOT NULL) AS present,
+               COUNT(*) FILTER (WHERE a.attendance_status<>'half_day' AND (a.attendance_status='present' OR a.punch_in_at IS NOT NULL)) AS present,
                COUNT(*) FILTER (WHERE a.attendance_status='half_day') AS half_day,
                COUNT(*) FILTER (WHERE a.punch_in_status='late') AS late,
                COUNT(*) FILTER (WHERE a.punch_in_status='early_arrival') AS early_arrival,

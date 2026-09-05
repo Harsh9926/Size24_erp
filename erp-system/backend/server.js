@@ -610,6 +610,17 @@ httpServer.listen(PORT, async () => {
         console.error('[migrate] Attendance face verification migration failed:', err.message);
     }
 
+    // Auto-migrate: Shop-wise inventory (per-shop stock + shop-scoped invoices)
+    try {
+        const fs   = require('fs');
+        const path = require('path');
+        const sql  = fs.readFileSync(path.join(__dirname, 'db', 'migrate_shop_inventory.sql'), 'utf8');
+        await db.query(sql);
+        console.log('[migrate] Shop-wise inventory tables ready');
+    } catch (err) {
+        console.error('[migrate] Shop-wise inventory migration failed:', err.message);
+    }
+
     // Auto-migrate: RBAC tables (module_permissions + permission_logs)
     try {
         await db.query(`
