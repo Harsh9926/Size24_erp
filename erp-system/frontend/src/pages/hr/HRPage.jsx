@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Users, Plus, Search, RefreshCw, Clock, DollarSign, FileText, Layers, CheckCircle2, AlertCircle, X, ChevronDown } from 'lucide-react';
 import Sidebar from '../../components/Sidebar';
 import api from '../../services/api';
+import EmployeeCalendarModal from '../../components/attendance/EmployeeCalendarModal';
 
 const ORANGE = '#FF6B00';
 const fmt = v => `₹${Number(v||0).toLocaleString('en-IN',{maximumFractionDigits:2})}`;
@@ -31,6 +32,8 @@ export default function HRPage() {
     const [bulkAtt, setBulkAtt] = useState({});
     const [monthReport, setMonthReport] = useState([]);
     const [monthLoading, setMonthLoading] = useState(false);
+    const [monthEmpFilter, setMonthEmpFilter] = useState('');
+    const [calUser, setCalUser] = useState(null); // { user_id, name } when calendar modal open
 
     // Salary
     const [salMonth, setSalMonth] = useState(new Date().toISOString().slice(0,7));
@@ -61,7 +64,7 @@ export default function HRPage() {
         } catch {} finally { setEmpLoading(false); }
     }, [empSearch]);
 
-    useEffect(() => { if (tab === 'Employees') loadEmployees(); }, [tab, loadEmployees]);
+    useEffect(() => { if (tab === 'Employees' || tab === 'Attendance') loadEmployees(); }, [tab, loadEmployees]);
 
     useEffect(() => {
         if (tab === 'Attendance' && attView === 'day') {
@@ -85,11 +88,11 @@ export default function HRPage() {
     useEffect(() => {
         if (tab === 'Attendance' && attView === 'month') {
             setMonthLoading(true);
-            api.get('/attendance/report', { params:{ month: attMonth } })
+            api.get('/attendance/report', { params:{ month: attMonth, user_id: monthEmpFilter || undefined } })
                 .then(r => setMonthReport(r.data?.report || []))
                 .catch(()=>{}).finally(() => setMonthLoading(false));
         }
-    }, [tab, attMonth, attView]);
+    }, [tab, attMonth, attView, monthEmpFilter]);
 
     useEffect(() => {
         if (tab === 'Salary') {
@@ -265,9 +268,18 @@ export default function HRPage() {
                                         </button>
                                     </>
                                 ) : (
-                                    <input type="month" value={attMonth} onChange={e=>setAttMonth(e.target.value)} className={iCls+' w-40'} style={inp} />
+                                    <>
+                                        <input type="month" value={attMonth} onChange={e=>setAttMonth(e.target.value)} className={iCls+' w-40'} style={inp} />
+                                        <select value={monthEmpFilter} onChange={e=>setMonthEmpFilter(e.target.value)} className={iCls+' w-48'} style={inp}>
+                                            <option value="">All Employees</option>
+                                            {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                                        </select>
+                                    </>
                                 )}
                             </div>
+                            {attView === 'month' && (
+                                <p className="text-xs" style={{ color:'var(--text-secondary)' }}>Click a row to view/edit that employee's day-wise attendance calendar.</p>
+                            )}
 
                             {attView === 'day' ? (
                                 <div className="rounded-2xl border overflow-hidden" style={{ background:'var(--bg-surface)', borderColor:'var(--border-color)' }}>
@@ -311,7 +323,8 @@ export default function HRPage() {
                                         </tr></thead>
                                         <tbody>
                                             {monthReport.map(r => (
-                                                <tr key={r.user_id} className="border-b" style={{ borderColor:'var(--border-color)' }}>
+                                                <tr key={r.user_id} className="border-b hover:bg-orange-50/10 cursor-pointer" style={{ borderColor:'var(--border-color)' }}
+                                                    onClick={() => setCalUser({ user_id: r.user_id, name: r.name })}>
                                                     <td className="px-3 py-2.5">
                                                         <p className="text-xs font-semibold" style={{ color:'var(--text-primary)' }}>{r.name}</p>
                                                         <p className="text-[10px]" style={{ color:'var(--text-secondary)' }}>{r.mobile}</p>
@@ -507,6 +520,16 @@ export default function HRPage() {
                     {toast.type==='error' ? <AlertCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
                     {toast.msg}
                 </div>
+            )}
+
+            {calUser && (
+                <EmployeeCalendarModal
+                    userId={calUser.user_id}
+                    name={calUser.name}
+                    month={attMonth}
+                    onClose={() => setCalUser(null)}
+                    onSaved={() => api.get('/attendance/report', { params:{ month: attMonth, user_id: monthEmpFilter || undefined } }).then(r => setMonthReport(r.data?.report || [])).catch(()=>{})}
+                />
             )}
         </div>
     );
