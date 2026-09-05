@@ -48,6 +48,7 @@ router.put('/settings',              authenticateToken, admin, checkAction('atte
 router.get('/dashboard',             authenticateToken, adminOrManager, checkAction('attendance.view_team'), ctrl.getDashboardCards);
 router.get('/table',                 authenticateToken, adminOrManager, checkAction('attendance.view_team'), ctrl.getAttendanceTable);
 router.get('/detail/:id',            authenticateToken, adminOrManager, checkAction('attendance.view_team'), ctrl.getAttendanceDetail);
+router.get('/user-month/:userId',    authenticateToken, adminOrManager, checkAction('attendance_reports.view'), ctrl.getUserMonthCalendar);
 router.get('/report',                authenticateToken, adminOrManager, checkAction('attendance_reports.view'),   ctrl.getMonthlyReport);
 router.get('/export',                authenticateToken, adminOrManager, checkAction('attendance_reports.export'), ctrl.exportReport);
 router.get('/shops',                 authenticateToken, adminOrManager, checkAction('attendance.view_team'), ctrl.getScopedShops);

@@ -636,6 +636,18 @@ exports.getMyMonthly = async (req, res) => {
     }
 };
 
+// GET /api/attendance/user-month/:userId?month=YYYY-MM  (admin/manager: day-by-day calendar for one employee)
+exports.getUserMonthCalendar = async (req, res) => {
+    try {
+        const uid = req.params.userId;
+        const summary = await monthlySummaryFor(uid, req.query.month);
+        res.json(summary);
+    } catch (err) {
+        console.error('[attendance.getUserMonthCalendar]', err.message);
+        res.status(500).json({ error: 'Failed to load calendar' });
+    }
+};
+
 // POST /api/attendance/location-change  (multipart)
 exports.requestLocationChange = async (req, res) => {
     try {
@@ -708,38 +720,52 @@ async function computeMonth(userId, month, settings) {
         early_arrival: 0, early_exit: 0, overtime: 0, total_working_hours: 0,
     };
 
-    for (let d = 1; d <= elapsed; d++) {
+    const calendar = [];
+
+    for (let d = 1; d <= daysInMonth; d++) {
         const iso = `${m}-${String(d).padStart(2, '0')}`;
         const weekday = new Date(yy, mm - 1, d).getDay();
         const r = byDate.get(iso);
         const st = r?.attendance_status;
+        let effectiveStatus;
 
-        // Explicit statuses win over the auto weekly-off default.
-        if (st === 'week_off')          c.week_off++;
-        else if (st === 'paid_leave')   c.paid_leave++;
-        else if (st === 'unpaid_leave') c.unpaid_leave++;
-        else if (st === 'holiday')      c.holiday++;
-        else if (st === 'half_day')     c.half_day++;
-        else if (st === 'absent')       c.absent++;
-        else if (st === 'present')      c.present++;               // manual mark, no punch time
-        else if (r && r.punch_in_at)    c.present++;               // present / late
-        else if (weekOff.includes(weekday)) c.week_off++;          // auto weekly off (paid)
-        else c.absent++;                                           // no punch, working day
+        if (d > elapsed) {
+            effectiveStatus = null; // future day, not yet computed
+        } else {
+            // Explicit statuses win over the auto weekly-off default.
+            if (st === 'week_off')          { c.week_off++; effectiveStatus = 'week_off'; }
+            else if (st === 'paid_leave')   { c.paid_leave++; effectiveStatus = 'paid_leave'; }
+            else if (st === 'unpaid_leave') { c.unpaid_leave++; effectiveStatus = 'unpaid_leave'; }
+            else if (st === 'holiday')      { c.holiday++; effectiveStatus = 'holiday'; }
+            else if (st === 'half_day')     { c.half_day++; effectiveStatus = 'half_day'; }
+            else if (st === 'absent')       { c.absent++; effectiveStatus = 'absent'; }
+            else if (st === 'present')      { c.present++; effectiveStatus = 'present'; }   // manual mark, no punch time
+            else if (r && r.punch_in_at)    { c.present++; effectiveStatus = 'present'; }   // present / late
+            else if (weekOff.includes(weekday)) { c.week_off++; effectiveStatus = 'week_off'; } // auto weekly off (paid)
+            else { c.absent++; effectiveStatus = 'absent'; }                                // no punch, working day
 
-        if (r) {
-            if (r.punch_in_status === 'late') c.late++;
-            if (r.punch_in_status === 'early_arrival') c.early_arrival++;
-            if (r.punch_out_status === 'early_exit') c.early_exit++;
-            if (r.punch_out_status === 'overtime') c.overtime++;
-            c.total_working_hours += Number(r.working_hours || 0);
+            if (r) {
+                if (r.punch_in_status === 'late') c.late++;
+                if (r.punch_in_status === 'early_arrival') c.early_arrival++;
+                if (r.punch_out_status === 'early_exit') c.early_exit++;
+                if (r.punch_out_status === 'overtime') c.overtime++;
+                c.total_working_hours += Number(r.working_hours || 0);
+            }
         }
+
+        calendar.push({
+            date: iso, weekday, status: effectiveStatus,
+            is_auto_week_off: effectiveStatus === 'week_off' && st !== 'week_off',
+            punch_in_at: r?.punch_in_at || null, punch_out_at: r?.punch_out_at || null,
+            working_hours: r?.working_hours || null,
+        });
     }
 
     // Paid (payable) days = Present + Week Off + Paid Leave + Holiday + half-days.
     const payable_days = c.present + c.week_off + c.paid_leave + c.holiday + c.half_day * 0.5;
     c.total_working_hours = Number(c.total_working_hours.toFixed(2));
 
-    return { month: m, days: rows, counts: c, elapsed, days_in_month: daysInMonth, payable_days, week_off_days: weekOff };
+    return { month: m, days: rows, calendar, counts: c, elapsed, days_in_month: daysInMonth, payable_days, week_off_days: weekOff };
 }
 
 /* ── Monthly summary helper (reused by self + admin reports) ────── */
@@ -751,7 +777,7 @@ async function monthlySummaryFor(userId, month) {
         ? Math.round((c.present + c.half_day * 0.5 + c.week_off + c.paid_leave + c.holiday) / mo.elapsed * 100)
         : 0;
     return {
-        month: mo.month, days: mo.days,
+        month: mo.month, days: mo.days, calendar: mo.calendar,
         summary: {
             present: c.present, absent: c.absent, late: c.late, half_day: c.half_day,
             week_off: c.week_off, paid_leave: c.paid_leave, unpaid_leave: c.unpaid_leave, holiday: c.holiday,
