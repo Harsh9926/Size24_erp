@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, X } from 'lucide-react';
 import api from '../../services/api';
-import { DAY_STATUS_OPTIONS, ATT_STATUS } from './attendanceUtils';
+import { DAY_STATUS_OPTIONS, ATT_STATUS, fmtTime } from './attendanceUtils';
 
 /* ── Admin: month calendar for one employee — shows every day's status
    (present/absent/week off/…), click a day to edit it. Saves via the same
@@ -67,9 +67,14 @@ export default function EmployeeCalendarModal({ userId, name, month, onClose, on
                                     return (
                                         <button key={d.date} disabled={!d.status}
                                             onClick={() => setEditDay(d.date)}
-                                            className={`relative rounded-lg border p-1.5 text-left min-h-[52px] text-[11px] font-semibold transition-all ${st ? st.cls : 'bg-gray-50 text-gray-300 border-gray-100'} ${d.status ? 'hover:ring-2 hover:ring-teal-400 cursor-pointer' : 'cursor-default'}`}>
+                                            className={`relative rounded-lg border p-1.5 text-left min-h-[64px] text-[11px] font-semibold transition-all ${st ? st.cls : 'bg-gray-50 text-gray-300 border-gray-100'} ${d.status ? 'hover:ring-2 hover:ring-teal-400 cursor-pointer' : 'cursor-default'}`}>
                                             <div>{dayNum}</div>
                                             {d.status && <div className="text-[9px] font-normal leading-tight mt-0.5">{st.label}{d.is_auto_week_off ? ' (auto)' : ''}</div>}
+                                            {(d.punch_in_at || d.punch_out_at) && (
+                                                <div className="text-[8px] font-normal leading-tight mt-0.5 opacity-80">
+                                                    {fmtTime(d.punch_in_at)} – {fmtTime(d.punch_out_at)}
+                                                </div>
+                                            )}
                                         </button>
                                     );
                                 })}
