@@ -1525,9 +1525,10 @@ exports.getPayroll = async (req, res) => {
             const mo = await computeMonth(e.user_id, month, eff);
             const c = mo.counts;
             const divisor = settings.payroll_days_basis === 'calendar' ? mo.days_in_month : 30;
+            const payableDays = Math.min(mo.payable_days, divisor); // never pay for more than a full month
             const monthlySalary = Number(e.monthly_salary || 0);
             const perDay = divisor ? monthlySalary / divisor : 0;
-            const gross = Number((perDay * mo.payable_days).toFixed(2));
+            const gross = Number((perDay * payableDays).toFixed(2));
             const net = gross; // deductions layer can be added later
             report.push({
                 user_id: e.user_id, name: e.name, mobile: e.mobile, role: e.role, shop_name: e.shop_name,
@@ -1535,7 +1536,7 @@ exports.getPayroll = async (req, res) => {
                 present: c.present, half_day: c.half_day, week_off: c.week_off,
                 paid_leave: c.paid_leave, unpaid_leave: c.unpaid_leave,
                 holiday: c.holiday, absent: c.absent,
-                payable_days: mo.payable_days,
+                payable_days: payableDays,
                 days_in_month: divisor, payroll_divisor: divisor,
                 per_day_rate: Number(perDay.toFixed(2)),
                 total_working_hours: c.total_working_hours,
@@ -1589,15 +1590,16 @@ exports.getUserSettings = async (req, res) => {
         const month = req.query.month || todayISO().slice(0, 7);
         const mo = await computeMonth(uid, month, effective);
         const divisor = global.payroll_days_basis === 'calendar' ? mo.days_in_month : 30;
+        const payableDays = Math.min(mo.payable_days, divisor); // never pay for more than a full month
         const perDay = divisor ? Number(salary) / divisor : 0;
         const payroll = {
             month, monthly_salary: Number(salary),
             present: mo.counts.present, half_day: mo.counts.half_day,
             week_off: mo.counts.week_off, paid_leave: mo.counts.paid_leave,
             unpaid_leave: mo.counts.unpaid_leave, holiday: mo.counts.holiday,
-            absent: mo.counts.absent, payable_days: mo.payable_days,
+            absent: mo.counts.absent, payable_days: payableDays,
             per_day_rate: Number(perDay.toFixed(2)),
-            gross_salary: Number((perDay * mo.payable_days).toFixed(2)),
+            gross_salary: Number((perDay * payableDays).toFixed(2)),
         };
         payroll.net_salary = payroll.gross_salary;
 
