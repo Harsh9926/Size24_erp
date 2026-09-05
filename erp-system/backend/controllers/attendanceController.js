@@ -1161,47 +1161,52 @@ exports.getMonthlyReport = async (req, res) => {
     try {
         const month = req.query.month || todayISO().slice(0, 7);
         const shops = await shopScope(req.user);
-        const params = [`${month}-01`];
-        let where = "a.date >= $1::date AND a.date < ($1::date + INTERVAL '1 month')";
-        if (shops) { params.push(shops); where += ` AND a.shop_id = ANY($${params.length}::int[])`; }
-        if (req.query.shop_id) { params.push(req.query.shop_id); where += ` AND a.shop_id=$${params.length}`; }
-        if (req.query.user_id) { params.push(req.query.user_id); where += ` AND a.user_id=$${params.length}`; }
 
-        const { rows } = await db.query(
-            `SELECT a.user_id, u.name, u.mobile, u.role, s.shop_name,
-               COUNT(*) FILTER (WHERE a.attendance_status<>'half_day' AND (a.attendance_status='present' OR a.punch_in_at IS NOT NULL)) AS present,
-               COUNT(*) FILTER (WHERE a.attendance_status='half_day') AS half_day,
-               COUNT(*) FILTER (WHERE a.punch_in_status='late') AS late,
-               COUNT(*) FILTER (WHERE a.punch_in_status='early_arrival') AS early_arrival,
-               COUNT(*) FILTER (WHERE a.punch_out_status='early_exit') AS early_exit,
-               COUNT(*) FILTER (WHERE a.punch_out_status='overtime') AS overtime,
-               COALESCE(SUM(a.working_hours),0) AS total_working_hours
-             FROM attendance a
-             JOIN users u ON u.id=a.user_id
-             LEFT JOIN shops s ON s.id=a.shop_id
+        // Same employee-scoping rules as payroll (shop assignment precedence),
+        // so this report and Payroll/HR Salary always agree on who's included.
+        const params = [];
+        let where = "u.status='active'";
+        if (shops) {
+            params.push(shops);
+            where += ` AND EXISTS (SELECT 1 FROM shop_users su WHERE su.user_id=u.id AND su.shop_id = ANY($${params.length}::int[]))`;
+        }
+        if (req.query.user_id) { params.push(req.query.user_id); where += ` AND u.id=$${params.length}`; }
+        if (req.query.shop_id) { params.push(req.query.shop_id); where += ` AND assign.shop_id=$${params.length}`; }
+
+        const { rows: emps } = await db.query(
+            `SELECT u.id AS user_id, u.name, u.mobile, u.role, s.shop_name
+             FROM users u
+             LEFT JOIN LATERAL (
+                 SELECT COALESCE(
+                     (SELECT asu.shop_id FROM attendance_shop_users asu
+                      WHERE asu.user_id = u.id ORDER BY asu.assigned_at DESC LIMIT 1),
+                     (SELECT su.shop_id FROM shop_users su
+                      WHERE su.user_id = u.id ORDER BY su.assigned_at DESC LIMIT 1)
+                 ) AS shop_id
+             ) assign ON true
+             LEFT JOIN shops s ON s.id = assign.shop_id
              WHERE ${where}
-             GROUP BY a.user_id, u.name, u.mobile, u.role, s.shop_name
-             ORDER BY u.name`,
-            params
+             ORDER BY u.name`, params
         );
-        // Absent + percentage per row, based on elapsed working days
-        const now = new Date();
-        const [yy, mm] = month.split('-').map(Number);
-        const daysInMonth = new Date(yy, mm, 0).getDate();
-        const elapsed = (now.getFullYear() === yy && now.getMonth() + 1 === mm) ? now.getDate() : daysInMonth;
-        const report = rows.map((r) => {
-            const present = Number(r.present), half = Number(r.half_day);
-            const marked = present + half;
-            return {
-                ...r,
-                present, half_day: half,
-                late: Number(r.late), early_arrival: Number(r.early_arrival),
-                early_exit: Number(r.early_exit), overtime: Number(r.overtime),
-                total_working_hours: Number(Number(r.total_working_hours).toFixed(2)),
-                absent: Math.max(0, elapsed - marked),
-                attendance_percentage: elapsed ? Math.round((present + half * 0.5) / elapsed * 100) : 0,
-            };
-        });
+
+        let elapsed = 0;
+        const report = [];
+        for (const e of emps) {
+            const eff = await getEffectiveSettings(e.user_id);
+            const mo = await computeMonth(e.user_id, month, eff);
+            const c = mo.counts;
+            elapsed = mo.elapsed;
+            report.push({
+                user_id: e.user_id, name: e.name, mobile: e.mobile, role: e.role, shop_name: e.shop_name,
+                present: c.present, half_day: c.half_day,
+                week_off: c.week_off, paid_leave: c.paid_leave, unpaid_leave: c.unpaid_leave, holiday: c.holiday,
+                late: c.late, early_arrival: c.early_arrival, early_exit: c.early_exit, overtime: c.overtime,
+                total_working_hours: c.total_working_hours,
+                absent: c.absent,
+                attendance_percentage: mo.elapsed
+                    ? Math.round((c.present + c.half_day * 0.5 + c.week_off + c.paid_leave + c.holiday) / mo.elapsed * 100) : 0,
+            });
+        }
         res.json({ month, elapsed_days: elapsed, report });
     } catch (err) {
         console.error('[attendance.getMonthlyReport]', err.message);
@@ -1212,30 +1217,46 @@ exports.getMonthlyReport = async (req, res) => {
 // GET /api/attendance/export?format=csv|excel&month=&scope=...
 exports.exportReport = async (req, res) => {
     try {
-        // Reuse getMonthlyReport logic by calling internally
         const month = req.query.month || todayISO().slice(0, 7);
         const shops = await shopScope(req.user);
-        const params = [`${month}-01`];
-        let where = "a.date >= $1::date AND a.date < ($1::date + INTERVAL '1 month')";
-        if (shops) { params.push(shops); where += ` AND a.shop_id = ANY($${params.length}::int[])`; }
-        if (req.query.shop_id) { params.push(req.query.shop_id); where += ` AND a.shop_id=$${params.length}`; }
+        const params = [];
+        let where = "u.status='active'";
+        if (shops) {
+            params.push(shops);
+            where += ` AND EXISTS (SELECT 1 FROM shop_users su WHERE su.user_id=u.id AND su.shop_id = ANY($${params.length}::int[]))`;
+        }
+        if (req.query.shop_id) { params.push(req.query.shop_id); where += ` AND assign.shop_id=$${params.length}`; }
 
-        const { rows } = await db.query(
-            `SELECT u.name AS "Employee", u.mobile AS "Mobile", u.role AS "Role", s.shop_name AS "Shop",
-               COUNT(*) FILTER (WHERE a.attendance_status<>'half_day' AND a.punch_in_at IS NOT NULL) AS "Present",
-               COUNT(*) FILTER (WHERE a.attendance_status='half_day') AS "Half Day",
-               COUNT(*) FILTER (WHERE a.punch_in_status='late') AS "Late",
-               COUNT(*) FILTER (WHERE a.punch_in_status='early_arrival') AS "Early Arrival",
-               COUNT(*) FILTER (WHERE a.punch_out_status='early_exit') AS "Early Exit",
-               COUNT(*) FILTER (WHERE a.punch_out_status='overtime') AS "Overtime",
-               ROUND(COALESCE(SUM(a.working_hours),0),2) AS "Total Hours"
-             FROM attendance a
-             JOIN users u ON u.id=a.user_id
-             LEFT JOIN shops s ON s.id=a.shop_id
+        const { rows: emps } = await db.query(
+            `SELECT u.id AS user_id, u.name, u.mobile, u.role, s.shop_name
+             FROM users u
+             LEFT JOIN LATERAL (
+                 SELECT COALESCE(
+                     (SELECT asu.shop_id FROM attendance_shop_users asu
+                      WHERE asu.user_id = u.id ORDER BY asu.assigned_at DESC LIMIT 1),
+                     (SELECT su.shop_id FROM shop_users su
+                      WHERE su.user_id = u.id ORDER BY su.assigned_at DESC LIMIT 1)
+                 ) AS shop_id
+             ) assign ON true
+             LEFT JOIN shops s ON s.id = assign.shop_id
              WHERE ${where}
-             GROUP BY u.name, u.mobile, u.role, s.shop_name ORDER BY u.name`,
-            params
+             ORDER BY u.name`, params
         );
+
+        const rows = [];
+        for (const e of emps) {
+            const eff = await getEffectiveSettings(e.user_id);
+            const mo = await computeMonth(e.user_id, month, eff);
+            const c = mo.counts;
+            rows.push({
+                Employee: e.name, Mobile: e.mobile, Role: e.role, Shop: e.shop_name,
+                Present: c.present, 'Half Day': c.half_day,
+                'Week Off': c.week_off, 'Paid Leave': c.paid_leave, 'Unpaid Leave': c.unpaid_leave, Holiday: c.holiday,
+                Absent: c.absent,
+                Late: c.late, 'Early Arrival': c.early_arrival, 'Early Exit': c.early_exit, Overtime: c.overtime,
+                'Total Hours': c.total_working_hours,
+            });
+        }
 
         const format = req.query.format || 'csv';
         if (format === 'excel' || format === 'xlsx') {

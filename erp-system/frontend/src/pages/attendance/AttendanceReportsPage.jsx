@@ -54,7 +54,7 @@ export default function AttendanceReportsPage() {
         URL.revokeObjectURL(url);
     };
 
-    const cols = ['Employee', 'Shop', 'Present', 'Absent', 'Late', 'Half Day', 'Early Arr.', 'Early Exit', 'Overtime', 'Attendance %', 'Total Hours'];
+    const cols = ['Employee', 'Shop', 'Present', 'Absent', 'Week Off', 'Paid Leave', 'Unpaid Leave', 'Holiday', 'Late', 'Half Day', 'Early Arr.', 'Early Exit', 'Overtime', 'Attendance %', 'Total Hours'];
 
     return (
         <Layout title="Attendance Reports">
@@ -117,6 +117,10 @@ export default function AttendanceReportsPage() {
                                         <td className="px-3 py-2.5 whitespace-nowrap text-gray-500">{r.shop_name || '—'}</td>
                                         <td className="px-3 py-2.5">{r.present}</td>
                                         <td className="px-3 py-2.5 text-red-600">{r.absent}</td>
+                                        <td className="px-3 py-2.5 text-sky-600">{r.week_off}</td>
+                                        <td className="px-3 py-2.5 text-teal-600">{r.paid_leave}</td>
+                                        <td className="px-3 py-2.5 text-rose-600">{r.unpaid_leave}</td>
+                                        <td className="px-3 py-2.5 text-violet-600">{r.holiday}</td>
                                         <td className="px-3 py-2.5">{r.late}</td>
                                         <td className="px-3 py-2.5">{r.half_day}</td>
                                         <td className="px-3 py-2.5">{r.early_arrival}</td>
