@@ -107,6 +107,7 @@ export default function AttendancePayrollPage() {
                                         <Th right>Present</Th>
                                         <Th right>Week Off</Th>
                                         <Th right>Paid Leave</Th>
+                                        <Th right>Holiday</Th>
                                         <Th right>Absent</Th>
                                         <Th right>Payable Days</Th>
                                         <Th right>Per Day</Th>
@@ -143,6 +144,7 @@ export default function AttendancePayrollPage() {
                                                 <Td right>{r.present}{r.half_day ? ` +½×${r.half_day}` : ''}</Td>
                                                 <Td right>{r.week_off}</Td>
                                                 <Td right>{r.paid_leave}</Td>
+                                                <Td right>{r.holiday}</Td>
                                                 <Td right>{r.absent}</Td>
                                                 <Td right bold>{r.payable_days}</Td>
                                                 <Td right>{money(r.per_day_rate)}</Td>
@@ -155,7 +157,7 @@ export default function AttendancePayrollPage() {
                                 <tfoot>
                                     <tr style={{ background: 'var(--bg-primary)' }}>
                                         <Td bold>Total</Td>
-                                        <Td /><Td /><Td /><Td /><Td /><Td /><Td />
+                                        <Td /><Td /><Td /><Td /><Td /><Td /><Td /><Td />
                                         <Td right bold>{money(totals.gross)}</Td>
                                         <Td right bold><span className="text-teal-700">{money(totals.net)}</span></Td>
                                     </tr>
