@@ -275,8 +275,8 @@ cron.schedule('30 13 * * *', async () => {
     }
 });
 
-// ── Cron: 11 PM IST sales summary to all admins (17:30 UTC) ────
-cron.schedule('30 17 * * *', async () => {
+// ── Cron: 9:30 PM IST sales summary to all admins (16:00 UTC) ──
+cron.schedule('0 16 * * *', async () => {
     const wa = require('./services/aiSensyService');
     if (!wa.ENABLED) return;
     try {
@@ -309,7 +309,7 @@ cron.schedule('30 17 * * *', async () => {
             await wa.notifySalesSummary(u.mobile, dateStr, totalStr, breakdown);
             await new Promise(r => setTimeout(r, 300));
         }
-        console.log(`[cron] Sent 9 PM sales summary to ${adminManagers.length} admins/managers (₹${totalStr})`);
+        console.log(`[cron] Sent 9:30 PM sales summary to ${adminManagers.length} admins/managers (₹${totalStr})`);
 
     } catch (err) {
         console.error('[cron] Sales summary failed:', err.message);
