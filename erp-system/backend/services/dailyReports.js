@@ -103,4 +103,57 @@ async function sendSalesSummary() {
     return { date: today, total: totalStr, adminsNotified: admins.length };
 }
 
-module.exports = { sendDailyReminder, sendSalesSummary };
+/* Today's attendance summary to all admins/managers. Employees = active
+ * shop_user/manager accounts. Week-off (manual or auto from week_off_days),
+ * leave and holiday days are reported separately — never as absent. */
+async function sendAttendanceSummary() {
+    if (!wa.ENABLED) return { skipped: true, reason: 'AISENSY_API_KEY not set' };
+    const { today, dateStr } = todayIST();
+    const weekday = new Date(`${today}T00:00:00Z`).getUTCDay(); // 0=Sun … 6=Sat
+
+    const { rows } = await db.query(`
+        SELECT u.name,
+               a.punch_in_at, a.attendance_status, a.punch_in_status,
+               COALESCE(us.week_off_days, gs.week_off_days, '{0}') AS week_off_days,
+               (SELECT s.shop_name FROM shops s WHERE s.id = COALESCE(
+                    (SELECT asu.shop_id FROM attendance_shop_users asu
+                     WHERE asu.user_id = u.id ORDER BY asu.assigned_at DESC LIMIT 1),
+                    (SELECT su.shop_id FROM shop_users su
+                     WHERE su.user_id = u.id ORDER BY su.assigned_at DESC LIMIT 1))) AS shop_name
+        FROM users u
+        LEFT JOIN attendance a               ON a.user_id = u.id AND a.date = $1
+        LEFT JOIN attendance_user_settings us ON us.user_id = u.id
+        LEFT JOIN attendance_settings gs      ON gs.id = 1
+        WHERE u.status = 'active' AND u.role IN ('shop_user', 'manager')
+        ORDER BY u.name
+    `, [today]);
+
+    let present = 0, late = 0, off = 0;
+    const absentNames = [];
+    for (const r of rows) {
+        const st = r.attendance_status;
+        if (r.punch_in_at) {
+            present++;
+            if (st === 'late' || r.punch_in_status === 'late') late++;
+        } else if (['week_off', 'paid_leave', 'unpaid_leave', 'holiday'].includes(st)
+                   || (r.week_off_days || []).map(Number).includes(weekday)) {
+            off++;
+        } else {
+            absentNames.push(r.shop_name ? `${r.name} (${r.shop_name})` : (r.name || 'Unnamed'));
+        }
+    }
+
+    let absentList = absentNames.join(', ') || 'None';
+    if (absentList.length > 900) absentList = absentList.slice(0, 897) + '...'; // WhatsApp param limit
+
+    const admins = await getAdminManagerMobiles();
+    for (const mobile of admins) {
+        await wa.notifyAttendanceSummary(mobile, dateStr, rows.length, present, absentNames.length, late, off, absentList);
+        await sleep(300);
+    }
+    console.log(`[cron] Sent attendance summary to ${admins.length} admins/managers (${present}/${rows.length} present)`);
+
+    return { date: today, total: rows.length, present, absent: absentNames.length, late, offOrLeave: off, adminsNotified: admins.length };
+}
+
+module.exports = { sendDailyReminder, sendSalesSummary, sendAttendanceSummary };

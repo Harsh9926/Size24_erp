@@ -222,9 +222,11 @@ const dailyReports = require('./services/dailyReports');
 cron.schedule('30 13 * * *', () =>
     dailyReports.sendDailyReminder().catch(err => console.error('[cron] Daily reminder failed:', err.message)));
 
-// 9:30 PM IST (16:00 UTC): sales summary to admins/managers
-cron.schedule('0 16 * * *', () =>
-    dailyReports.sendSalesSummary().catch(err => console.error('[cron] Sales summary failed:', err.message)));
+// 9:30 PM IST (16:00 UTC): sales summary, then attendance summary, to admins/managers
+cron.schedule('0 16 * * *', async () => {
+    await dailyReports.sendSalesSummary().catch(err => console.error('[cron] Sales summary failed:', err.message));
+    await dailyReports.sendAttendanceSummary().catch(err => console.error('[cron] Attendance summary failed:', err.message));
+});
 
 // ── Cron: auto-lock entries every midnight ───────────────────────
 cron.schedule('0 0 * * *', async () => {

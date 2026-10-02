@@ -9,10 +9,14 @@ router.put('/:id/read', authenticateToken, notif.markRead);
 router.put('/read-all', authenticateToken, notif.markAllRead);
 
 // POST /api/notifications/daily-reports/:type — admin-only manual trigger of
-// the cron WhatsApp reports (type = reminder | sales), for testing.
+// the cron WhatsApp reports (type = reminder | sales | attendance), for testing.
 router.post('/daily-reports/:type', authenticateToken, requireRole('admin'), async (req, res) => {
-    const run = { reminder: dailyReports.sendDailyReminder, sales: dailyReports.sendSalesSummary }[req.params.type];
-    if (!run) return res.status(400).json({ error: 'type must be reminder or sales' });
+    const run = {
+        reminder:   dailyReports.sendDailyReminder,
+        sales:      dailyReports.sendSalesSummary,
+        attendance: dailyReports.sendAttendanceSummary,
+    }[req.params.type];
+    if (!run) return res.status(400).json({ error: 'type must be reminder, sales or attendance' });
     try {
         res.json(await run());
     } catch (err) {

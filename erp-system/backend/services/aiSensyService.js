@@ -11,6 +11,7 @@ const CAMPAIGNS = {
     sales_summary:   process.env.AISENSY_TPL_SALES_SUMMARY  || 'daily_sales_summary',
     employee_punch_in:    process.env.AISENSY_TPL_PUNCH_IN  || 'employee_punch_in',
     attendance_punch_out: process.env.AISENSY_TPL_PUNCH_OUT || 'attendance_punch_out',
+    attendance_summary:   process.env.AISENSY_TPL_ATTENDANCE_SUMMARY || 'daily_attendance_summary',
 };
 
 /* Normalize phone → "91XXXXXXXXXX" */
@@ -97,5 +98,12 @@ exports.notifyEmployeePunchIn = (phone, employeeName, punchInTime) =>
 exports.notifyEmployeePunchOut = (phone, employeeName, punchInTime, punchOutTime) =>
     sendWhatsApp(phone, CAMPAIGNS.attendance_punch_out, [employeeName, punchInTime, punchOutTime])
         .catch(err => console.error('[AiSensy] employee punch-out notify failed:', err.message));
+
+/* 9:30 PM attendance summary — {{1}} = date, {{2}} = total employees, {{3}} = present,
+ * {{4}} = absent, {{5}} = late, {{6}} = week off / leave / holiday, {{7}} = absent names */
+exports.notifyAttendanceSummary = (phone, date, total, present, absent, late, off, absentList) =>
+    sendWhatsApp(phone, CAMPAIGNS.attendance_summary,
+        [date, String(total), String(present), String(absent), String(late), String(off), absentList])
+        .catch(err => console.error('[AiSensy] attendance summary failed:', err.message));
 
 exports.ENABLED = ENABLED;
