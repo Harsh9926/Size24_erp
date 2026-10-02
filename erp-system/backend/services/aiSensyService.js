@@ -52,6 +52,9 @@ function sendWhatsApp(phone, campaignName, templateParams = []) {
             let body = '';
             res.on('data', d => body += d);
             res.on('end', () => {
+                if (res.statusCode >= 400) {
+                    console.error(`[AiSensy] ${campaignName} → ${destination} failed (${res.statusCode}): ${body}`);
+                }
                 try { resolve(JSON.parse(body)); } catch { resolve({ raw: body }); }
             });
         });
@@ -80,7 +83,7 @@ exports.notifyAdminSummary = (phone, date, missingCount, shopList) =>
     sendWhatsApp(phone, CAMPAIGNS.admin_summary, [date, String(missingCount), shopList])
         .catch(err => console.error('[AiSensy] admin summary failed:', err.message));
 
-/* 11 PM sales summary — {{1}} = date, {{2}} = total amount, {{3}} = shop-wise breakdown */
+/* 9:30 PM sales summary — {{1}} = date, {{2}} = total amount, {{3}} = shop-wise breakdown */
 exports.notifySalesSummary = (phone, date, totalAmount, shopBreakdown) =>
     sendWhatsApp(phone, CAMPAIGNS.sales_summary, [date, String(totalAmount), shopBreakdown])
         .catch(err => console.error('[AiSensy] sales summary failed:', err.message));

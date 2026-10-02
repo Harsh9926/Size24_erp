@@ -215,106 +215,16 @@ app.use((err, req, res, next) => {
     res.status(status).json({ error: err.message || 'Internal server error' });
 });
 
-// ── Cron: daily reminder at 7 PM IST (13:30 UTC) ────────────────
-// 1. Sends individual WhatsApp reminder to EVERY user of each missing shop
-// 2. Sends consolidated summary to ALL admin users
-cron.schedule('30 13 * * *', async () => {
-    const wa = require('./services/aiSensyService');
-    if (!wa.ENABLED) return;
-    try {
-        const today   = new Date().toISOString().split('T')[0];
-        const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+// ── Cron: daily WhatsApp reports (logic in services/dailyReports.js) ──
+const dailyReports = require('./services/dailyReports');
 
-        // ── Shops that have NOT submitted today ──────────────────
-        const { rows: missingShops } = await db.query(`
-            SELECT DISTINCT s.id, s.shop_name
-            FROM shops s
-            WHERE s.id NOT IN (
-                SELECT shop_id FROM daily_entries WHERE date = $1
-            )
-            ORDER BY s.shop_name
-        `, [today]);
+// 7 PM IST (13:30 UTC): reminder to users of shops missing today's entry + summary to admins/managers
+cron.schedule('30 13 * * *', () =>
+    dailyReports.sendDailyReminder().catch(err => console.error('[cron] Daily reminder failed:', err.message)));
 
-        console.log(`[cron] Reminder: ${missingShops.length} shops haven't submitted for ${today}`);
-        if (missingShops.length === 0) return;
-
-        const shopIds   = missingShops.map(s => s.id);
-        const shopNames = missingShops.map(s => s.shop_name).join(', ');
-
-        // ── 1. Individual reminder to ALL users of each missing shop ──
-        const { rows: shopUsers } = await db.query(`
-            SELECT DISTINCT u.mobile, s.shop_name
-            FROM shop_users su
-            JOIN users  u ON u.id  = su.user_id
-            JOIN shops  s ON s.id  = su.shop_id
-            WHERE su.shop_id = ANY($1::int[])
-              AND u.mobile IS NOT NULL
-              AND u.is_active = true
-        `, [shopIds]);
-
-        for (const user of shopUsers) {
-            await wa.notifyReminder(user.mobile, user.shop_name);
-            await new Promise(r => setTimeout(r, 300)); // rate-limit
-        }
-        console.log(`[cron] Sent ${shopUsers.length} individual reminders`);
-
-        // ── 2. Admin + Manager summary ───────────────────────────
-        const { rows: adminManagers } = await db.query(`
-            SELECT mobile FROM users
-            WHERE role IN ('admin', 'manager') AND mobile IS NOT NULL AND is_active = true
-        `);
-
-        for (const u of adminManagers) {
-            await wa.notifyAdminSummary(u.mobile, dateStr, missingShops.length, shopNames);
-            await new Promise(r => setTimeout(r, 300));
-        }
-        console.log(`[cron] Sent summary to ${adminManagers.length} admins/managers`);
-
-    } catch (err) {
-        console.error('[cron] Daily reminder failed:', err.message);
-    }
-});
-
-// ── Cron: 9:30 PM IST sales summary to all admins (16:00 UTC) ──
-cron.schedule('0 16 * * *', async () => {
-    const wa = require('./services/aiSensyService');
-    if (!wa.ENABLED) return;
-    try {
-        const today   = new Date().toISOString().split('T')[0];
-        const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-
-        const { rows: shopSales } = await db.query(`
-            SELECT s.shop_name,
-                   COALESCE(SUM(de.total_sale::NUMERIC), 0) AS total_sale
-            FROM shops s
-            LEFT JOIN daily_entries de ON de.shop_id = s.id
-                AND de.date = $1
-                AND de.approval_status = 'APPROVED'
-            GROUP BY s.shop_name
-            ORDER BY total_sale DESC
-        `, [today]);
-
-        const grandTotal = shopSales.reduce((sum, r) => sum + parseFloat(r.total_sale), 0);
-        const totalStr   = grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 });
-        const breakdown  = shopSales
-            .map(r => `${r.shop_name}: Rs.${parseFloat(r.total_sale).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`)
-            .join(' | ');
-
-        const { rows: adminManagers } = await db.query(`
-            SELECT mobile FROM users
-            WHERE role IN ('admin', 'manager') AND mobile IS NOT NULL AND is_active = true
-        `);
-
-        for (const u of adminManagers) {
-            await wa.notifySalesSummary(u.mobile, dateStr, totalStr, breakdown);
-            await new Promise(r => setTimeout(r, 300));
-        }
-        console.log(`[cron] Sent 9:30 PM sales summary to ${adminManagers.length} admins/managers (₹${totalStr})`);
-
-    } catch (err) {
-        console.error('[cron] Sales summary failed:', err.message);
-    }
-});
+// 9:30 PM IST (16:00 UTC): sales summary to admins/managers
+cron.schedule('0 16 * * *', () =>
+    dailyReports.sendSalesSummary().catch(err => console.error('[cron] Sales summary failed:', err.message)));
 
 // ── Cron: auto-lock entries every midnight ───────────────────────
 cron.schedule('0 0 * * *', async () => {
